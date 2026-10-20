@@ -63,6 +63,7 @@ body {
 body {
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   background: var(--deep);
   color: var(--text);
   font-family: var(--font);
@@ -920,25 +921,4 @@ table.list th.num {
 @media (max-width: 900px) {
   #panel { width: calc(100% - var(--sidebar-w) - 24px); }
   .tb-item { padding: 0 6px; }
-}
-
-/* ---------- 22. Portrait hint (non-blocking) ----------------------------- */
-@media (orientation: portrait) {
-  body::after {
-    content: "請橫向使用以獲得最佳體驗";
-    position: fixed;
-    left: 50%;
-    bottom: 12px;
-    transform: translateX(-50%);
-    z-index: 1000;
-    max-width: calc(100vw - 32px);
-    padding: 8px 14px;
-    background: rgba(38, 70, 83, 0.94);
-    color: var(--text-light);
-    font-size: 14px;
-    font-weight: 700;
-    text-align: center;
-    pointer-events: none;   /* never blocks taps */
-    box-shadow: var(--outline);
-  }
 }

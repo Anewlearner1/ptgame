@@ -16,7 +16,7 @@ export function initSpeedbar(state, onHelp) {
     root.appendChild(btns[sp]);
   }
   skipBtn = h('button', {
-    class: 'speed-btn', type: 'button', tip: '用最高速快轉到本週結束',
+    class: 'speed-btn u-skip', type: 'button', tip: '用最高速快轉到本週結束', 'aria-label': '跳過本週',
     onclick: () => {
       if (skipping) { cancelSkip(true); return; }
       skipping = { prev: currentSpeed(state) || 1 };
@@ -24,7 +24,7 @@ export function initSpeedbar(state, onHelp) {
     },
   }, '⏩', h('span', { class: 'u-skip-lbl' }, ' 跳過本週'));
   root.appendChild(skipBtn);
-  root.appendChild(h('button', { class: 'speed-btn', type: 'button', tip: '操作說明（?）', onclick: onHelp }, '?'));
+  root.appendChild(h('button', { class: 'speed-btn u-help', type: 'button', tip: '操作說明（?）', 'aria-label': '操作說明', onclick: onHelp }, '?'));
   bus.on('speed:set', ({ speed }) => { optimistic = speed; });
   bus.on('week:start', () => { if (skipping) cancelSkip(true); });
 }

@@ -6,6 +6,8 @@ import { fmt, money, fmtDateTime } from '../fmt.js';
 import { section } from './common.js';
 import { confirmDialog } from '../modal.js';
 import { showTutorial, showHelp } from '../modals.js';
+import { layout } from '../layout.js';
+import { canFullscreen, isFullscreen, toggleFullscreen, canPromptInstall, promptInstall, isStandalone, isIOS } from '../pwa.js';
 
 const store = { tab: 'save', metric: 'cash' };
 const SLOTS = [['auto', '自動存檔'], ['1', '存檔 1'], ['2', '存檔 2'], ['3', '存檔 3']];
@@ -107,6 +109,34 @@ function buildSave(body, state, ui) {
   return { update() { refresh(false); } };
 }
 
+// ---------------------------------------------------------------- install / fullscreen (phones)
+let pwaRefresh = null;
+bus.on('pwa:changed', () => { if (pwaRefresh) pwaRefresh(); });
+function installSection() {
+  if (!(layout.mobile || layout.touch || canPromptInstall())) { pwaRefresh = null; return null; }
+  const fs = h('button', { class: 'btn small', type: 'button', onclick: () => toggleFullscreen() });
+  const inst = h('button', { class: 'btn small primary', type: 'button', onclick: async () => {
+    const ok = await promptInstall();
+    bus.emit('toast', ok ? { text: '已加入主畫面', kind: 'good' } : { text: '已取消安裝', kind: 'info' });
+  } }, '📲 安裝成 App');
+  const note = h('p', { class: 'muted u-p u-small' });
+  const row = h('div', { class: 'row' }, fs, inst);
+  const refresh = force => {
+    if (force !== true && !note.isConnected) return;
+    const fsOk = canFullscreen();
+    fs.hidden = !fsOk; setText(fs, isFullscreen() ? '⛶ 離開全螢幕' : '⛶ 全螢幕');
+    const standalone = isStandalone(), can = canPromptInstall(), ios = isIOS();
+    inst.hidden = !can;
+    note.textContent = standalone ? '✅ 目前已用 App 模式（全螢幕）執行。'
+      : can ? '安裝後會有主畫面圖示，以全螢幕開啟，沒有網址列，離線也能玩。'
+        : ios ? '在 iPhone / iPad：點 Safari 的「分享」按鈕 → 「加入主畫面」，就能以全螢幕開啟，沒有網址列。'
+          : '想要全螢幕：用瀏覽器選單的「安裝應用程式」或「加入主畫面」；也可以按上面的全螢幕按鈕。';
+    if (!fsOk && !can) row.hidden = true; else row.hidden = false;
+  };
+  pwaRefresh = refresh; refresh(true);
+  return section('📲 安裝與全螢幕', note, row);
+}
+
 // ---------------------------------------------------------------- settings
 function buildSettings(body, state, ui) {
   const grid = h('input', { type: 'checkbox', checked: ui.showGrid, onchange: () => { ui.showGrid = grid.checked; } });
@@ -116,6 +146,8 @@ function buildSettings(body, state, ui) {
   sp.value = lsGet('ptgame.defaultSpeed', '1');
   const tut = h('button', { class: 'btn small', type: 'button', onclick: () => showTutorial(true) }, '重看新手導覽');
   const help = h('button', { class: 'btn small', type: 'button', onclick: () => showHelp() }, '操作說明');
+  const inst = installSection();
+  if (inst) body.append(inst);
   body.append(section('遊戲設定',
     h('label', { class: 'u-setting' }, grid, ' 顯示地圖格線（G）'),
     h('label', { class: 'u-setting' }, snd, ' 音效（預留，尚無音效）'),
@@ -257,7 +289,7 @@ function buildCharts(body, state) {
   function redraw() { geo = drawChart(canvas, state, store.metric, hover); }
   const summary = h('div', { class: 'u-grid2' });
   body.append(chips, h('div', { class: 'u-canvaswrap' }, canvas), summary,
-    h('div', { class: 'muted u-small u-p' }, '圖表顯示最近 24 個月（每月結算後更新）。把滑鼠移到圖上可看詳細數字。'));
+    h('div', { class: 'muted u-small u-p' }, '圖表顯示最近 24 個月（每月結算後更新）。把滑鼠移到（或用手指點）圖上可看詳細數字。'));
   requestAnimationFrame(redraw);
   return {
     update() {

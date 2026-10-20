@@ -8,6 +8,8 @@ import { sizeOf } from '../core/grid.js';
 import { bus } from '../core/bus.js';
 import { badgeIcons } from '../sim/achievements.js';
 import { isoX, isoY, placementOrigin, hooks } from './iso.js';
+import { drawTouchOverlay } from './touchui.js';
+import { COARSE } from './camera.js';
 import {
   getObjectSprite, getFloorSprite, getGroundSprite, getPersonSprite, getIconSprite, getShadowSprite,
   getCarSprite, CAR_VARIANTS, warmSprites, spriteHit,
@@ -37,10 +39,42 @@ export function initRenderer(cv) {
   window.addEventListener('resize', ensureSize);
 }
 
+// Quality scaler state (ui.perf = {dpr, fps, level, auto}). level 0 full; 1 no decorative layers (cars, sparkle, weather
+// particles); 2 DPR cap 2 + no vignette; 3 DPR cap 1.25. Only auto-adjusts on touch devices (coarse pointer).
+const MAX_BACKING_PX = 2560 * 1440;
+const DPR_CAP_BY_LEVEL = [4, 4, 2, 1.25];
+const perfLocal = { dpr: 1, fps: 60, level: 0, auto: COARSE };
+let perfRef = perfLocal, slowRun = 0, fastRun = 0, restoreNeed = 360, lastDropAt = 0;
+function effectiveDpr(w, h) {
+  let dpr = window.devicePixelRatio || 1;
+  if (COARSE) dpr = Math.min(dpr, 3);
+  dpr = Math.min(dpr, DPR_CAP_BY_LEVEL[perfRef.level] || 4);
+  if (COARSE && w * h * dpr * dpr > MAX_BACKING_PX * 1.001) dpr = Math.sqrt(MAX_BACKING_PX / (w * h));
+  return dpr;
+}
+function perfFrame(ui, dtMs, now) {
+  if (!ui.perf) ui.perf = perfLocal;
+  perfRef = ui.perf;
+  const P = perfRef;
+  if (P.auto === undefined) P.auto = COARSE;
+  if (dtMs <= 0 || dtMs > 250 || document.hidden) return;
+  P.fps = P.fps * 0.92 + (1000 / dtMs) * 0.08;
+  if (!P.auto || now < 3000) return;          // ignore the start-up burst (sprite warm-up, layout)
+  if (dtMs > 24) { slowRun++; fastRun = 0; } else { slowRun = 0; fastRun++; }
+  if (slowRun >= 20 && P.level < 3) {
+    P.level++; slowRun = 0; fastRun = 0;
+    if (now - lastDropAt < 20000) restoreNeed = Math.min(3600, restoreNeed * 2);   // dropped soon after a restore: be patient
+    lastDropAt = now;
+  } else if (fastRun >= restoreNeed && P.level > 0) {
+    P.level--; fastRun = 0;
+  }
+}
+
 function ensureSize() {
   if (!canvas) return false;
-  const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth, h = canvas.clientHeight;
+  const dpr = effectiveDpr(w, h);
+  if (perfRef.dpr !== dpr) perfRef.dpr = dpr;
   if (!w || !h) return false;
   if (w !== view.w || h !== view.h || dpr !== view.dpr) {
     view.w = w; view.h = h; view.dpr = dpr;
@@ -535,7 +569,11 @@ const BG = '#1f2e3a';
 const DAY_KEYS = [[0, 255, 232, 200], [0.1, 255, 250, 240], [0.22, 255, 255, 255], [0.62, 255, 255, 255], [0.8, 255, 214, 168], [0.92, 196, 170, 206], [1, 128, 132, 196]];
 
 export function render(state, ui, now) {
-  if (!ctx || !ensureSize()) return;
+  if (!ctx) return;
+  perfFrame(ui, lastNow ? now - lastNow : 0, now);
+  if (!ensureSize()) return;
+  if (hooks.frame) hooks.frame(now);
+  const lite = perfRef.level >= 1;
   const dt = Math.min(0.1, (now - lastNow) / 1000); lastNow = now;
   const speed = state.time && !state.time.paused ? state.time.speed : 0;
   carClock += dt * (speed > 0 ? 1 : 0);
@@ -579,7 +617,7 @@ export function render(state, ui, now) {
   // 1-second sparkle over the signboard when an achievement unlocks (optional flourish, §5.5)
   {
     const sp = (now - sparkleAt) / 1000;
-    if (sp >= 0 && sp < 1) {
+    if (sp >= 0 && sp < 1 && !lite) {
       ctx.save();
       for (let i = 0; i < 9; i++) {
         const ph = (sp * 1.6 + i * 0.37) % 1, a = Math.sin(ph * Math.PI);
@@ -670,8 +708,10 @@ export function render(state, ui, now) {
   const pts = state.patients, sts = state.staff;
   for (let i = 0; i < pts.length; i++) { const p = pts[i]; if (p.stage === 'gone') continue; let x = p.x, y = p.y; if (p.seat && p.stage === 'waiting' && Math.abs(p.seat.x + 0.5 - x) < 0.4 && Math.abs(p.seat.y + 0.5 - y) < 0.4) { x = p.seat.x + 0.5; y = p.seat.y + 0.5; } addEnt(1, p, x, y); }
   for (let i = 0; i < sts.length; i++) addEnt(2, sts[i], sts[i].x, sts[i].y);
-  if (!state.weather || state.weather.kind !== 'typhoon') updateCars(state, carClock);
-  for (let i = 0; i < carList.length; i++) if (carList[i].on) addEnt(3, carList[i], carList[i].x, carList[i].y);
+  if (!lite) {
+    if (!state.weather || state.weather.kind !== 'typhoon') updateCars(state, carClock);
+    for (let i = 0; i < carList.length; i++) if (carList[i].on) addEnt(3, carList[i], carList[i].x, carList[i].y);
+  }
   const order = eKey.subarray(0, eN).sort();
   let ei = 0;
   const nR = recs.length;
@@ -755,7 +795,8 @@ export function render(state, ui, now) {
     }
   }
 
-  drawAtmosphere(state, now, dpr);
+  drawAtmosphere(state, now, dpr, lite);
+  drawTouchOverlay(ctx, ui, view.w, view.h);
 }
 
 // ───────────────────────── cars ─────────────────────────
@@ -776,7 +817,7 @@ function updateCars(state, t) {
 }
 
 // ───────────────────────── weather + daylight ─────────────────────────
-function drawAtmosphere(state, now, dpr) {
+function drawAtmosphere(state, now, dpr, lite) {
   const g = ctx, W = view.w, H = view.h;
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   // daylight tint
@@ -800,7 +841,8 @@ function drawAtmosphere(state, now, dpr) {
     g.globalCompositeOperation = 'source-over';
   }
   const ts = now / 1000;
-  if (kind === 'rain' || kind === 'meiyu' || kind === 'typhoon') {
+  if (lite) { /* decorative weather particles skipped by the quality scaler */ }
+  else if (kind === 'rain' || kind === 'meiyu' || kind === 'typhoon') {
     const heavy = kind === 'typhoon';
     const n = heavy ? 220 : 130, len = heavy ? 22 : 14, sl = heavy ? 0.55 : 0.18, sp = heavy ? 1500 : 900;
     g.strokeStyle = heavy ? 'rgba(210,225,255,0.55)' : 'rgba(200,225,255,0.6)'; g.lineWidth = 1.3;
@@ -833,6 +875,7 @@ function drawAtmosphere(state, now, dpr) {
     g.fillStyle = 'rgba(200,210,225,0.08)'; g.fillRect(0, 0, W, H);
   }
   // vignette
+  if (perfRef.level >= 2) return;
   const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.max(W, H) * 0.8);
   vg.addColorStop(0, 'rgba(10,15,30,0)'); vg.addColorStop(1, 'rgba(10,15,30,0.28)');
   g.fillStyle = vg; g.fillRect(0, 0, W, H);
@@ -840,7 +883,7 @@ function drawAtmosphere(state, now, dpr) {
 
 // ───────────────────────── picking (used by input.js) ─────────────────────────
 // sx,sy = canvas CSS px. Returns {type:'patient'|'staff'|'object', id} | null
-export function pickAt(state, ui, sx, sy) {
+export function pickAt(state, ui, sx, sy, radius = 0) {
   const cam = ui.cam, z = cam.zoom;
   const wx = (sx - cam.x) / z, wy = (sy - cam.y) / z;
   let best = null, bestD = -1;
@@ -856,13 +899,36 @@ export function pickAt(state, ui, sx, sy) {
   for (const p of state.patients) if (p.stage !== 'gone') test(p, 'patient');
   for (const s of state.staff) test(s, 'staff');
   if (best) return best;
-  for (let i = recs.length - 1; i >= 0; i--) {
-    const r = recs[i];
-    if (spriteHit(r.spr, Math.round(wx - r.px), Math.round(wy - r.py))) return { type: 'object', id: r.obj.id };
-  }
-  for (let i = flatRecs.length - 1; i >= 0; i--) {
-    const r = flatRecs[i];
-    if (spriteHit(r.spr, Math.round(wx - r.px), Math.round(wy - r.py))) return { type: 'object', id: r.obj.id };
+  const objAt = (px, py) => {
+    for (let i = recs.length - 1; i >= 0; i--) {
+      const r = recs[i];
+      if (spriteHit(r.spr, Math.round(px - r.px), Math.round(py - r.py))) return { type: 'object', id: r.obj.id };
+    }
+    for (let i = flatRecs.length - 1; i >= 0; i--) {
+      const r = flatRecs[i];
+      if (spriteHit(r.spr, Math.round(px - r.px), Math.round(py - r.py))) return { type: 'object', id: r.obj.id };
+    }
+    return null;
+  };
+  const hitObj = objAt(wx, wy);
+  if (radius <= 0) return hitObj;
+  // finger-sized pick: nearest person (body centre) within `radius` CSS px beats an object under the finger
+  let near = null, nearD = radius;
+  const cand = (a, type) => {
+    if (type === 'patient' && a.stage === 'gone') return;
+    let x = a.x, y = a.y;
+    if (type === 'patient' && a.seat && Math.abs(a.seat.x + 0.5 - x) < 0.4 && Math.abs(a.seat.y + 0.5 - y) < 0.4) { x = a.seat.x + 0.5; y = a.seat.y + 0.5; }
+    const d = Math.hypot(sx - (isoX(x, y) * z + cam.x), sy - (isoY(x, y) * z + cam.y - 18 * z));
+    if (d < nearD) { nearD = d; near = { type, id: a.id }; }
+  };
+  for (const p of state.patients) cand(p, 'patient');
+  for (const s of state.staff) cand(s, 'staff');
+  if (near) return near;
+  if (hitObj) return hitObj;
+  const rw = radius / z;
+  for (let k = 0; k < 8; k++) {
+    const a = k * Math.PI / 4, o = objAt(wx + Math.cos(a) * rw * 0.6, wy + Math.sin(a) * rw * 0.6);
+    if (o) return o;
   }
   return null;
 }

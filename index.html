@@ -2,11 +2,29 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content">
   <title>復健科診所物語</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%273%27 fill=%27%232a9d8f%27/%3E%3Cpath d=%27M7 3h2v4h4v2H9v4H7V9H3V7h4z%27 fill=%27%23fff%27/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#1d5c57">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="復健診所">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/ui.css">
+  <link rel="stylesheet" href="css/mobile.css">
+  <script>
+    // First-paint layout class (portrait = phone/tablet upright; compact = short landscape). js/ui/layout.js keeps it current.
+    (function () {
+      var d = document.documentElement, w = innerWidth, h = innerHeight;
+      var p = h > w && w <= 900, c = !p && h <= 520;
+      d.className = (p ? 'lay-portrait lay-mobile' : c ? 'lay-compact lay-mobile' : 'lay-desktop') +
+        (matchMedia('(pointer: coarse)').matches ? ' touch' : '');
+    })();
+  </script>
 </head>
 <body>
   <div id="app">
@@ -21,6 +39,13 @@
     </main>
     <div id="modal-root"></div>
   </div>
+  <noscript>
+    <div class="noscript">
+      <h1>復健科診所物語</h1>
+      <p>這個遊戲需要 JavaScript 才能執行。請在瀏覽器設定中啟用 JavaScript 後重新整理頁面。</p>
+      <p>This game needs JavaScript. Please enable it and reload the page.</p>
+    </div>
+  </noscript>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

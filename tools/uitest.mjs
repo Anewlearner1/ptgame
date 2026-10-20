@@ -24,9 +24,11 @@ const geo = (page) => page.evaluate(() => {
   const pts = [[l.x0, l.y0], [l.x0 + l.w, l.y0], [l.x0, l.y0 + l.h], [l.x0 + l.w, l.y0 + l.h]].map(([gx, gy]) => ({ x: cv.left + c.x + (gx - gy) * 32 * c.zoom, y: cv.top + c.y + (gx + gy) * 16 * c.zoom }));
   const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
   const pe = document.getElementById('panel'), pr = pe.hidden ? null : pe.getBoundingClientRect();
-  return { zoom: c.zoom, l: Math.min(...xs), r: Math.max(...xs), t: Math.min(...ys), b: Math.max(...ys), panelRight: pr ? pr.right : 0, W: innerWidth, H: innerHeight, cvW: cv.width, cvH: cv.height };
+  return { zoom: c.zoom, l: Math.min(...xs), r: Math.max(...xs), t: Math.min(...ys), b: Math.max(...ys), panelRight: pr ? pr.right : 0, panelLeft: pr ? pr.left : 0, W: innerWidth, H: innerHeight, cvW: cv.width, cvH: cv.height };
 });
-const lotVisibleBesidePanel = (g) => g.l >= g.panelRight - 2 && g.r <= g.W + 2 && g.t >= 0 && g.b <= g.H + 2;
+// panel on the left (desktop layout) or a right-side drawer (short landscape / phone layout, panel.left > W/2)
+const drawerRight = (g) => g.panelRight > 0 && g.panelLeft > g.W * 0.4;
+const lotVisibleBesidePanel = (g) => (drawerRight(g) ? g.r <= g.panelLeft + 2 && g.l >= -2 : g.l >= g.panelRight - 2 && g.r <= g.W + 2) && g.t >= 0 && g.b <= g.H + 2;
 
 // ---- 1. resize refit
 {
@@ -46,7 +48,7 @@ const lotVisibleBesidePanel = (g) => g.l >= g.panelRight - 2 && g.r <= g.W + 2 &
   await page.keyboard.press('b'); await page.waitForTimeout(700);
   g = await geo(page);
   ok(lotVisibleBesidePanel(g), `800x450 build panel open: lot visible beside panel (${Math.round(g.l)}..${Math.round(g.r)} vs panel ${Math.round(g.panelRight)})`);
-  for (const k of ['o', 'c', 'v', 'm', 'y']) { await page.keyboard.press(k); await page.waitForTimeout(450); g = await geo(page); ok(g.panelRight < g.W * 0.75 && g.r > g.panelRight - 40, `800x450 panel ${k}: map still partly visible (panel right ${Math.round(g.panelRight)}/${g.W})`); }
+  for (const k of ['o', 'c', 'v', 'm', 'y']) { await page.keyboard.press(k); await page.waitForTimeout(450); g = await geo(page); ok((drawerRight(g) ? g.panelLeft > g.W * 0.4 && g.l < g.panelLeft - 40 : g.panelRight < g.W * 0.75 && g.r > g.panelRight - 40), `800x450 panel ${k}: map still partly visible (panel right ${Math.round(g.panelRight)}/${g.W})`); }
   // manual camera is NOT re-fitted by a resize
   await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
   await page.evaluate(() => { __game.ui.cam.zoom = 2; });

@@ -15,9 +15,9 @@ export function initSidebar(ui, toggle) {
   const root = document.getElementById('sidebar');
   for (const p of PANELS) {
     const b = h('button', {
-      class: 'sidebar-btn', type: 'button', tip: `${p.label}（${p.key}）`,
+      class: 'sidebar-btn', type: 'button', tip: `${p.label}（${p.key}）`, 'aria-label': p.label,
       onclick: () => toggle(p.id),
-    }, h('span', { class: 'ico' }, p.ico), p.label);
+    }, h('span', { class: 'ico' }, p.ico), h('span', { class: 'lbl' }, p.label));
     btns[p.id] = b;
     root.appendChild(b);
   }

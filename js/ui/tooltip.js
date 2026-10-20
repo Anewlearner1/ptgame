@@ -39,13 +39,41 @@ function place(e) {
   tipEl.style.top = Math.max(4, y) + 'px';
 }
 
-function hide() { cur = null; if (tipEl) tipEl.hidden = true; }
+let hideTimer = 0;
+function hide() { cur = null; clearTimeout(hideTimer); if (tipEl) tipEl.hidden = true; }
+const noHover = () => { try { return matchMedia('(hover: none)').matches; } catch (e) { return false; } };
+
+// Touch: no hover. A tap on an info element (topbar chips, .u-info icons, plain tagged text) shows its tooltip
+// for a few seconds; real buttons / cards keep their own tap action and never open a tooltip on tap.
+function tapTarget(t) {
+  const el = t.closest && t.closest('[data-tip],[data-tip-def]');
+  if (!el) return null;
+  if (el.matches('.u-info, .tb-item') || el.dataset.tipTap != null) return el;
+  if (el.closest('button, [role="button"], .card, a, input, select, textarea, label')) return null;
+  return el;
+}
+function showForTap(el) {
+  const c = contentFor(el);
+  if (!c) return;
+  cur = el;
+  clear(tipEl).appendChild(c);
+  tipEl.hidden = false;
+  const sr = stage.getBoundingClientRect(), r = el.getBoundingClientRect();
+  const w = tipEl.offsetWidth, hh = tipEl.offsetHeight;
+  let x = r.left - sr.left, y = r.bottom - sr.top + 6;
+  if (x + w > sr.width - 6) x = sr.width - w - 6;
+  if (y + hh > sr.height - 6) y = r.top - sr.top - hh - 6;
+  tipEl.style.left = Math.max(4, x) + 'px';
+  tipEl.style.top = Math.max(4, y) + 'px';
+  clearTimeout(hideTimer); hideTimer = setTimeout(hide, 5000);
+}
 
 export function initTooltip() {
   tipEl = document.getElementById('tooltip');
   stage = document.getElementById('stage');
   if (!tipEl) return;
   document.addEventListener('mouseover', e => {
+    if (noHover()) return;
     const el = e.target.closest && e.target.closest('[data-tip],[data-tip-def]');
     if (el === cur) return;
     if (!el) { hide(); return; }
@@ -56,8 +84,15 @@ export function initTooltip() {
     tipEl.hidden = false;
     place(e);
   });
-  document.addEventListener('mousemove', e => { if (cur) place(e); });
-  document.addEventListener('mousedown', hide);
+  document.addEventListener('mousemove', e => { if (cur && !noHover()) place(e); });
+  document.addEventListener('click', e => {
+    if (!noHover()) return;
+    const el = tapTarget(e.target);
+    if (!el || (cur === el && !tipEl.hidden)) { hide(); return; }
+    showForTap(el);
+  }, true);
+  document.addEventListener('pointerdown', e => { if (noHover() && cur && !cur.contains(e.target)) hide(); }, true);
+  document.addEventListener('mousedown', () => { if (!noHover()) hide(); });
   document.addEventListener('scroll', hide, true);
 }
 export function hideTooltip() { hide(); }
