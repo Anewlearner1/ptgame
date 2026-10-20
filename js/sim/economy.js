@@ -88,7 +88,7 @@ export function selfPayPrice(state, treatmentId) {
   if (!t) return 0;
   const pm = (state.policy && state.policy.priceMult && state.policy.priceMult[treatmentId]);
   const mods = state.mods || {};
-  return Math.round((t.price || 0) * (typeof pm === 'number' ? pm : 1) * (typeof mods.selfPayPrice === 'number' ? mods.selfPayPrice : 1) * REVENUE_SCALE);
+  return Math.round((t.price || 0) * (typeof pm === 'number' ? pm : 1) * (typeof mods.selfPayPrice === 'number' ? mods.selfPayPrice : 1));
 }
 
 function onTreatmentDone(state, e) {
