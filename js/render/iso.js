@@ -32,3 +32,6 @@ export function placementOrigin(def, rot, tx, ty) {
   const { w, h } = sizeOf(def, rot || 0);
   return { x: tx - Math.floor((w - 1) / 2), y: ty - Math.floor((h - 1) / 2) };
 }
+
+// late-bound hooks so renderer.js and input.js need not import each other
+export const hooks = { refreshHover: null };

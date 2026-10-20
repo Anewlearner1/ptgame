@@ -16,6 +16,7 @@ import { findPath, findPathToAdjacent, moveAlongPath, agentTileOk } from './path
 export const TUNE = {
   POOL_MIN: 3, POOL_MAX: 5,
   STAFF_SPEED: 1.0,            // walk multiplier
+  WALK_BOOST: 1.7,             // global walking-speed scale (patients + staff) on top of constants.WALK_TILES_PER_MIN
   REST_BELOW: 0.15,            // stamina fraction that sends an idle staff member to the rest room
   REST_UNTIL: 0.80,
   IDLE_REGEN: 0.0018,          // stamina fraction / min while idle without a rest room
@@ -175,6 +176,7 @@ export function isStaffAvailable(s) {
 }
 
 export function releaseStaff(state, s) {
+  if (s.task && s.state === 'walking') s.path = [];       // stop walking to a cancelled job
   s.task = null;
   s.stand = null;
   if (s.state === 'working' || s.state === 'chatting') s.state = 'idle';
@@ -206,7 +208,7 @@ function freeRest(state, s) {
 }
 
 export function staffSpeed(state, s) {
-  return WALK_TILES_PER_MIN * TUNE.STAFF_SPEED * (state.mods && state.mods.walkSpeed || 1);
+  return WALK_TILES_PER_MIN * TUNE.WALK_BOOST * TUNE.STAFF_SPEED * (state.mods && state.mods.walkSpeed || 1);
 }
 
 // ---------- per-frame update ----------

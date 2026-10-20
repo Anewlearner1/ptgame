@@ -1,0 +1,151 @@
+// UI orchestrator. initUI(state, ui) once; updateUI(state, ui) every frame (DOM work throttled to ~5 Hz).
+import { bus } from '../core/bus.js';
+import { ctx } from './ctx.js';
+import { h, clear } from './dom.js';
+import { initTooltip } from './tooltip.js';
+import { initToast } from './toast.js';
+import { initModal, isModalOpen, modalClosedRecently } from './modal.js';
+import { initModals, showTutorial, showHelp, showPending, snapshotLedger, resetPendingKey } from './modals.js';
+import { initTopbar, updateTopbar } from './topbar.js';
+import { initSidebar, updateSidebar, PANELS } from './sidebar.js';
+import { initSpeedbar, updateSpeedbar } from './speedbar.js';
+import { initSelection, updateSelection } from './selection.js';
+import { mountBuild } from './panels/build.js';
+import { mountOperate } from './panels/operate.js';
+import { mountClinic } from './panels/clinic.js';
+import { mountOverview } from './panels/overview.js';
+import { mountMap, sampleHeat } from './panels/map.js';
+import { mountSystem, lsGet } from './panels/system.js';
+import { TIPS } from '../data/texts.js';
+
+const MOUNTS = { build: mountBuild, operate: mountOperate, clinic: mountClinic, overview: mountOverview, map: mountMap, system: mountSystem };
+const TITLES = { build: '🔨 建造', operate: '🔬 運作', clinic: '🏥 診所', overview: '📋 一覽', map: '🗺 地圖', system: '⚙ 系統' };
+
+let panelEl, stageEl, hintEl;
+let shown = null;        // panel id currently mounted
+let live = null;         // {update}
+let lastTick = 0;
+let lastTool = 'none';
+let hintIdx = 0, hintAt = 0;
+let dirty = true;
+
+export function initUI(state, ui) {
+  ctx.state = state; ctx.ui = ui;
+  panelEl = document.getElementById('panel');
+  stageEl = document.getElementById('stage');
+
+  initTooltip();
+  initToast();
+  initModal();
+  initModals();
+  initTopbar();
+  initSidebar(ui, id => togglePanel(ui, id));
+  initSpeedbar(state, () => showHelp());
+  initSelection(state, ui);
+
+  hintEl = h('div', { class: 'u-hint', 'aria-live': 'off' });
+  stageEl.appendChild(hintEl);
+  hintIdx = Math.floor(Math.random() * Math.max(1, (TIPS || []).length));
+
+  // ---- global events
+  bus.on('ui:escape', () => onEscape(state, ui));
+  bus.on('state:loaded', () => {
+    dirty = true; resetPendingKey();
+    remount(state, ui, true);
+    setTimeout(() => { if (!state.flags.tutorialDone) showTutorial(); }, 50);
+  });
+  bus.on('patient:slip', () => bus.emit('toast', { text: '⚠ 有病患滑倒了！地面記得鋪防滑墊', kind: 'bad' }));
+  bus.on('week:start', () => { dirty = true; });
+  bus.on('map:changed', () => { dirty = true; });
+  document.addEventListener('keydown', e => onKey(e, state, ui));
+
+  // default speed preference (applied once on a fresh load)
+  const ds = parseInt(lsGet('ptgame.defaultSpeed', '1'), 10);
+  if (ds > 1 && ds <= 3) setTimeout(() => bus.emit('speed:set', { speed: ds }), 0);
+
+  updateTopbar(state);
+  if (!state.flags.tutorialDone) setTimeout(() => showTutorial(), 400);
+  updateUI(state, ui, true);
+}
+
+function togglePanel(ui, id) {
+  ui.panel = ui.panel === id ? null : id;
+  dirty = true;
+  syncPanel(ctx.state, ui);
+}
+
+function onEscape(state, ui) {
+  if (isModalOpen() || modalClosedRecently()) return;   // modal.js handles its own Esc
+  if (lastTool !== 'none' || ui.tool.mode !== 'none') {
+    ui.tool = { mode: 'none', defId: null, rot: 0, cat: null };
+    lastTool = 'none';
+    return;
+  }
+  if (ui.selected) { ui.selected = null; bus.emit('select:changed', { selected: null }); return; }
+  if (ui.panel) { ui.panel = null; syncPanel(state, ui); }
+}
+
+function onKey(e, state, ui) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target;
+  if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && t.type !== 'range' && t.type !== 'checkbox') return;
+  if (isModalOpen()) return;
+  const k = e.key;
+  if (k === '?' || k === '/' && e.shiftKey || k === 'F1') { e.preventDefault(); showHelp(); return; }
+  const p = PANELS.find(x => x.key.toLowerCase() === k.toLowerCase());
+  if (p) { e.preventDefault(); togglePanel(ui, p.id); }
+}
+
+// Build the DOM of the active panel (once per open / tab change).
+function syncPanel(state, ui) {
+  if (ui.panel === shown) return;
+  remount(state, ui, false);
+}
+function remount(state, ui, force) {
+  if (!force && ui.panel === shown) return;
+  shown = ui.panel;
+  live = null;
+  clear(panelEl);
+  if (!shown || !MOUNTS[shown]) {
+    panelEl.hidden = true; stageEl.classList.remove('panel-open');
+    return;
+  }
+  const close = h('button', { class: 'panel-close', type: 'button', 'aria-label': '關閉', onclick: () => { ui.panel = null; syncPanel(state, ui); } }, '✕');
+  const body = h('div', { class: 'u-panelbody' });
+  panelEl.append(h('h2', { class: 'panel-title' }, TITLES[shown], close), body);
+  panelEl.hidden = false;
+  panelEl.scrollTop = 0;
+  stageEl.classList.add('panel-open');
+  stageEl.dataset.panel = shown;
+  live = MOUNTS[shown](body, state, ui);
+  if (live && live.update) live.update(state, ui);
+}
+
+export function updateUI(state, ui, force) {
+  // cheap per-frame work: panel switching by other modules, Esc-tool bookkeeping
+  if (ui.panel !== shown) remount(state, ui, false);
+  const now = performance.now();
+  if (!force && !dirty && now - lastTick < 200) { lastTool = ui.tool.mode; return; }
+  lastTick = now; dirty = false;
+
+  sampleHeat(state);
+  snapshotLedger(state);
+  updateTopbar(state);
+  updateSidebar(ui);
+  updateSpeedbar(state);
+  updateSelection(state, ui);
+  if (live && live.update) live.update(state, ui);
+  lastTool = ui.tool.mode;
+
+  // pending decision (event/dilemma) that we may have missed
+  if (state.events && state.events.pendingDilemma) showPending();
+  else resetPendingKey();
+
+  // rotating tip
+  if (TIPS && TIPS.length && now - hintAt > 14000) {
+    hintAt = now;
+    hintIdx = (hintIdx + 1) % TIPS.length;
+    hintEl.textContent = '💡 ' + TIPS[hintIdx];
+  }
+  hintEl.hidden = !TIPS || !TIPS.length;
+}

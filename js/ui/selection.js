@@ -5,7 +5,7 @@ import { PATIENT_TYPES } from '../data/patients.js';
 import { TREATMENTS } from '../data/treatments.js';
 import { STAFF_ROLES, TRAITS } from '../data/staffdefs.js';
 import { removeAt } from '../sim/build.js';
-import { h, clear, setText, bar, setBar, toneOf, setClass } from './dom.js';
+import { h, clear, setText, bar, setBar, toneOf, setClass, append } from './dom.js';
 import { STAGE_LABELS, STAFF_STATE_LABELS, TYPE_ICONS, ROLE_ICONS, money } from './fmt.js';
 import { confirmDialog } from './modal.js';
 
@@ -74,15 +74,15 @@ function buildStaff(state, ui, e) {
   const R = STAFF_ROLES[e.role] || {};
   const trait = TRAITS.find(t => t.id === e.trait);
   refs = { st: h('span', { class: 'tag' }), stam: bar(), task: h('div', { class: 'muted' }) };
-  body.append(
+  append(body, [
     h('div', { class: 'u-shead' }, h('span', { class: 'u-sico' }, ROLE_ICONS[e.role] || '🧑‍⚕️'),
       h('div', { class: 'u-stitle' }, h('b', null, e.name), h('span', { class: 'muted' }, R.name || e.role)), refs.st),
-    row('技術', h('b', null, `${'★'.repeat(Math.round(e.skill))}${'☆'.repeat(Math.max(0, 10 - Math.round(e.skill)))} ${e.skill}`)),
-    row('魅力', h('b', null, String(e.charm))),
+    row('技術', h('span', { class: 'u-bl' }, bar(e.skill / 10), h('em', { class: 'u-num' }, e.skill))),
+    row('魅力', h('span', { class: 'u-bl' }, bar(e.charm / 10), h('em', { class: 'u-num' }, e.charm))),
     row('體力', refs.stam),
-    trait ? h('div', { class: 'u-chips' }, h('span', { class: 'tag', tip: trait.desc }, trait.name), h('span', { class: 'muted' }, trait.desc)) : null,
+    trait ? h('div', { class: 'u-chips' }, h('span', { class: 'tag', tip: trait.desc }, trait.name), h('span', { class: 'muted u-small' }, trait.desc)) : null,
     row('月薪', h('span', null, money(e.salary))),
-    refs.task);
+    refs.task]);
 }
 function updStaff(state, e) {
   setText(refs.st, STAFF_STATE_LABELS[e.state] || e.state);

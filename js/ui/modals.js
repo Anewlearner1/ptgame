@@ -3,7 +3,7 @@ import { bus } from '../core/bus.js';
 import { ctx } from './ctx.js';
 import { h } from './dom.js';
 import { fmt, money, signed, effectChips } from './fmt.js';
-import { showModal, closeModal, confirmDialog } from './modal.js';
+import { showModal, closeModal } from './modal.js';
 import { LOTS } from '../data/lots.js';
 import { DILEMMAS, RANDOM_EVENTS } from '../data/events.js';
 import { INTRO_STEPS } from '../data/texts.js';
@@ -32,37 +32,38 @@ function kv(label, value, cls) {
 export function showSettlement(p) {
   const state = ctx.state;
   const lot = LOTS[state.lotLevel || 0] || LOTS[0];
-  const cap = Math.round(lot.nhiCap * (1 + ((state.mods && state.mods.nhiCapBonus) || 0)));
+  const cap = Math.round(p.cap != null ? p.cap : lot.nhiCap * (1 + ((state.mods && state.mods.nhiCapBonus) || 0)));
   const pts = Math.round(p.points != null ? p.points : 0);
   const pv = p.pointValue != null ? p.pointValue : 1;
-  const nhiIncome = pts * pv;
+  const nhiIncome = p.nhiIncome != null ? p.nhiIncome : pts * pv;
 
-  let costs = { salary: 0, rent: 0, maintain: 0 };
-  try { costs = monthlyCosts(state) || costs; } catch (e) { /* fallback zeros */ }
+  // Prefer the itemised record from economy.settleMonth; fall back to our pre-reset ledger snapshot.
+  let costs = { salary: p.salary, rent: p.rent, maintain: p.maintain };
+  if (costs.salary == null) { try { costs = monthlyCosts(state) || {}; } catch (e) { costs = {}; } }
+  const self = p.selfIncome != null ? p.selfIncome : (snap.income.self || 0);
+  const other = p.otherIncome != null ? p.otherIncome : (snap.income.other || 0);
+  const build = p.build != null ? p.build : (snap.expense.build || 0);
+  const otherExp = p.otherExpense != null ? p.otherExpense : (snap.expense.other || 0);
 
-  const inc = [
-    ['健保給付', nhiIncome],
-    ['自費收入', snap.income.self || 0],
-  ];
-  if (snap.income.other) inc.push(['其他收入', snap.income.other]);
-  const exp = [
-    ['員工薪資', costs.salary], ['診所房租', costs.rent], ['設備維護', costs.maintain],
-  ];
-  if (snap.expense.build) exp.push(['建設與購置', snap.expense.build]);
-  if (snap.expense.other) exp.push(['其他支出', snap.expense.other]);
+  const inc = [['健保給付', nhiIncome], ['自費收入', self]];
+  if (other) inc.push(['其他收入（活動、事件）', other]);
+  const exp = [['員工薪資', costs.salary || 0], ['診所房租', costs.rent || 0], ['設備與看板維護', costs.maintain || 0]];
+  if (build) exp.push(['建設與購置', build]);
+  if (otherExp) exp.push(['其他支出（訓練、招聘、活動）', otherExp]);
 
-  let incTotal = typeof p.income === 'number' ? p.income : inc.reduce((a, r) => a + r[1], 0);
-  let expTotal = typeof p.expense === 'number' ? p.expense : exp.reduce((a, r) => a + r[1], 0);
+  const incTotal = typeof p.income === 'number' ? p.income : inc.reduce((a, r) => a + r[1], 0);
+  const expTotal = typeof p.expense === 'number' ? p.expense : exp.reduce((a, r) => a + r[1], 0);
   const incSum = inc.reduce((a, r) => a + r[1], 0), expSum = exp.reduce((a, r) => a + r[1], 0);
   if (Math.abs(incTotal - incSum) >= 1) inc.push(['其他／未分類', incTotal - incSum]);
   if (Math.abs(expTotal - expSum) >= 1) exp.push(['其他／未分類', expTotal - expSum]);
   const net = typeof p.net === 'number' ? p.net : incTotal - expTotal;
+  if (p.year) { snap.year = p.year; snap.month = p.month; }
 
-  const diluted = pv < 0.9995;
+  const diluted = p.diluted != null ? !!p.diluted : pv < 0.9995;
   const usage = cap > 0 ? pts / cap : 0;
   let explain;
   if (diluted) {
-    const lost = pts - nhiIncome;
+    const lost = Math.round(nhiIncome / pv - nhiIncome);
     explain = h('div', { class: 'u-note bad-note' },
       h('b', null, '⚠ 點值被稀釋了'),
       h('p', null, `本月健保申報 ${fmt(pts)} 點，超過${lot.name}的上限 ${fmt(cap)} 點（${Math.round(usage * 100)}%）。` +
@@ -147,7 +148,7 @@ export function showPending(raw) {
   const body = h('div', null, h('p', { class: 'u-p' }, d.text || ''), list);
   showModal({
     title: (isDilemma ? '🤔 兩難抉擇：' : '📰 事件：') + (d.title || ''),
-    body, noActions: true, dismissable: false, resume: true, tag: 'dilemma',
+    body, noActions: true, dismissable: false, pause: false, tag: 'dilemma',
     onShow: el => {
       el.addEventListener('keydown', e => {
         const n = parseInt(e.key, 10);

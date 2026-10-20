@@ -31,6 +31,11 @@ export function clampCam(cam, canvasOrSize) {
   return cam;
 }
 
+export function panBy(cam, dx, dy, canvas) {
+  cam.x += dx; cam.y += dy;
+  clampCam(cam, canvas);
+}
+
 export function zoomAt(cam, sx, sy, newZoom, canvas) {
   const nz = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, newZoom));
   const wx = (sx - cam.x) / cam.zoom;

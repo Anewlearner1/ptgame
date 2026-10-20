@@ -7,6 +7,8 @@ import { hideTooltip } from './tooltip.js';
 let root = null;
 let current = null;       // {opts, el}
 const queue = [];
+let closedAt = 0;
+export function modalClosedRecently() { return performance.now() - closedAt < 120; }
 let pausedBy = null;      // {prevSpeed} when we paused the sim for the open modal
 
 export function initModal() {
@@ -93,6 +95,7 @@ export function closeModal(keepPaused) {
   if (!current) return;
   const { opts, el } = current;
   current = null;
+  closedAt = performance.now();
   el.remove();
   if (opts.onClose) { try { opts.onClose(); } catch (e) { console.error(e); } }
   if (queue.length) { showModal(queue.shift()); return; }

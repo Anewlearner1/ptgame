@@ -33,7 +33,6 @@ export function initTopbar() {
   const left = h('div', { class: 'tb-left' },
     item('clinic', '🏥', 'tb-clinic'),
     item('date', '📅', 'tb-date'),
-    item('clock', '🕗', 'tb-clock'),
     item('weather', '☀️', 'tb-weather'));
   const right = h('div', { class: 'tb-right' },
     item('money', '💰', 'tb-money', '資金'),
@@ -58,8 +57,7 @@ function flash(el, up) {
 
 export function updateTopbar(state) {
   setText(els.clinic.val, state.clinicName || '');
-  setText(els.date.val, formatDate(state));
-  setText(els.clock.val, formatClock(state));
+  setText(els.date.val, formatDate(state) + '　' + formatClock(state));
 
   // weather
   const wk = state.weather && state.weather.kind;

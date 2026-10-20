@@ -5,6 +5,7 @@ import { h, setText, tabbed, clear } from '../dom.js';
 import { fmt, money, fmtDateTime } from '../fmt.js';
 import { section } from './common.js';
 import { confirmDialog } from '../modal.js';
+import { showTutorial, showHelp } from '../modals.js';
 
 const store = { tab: 'save', metric: 'cash' };
 const SLOTS = [['auto', '自動存檔'], ['1', '存檔 1'], ['2', '存檔 2'], ['3', '存檔 3']];
@@ -113,8 +114,8 @@ function buildSettings(body, state, ui) {
   const sp = h('select', { onchange: () => lsSet('ptgame.defaultSpeed', sp.value) },
     [['1', '×1 正常'], ['2', '×2'], ['3', '×3']].map(([v, l]) => h('option', { value: v }, l)));
   sp.value = lsGet('ptgame.defaultSpeed', '1');
-  const tut = h('button', { class: 'btn small', type: 'button', onclick: () => bus.emit('ui:tutorial', {}) }, '重看新手導覽');
-  const help = h('button', { class: 'btn small', type: 'button', onclick: () => bus.emit('ui:help', {}) }, '操作說明');
+  const tut = h('button', { class: 'btn small', type: 'button', onclick: () => showTutorial(true) }, '重看新手導覽');
+  const help = h('button', { class: 'btn small', type: 'button', onclick: () => showHelp() }, '操作說明');
   body.append(section('遊戲設定',
     h('label', { class: 'u-setting' }, grid, ' 顯示地圖格線（G）'),
     h('label', { class: 'u-setting' }, snd, ' 音效（預留，尚無音效）'),
@@ -160,13 +161,16 @@ function drawChart(canvas, state, metricKey, hoverIdx) {
   const vals = M.series.map(s => hist.map(r => num(r[s[0]])));
   let lo = Math.min(0, ...vals.flat()), hi = Math.max(1, ...vals.flat());
   if (metricKey === 'satisfaction') { lo = 0; hi = Math.max(100, hi); }
-  const pad = (hi - lo) * 0.08; hi += pad; if (lo < 0) lo -= pad;
+  const pad = (hi - lo) * 0.04; hi += pad; if (lo < 0) lo -= pad;
+  const step0 = niceStep((hi - lo) / 4);
+  lo = Math.floor(lo / step0) * step0; hi = Math.ceil(hi / step0) * step0;
   const yOf = v => T + ph - ((v - lo) / (hi - lo)) * ph;
   const fm = M.fmt || (v => fmt(v));
   // grid + y labels
   c.strokeStyle = 'rgba(31,45,51,0.15)'; c.lineWidth = 1; c.fillStyle = '#6b7a80'; c.textAlign = 'right';
-  for (let i = 0; i <= 4; i++) {
-    const v = lo + ((hi - lo) * i) / 4, y = yOf(v);
+  const step = step0;
+  for (let v = lo; v <= hi + step * 0.01; v += step) {
+    const y = yOf(v);
     c.beginPath(); c.moveTo(L, y + 0.5); c.lineTo(W - R, y + 0.5); c.stroke();
     c.fillText(fmtShort(v), L - 6, y);
   }
@@ -220,6 +224,10 @@ function drawChart(canvas, state, metricKey, hoverIdx) {
     lines.forEach((t, i) => c.fillText(t, bx + 8, T + 18 + 12 + i * 16));
   }
   return { n, slot, L };
+}
+function niceStep(raw) {
+  const e = Math.pow(10, Math.floor(Math.log10(raw || 1))), f = raw / e;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e;
 }
 function fmtShort(v) {
   const a = Math.abs(v);

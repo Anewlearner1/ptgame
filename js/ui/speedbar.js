@@ -10,7 +10,7 @@ let skipBtn = null;
 
 export function initSpeedbar(state, onHelp) {
   const root = document.getElementById('speedbar');
-  const defs = [[0, '⏸', '暫停（空白鍵）'], [1, '×1', '正常速度（1）'], [2, '×2', '兩倍速（2）'], [3, '×3', '三倍速（3）']];
+  const defs = [[0, '❚❚', '暫停（空白鍵）'], [1, '×1', '正常速度（1）'], [2, '×2', '兩倍速（2）'], [3, '×3', '三倍速（3）']];
   for (const [sp, label, tip] of defs) {
     btns[sp] = h('button', { class: 'speed-btn', type: 'button', tip, onclick: () => { cancelSkip(); setSpeed(sp); } }, label);
     root.appendChild(btns[sp]);
@@ -22,7 +22,7 @@ export function initSpeedbar(state, onHelp) {
       skipping = { prev: currentSpeed(state) || 1 };
       setSpeed(3);
     },
-  }, '⏩ 跳過本週');
+  }, '⏩', h('span', { class: 'u-skip-lbl' }, ' 跳過本週'));
   root.appendChild(skipBtn);
   root.appendChild(h('button', { class: 'speed-btn', type: 'button', tip: '操作說明（?）', onclick: onHelp }, '?'));
   bus.on('speed:set', ({ speed }) => { optimistic = speed; });
@@ -45,5 +45,6 @@ export function updateSpeedbar(state) {
   const shown = optimistic != null ? optimistic : cur;
   for (const k of Object.keys(btns)) setClass(btns[k], 'active', Number(k) === shown);
   setClass(skipBtn, 'active', !!skipping);
-  skipBtn.textContent = skipping ? '⏩ 快轉中…' : '⏩ 跳過本週';
+  const sl = skipBtn.lastChild; const t = skipping ? ' 快轉中…' : ' 跳過本週';
+  if (sl._t !== t) { sl._t = t; sl.textContent = t; }
 }

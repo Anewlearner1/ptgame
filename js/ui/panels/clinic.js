@@ -67,23 +67,6 @@ function buildBoards(body, state) {
 }
 
 // ---- expansion
-function stat(state) {
-  const seats = state.objects.reduce((a, o) => a + ((BUILDABLES[o.defId] || {}).seats || 0), 0);
-  const ramp = state.map.floor.some(r => r.some(c => c === 'ramp')) || state.objects.some(o => o.defId === 'ramp');
-  const n = state.stats.satN;
-  return { seats, ramp, avgSat: n ? state.stats.satSum / n : 0, staff: state.staff.length, rep: state.reputation, year: state.time.year };
-}
-function reqRows(req, s) {
-  const out = [];
-  if (req.minReputation) out.push({ key: 'rep', text: `聲譽 ≥ ${req.minReputation}`, cur: Math.round(s.rep), ok: s.rep >= req.minReputation });
-  if (req.minYear > 1) out.push({ key: 'year', text: `第 ${req.minYear} 年起`, cur: `第 ${s.year} 年`, ok: s.year >= req.minYear });
-  if (req.minStaff) out.push({ key: 'staff', text: `員工 ≥ ${req.minStaff} 人`, cur: s.staff, ok: s.staff >= req.minStaff });
-  if (req.minAvgSat) out.push({ key: 'sat', text: `平均滿意度 ≥ ${req.minAvgSat}`, cur: Math.round(s.avgSat), ok: s.avgSat >= req.minAvgSat });
-  if (req.needRamp) out.push({ key: 'ramp', text: '有無障礙坡道', cur: s.ramp ? '有' : '沒有', ok: s.ramp });
-  if (req.minSeats) out.push({ key: 'seats', text: `候診座位 ≥ ${req.minSeats}`, cur: s.seats, ok: s.seats >= req.minSeats });
-  return out;
-}
-
 function buildExpand(body, state) {
   const info = h('div'), list = h('div', { class: 'u-list2' }), btn = h('button', { class: 'btn primary', type: 'button' }, '擴建');
   const note = h('div', { class: 'bad u-small' });
@@ -121,20 +104,19 @@ function buildExpand(body, state) {
             cmp('房租/月', cur.rent, next.rent, money),
             cmp('擴建費', 0, next.expandCost, v => money(v))));
       }
-      const rows = reqRows(next.requires || {}, stat(state));
-      const k = rows.map(r => r.key + r.ok + r.cur).join('|');
+      let can = { ok: false, missing: [], checks: [] };
+      try { can = INSP.canExpand(state); } catch (e) { /* module not ready */ }
+      const rows = (can.checks || []).map(c => ({ ok: c.ok, text: c.label }));
+      const k = rows.map(r => r.text + r.ok).join('|');
       if (k !== rowsKey) {
         rowsKey = k;
         list.replaceChildren(...rows.map(r => h('div', { class: 'u-check ' + (r.ok ? 'good' : 'bad') },
-          h('span', null, r.ok ? '✔' : '✘'), h('span', { class: 'u-grow' }, r.text), h('span', { class: 'muted' }, `目前 ${r.cur}`))));
+          h('span', null, r.ok ? '✔' : '✘'), h('span', { class: 'u-grow' }, r.text))));
       }
-      let can = { ok: false, missing: [] };
-      try { can = INSP.canExpand(state); } catch (e) { /* module not ready */ }
       const afford = state.money >= next.expandCost;
       btn.disabled = !(can.ok && afford);
       setText(btn, `擴建（${money(next.expandCost)}）`);
-      const allOk = rows.every(r => r.ok);
-      setText(note, !can.ok && allOk && can.missing && can.missing.length ? '尚未達成：' + can.missing.join('、') : (!afford && can.ok ? '資金不足' : ''));
+      setText(note, '');
     },
   };
 }

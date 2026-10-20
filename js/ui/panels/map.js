@@ -67,7 +67,7 @@ export function mountMap(root, state, ui) {
         h('span', { class: 'u-legend', tip: '紅色越深表示越多人在該格停留（候診最重）' }, '少', h('i'), '多')),
       h('div', { class: 'u-canvaswrap' }, canvas), info));
 
-  const hotList = h('div', { class: 'u-list2' });
+  const hotList = h('div', { class: 'u-hotgrid' });
   const hot = {};
   for (const t of Object.keys(PATIENT_TYPES)) {
     const D = DISTRICTS[t] || { icon: TYPE_ICONS[t], name: PATIENT_TYPES[t].name };

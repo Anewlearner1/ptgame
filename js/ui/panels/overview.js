@@ -107,12 +107,12 @@ function buildStaff(body, state, ui) {
           tr ? h('span', { class: 'tag u-tag2', tip: tr.desc }, tr.name) : null),
         r.st),
       h('div', { class: 'u-bars3' },
-        h('span', { class: 'u-bl', tip: '技術 ' + s.skill }, '技術', h('em', { class: 'u-stars' }, stars(s.skill))),
-        h('span', { class: 'u-bl', tip: '魅力 ' + s.charm }, '魅力', h('em', { class: 'u-stars' }, stars(s.charm))),
+        h('span', { class: 'u-bl' }, '技術', bar(s.skill / 10), h('em', { class: 'u-num' }, s.skill)),
+        h('span', { class: 'u-bl' }, '魅力', bar(s.charm / 10), h('em', { class: 'u-num' }, s.charm)),
         h('span', { class: 'u-bl' }, '體力', r.stam)),
       h('div', { class: 'row u-between' }, h('span', { class: 'muted u-small' }, '月薪 ', r.sal),
         h('span', { class: 'row' },
-          h('button', { class: 'btn small', type: 'button', tip: '訓練：花費資金與服務點數，提升技術', onclick: () => train(s) }, '訓練'),
+          h('button', { class: 'btn small', type: 'button', tip: trainTip(s), onclick: () => train(s) }, '訓練'),
           h('button', { class: 'btn small danger', type: 'button', onclick: () => fire(s) }, '解僱'))));
     el._r = r; el._s = s;
     return el;
@@ -125,6 +125,12 @@ function buildStaff(body, state, ui) {
     let sal = s.salary; try { sal = ST.salaryOf(s); } catch (e) { /* keep */ }
     setText(r.sal, money(sal));
     setClass(el, 'selected', !!(ui.selected && ui.selected.type === 'staff' && ui.selected.id === s.id));
+  }
+  function trainTip(s) {
+    const T = ST.TUNE;
+    if (!T) return '訓練：花費資金與服務點數，提升技術';
+    const lv = s.level || 1;
+    return `訓練：花費 ${money(T.TRAIN_COST_BASE + T.TRAIN_COST_PER_LEVEL * lv)} 與服務點 ${T.TRAIN_POINTS_BASE * lv}，技術 +1`;
   }
   function train(s) {
     let ok = false;
@@ -231,7 +237,7 @@ function buildSyn(body, state) {
       h('div', null, h('span', { class: 'u-sico' }, s.icon || '✨'), h('b', null, ' ' + s.name), ' ', badge),
       h('div', { class: 'u-small' }, s.desc),
       h('div', { class: 'u-chips' }, needs.map(n => n.el)),
-      h('div', { class: 'u-small' }, '效果：', chipList(modChips(s.effects))), hint);
+      h('div', { class: 'u-small u-efrow' }, '效果：', chipList(modChips(s.effects))), hint);
     rows.push({ s, el, badge, needs, hint, key: null });
     body.appendChild(el);
   }

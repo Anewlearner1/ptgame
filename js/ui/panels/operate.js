@@ -65,7 +65,7 @@ function buildResearch(body, state) {
           h('div', { class: 'u-grow' },
             h('div', null, h('b', null, n.name), ' ', status),
             h('div', { class: 'muted u-small' }, n.desc),
-            h('div', { class: 'u-small' }, (n.effects || []).map(effectText).filter(Boolean).map(t => h('div', { class: 'u-eff' }, '▸ ' + t))),
+            h('div', { class: 'u-small u-effs' }, (n.effects || []).map(effectText).filter(Boolean).map(t => h('span', { class: 'u-eff' }, '▸ ' + t))),
             need.length ? h('div', { class: 'muted u-small' }, '前置：' + need.join('、')) : null),
           h('div', { class: 'u-side' },
             h('div', { class: 'u-pcost' }, `${POINT_ICONS[tr.pointKey || tr.id]} ${n.cost}`),
@@ -124,6 +124,8 @@ function weeklyPatients(state) {
 function buildPricing(body, state) {
   body.append(h('div', { class: 'muted u-p' }, '自費項目的售價 = 基本價 × 你設定的倍率 × 專區加成。定價越高，願意升級自費的病人越少。下方「預估」為粗略推算，僅供參考。'));
   const rows = [];
+  const plist = h('div', { class: 'u-list2' });
+  body.appendChild(plist);
   const self = Object.values(TREATMENTS).filter(t => t.kind === 'self');
   for (const t of self) {
     const slider = h('input', { type: 'range', min: 0.5, max: 2, step: 0.05, value: (state.policy.priceMult[t.id]) || 1 });
@@ -145,7 +147,7 @@ function buildPricing(body, state) {
       hint, warn);
     const r = { t, el, slider, multEl, priceEl, hint, income, conv, warn, unlocked: null };
     rows.push(r);
-    body.appendChild(el);
+    plist.appendChild(el);
   }
   function refresh(r) {
     const mult = parseFloat(r.slider.value);
@@ -208,20 +210,14 @@ function buildCommunity(body, state) {
     update() {
       let info = [];
       try { info = (EV.communityList && EV.communityList(state)) || []; } catch (e) { info = []; }
-      const active = (state.events && state.events.active) || [];
       for (const c of COMMUNITY) {
         const r = rows[c.id];
-        const meta = info.find(x => x && (x.id === c.id || (x.def && x.def.id === c.id))) || {};
-        const act = active.find(a => a.id === c.id);
-        let cd = meta.cooldownLeft ?? meta.cooldown ?? meta.cd ?? 0;
-        if (!cd && state.events && state.events.cooldowns && typeof state.events.cooldowns[c.id] === 'number') cd = state.events.cooldowns[c.id];
-        const left = act ? act.weeksLeft : (meta.weeksLeft || 0);
-        const isAct = !!act || !!meta.active;
+        const meta = info.find(x => x && x.def && x.def.id === c.id) || {};
+        const isAct = meta.status === 'active';
         let text = '', dis = false;
-        if (isAct) { text = `進行中，剩 ${left} 週`; dis = true; }
-        else if (meta.canStart === false || meta.ok === false) { text = meta.reason || ''; dis = true; }
-        else if (cd > 0) { text = `冷卻中`; dis = true; }
-        if (!dis && state.money < c.cost) { text = '資金不足'; dis = true; }
+        if (isAct) { text = `進行中，剩 ${meta.weeksLeft} 週`; dis = true; }
+        else if (meta.status === 'cooldown') { text = `冷卻中，還要 ${meta.cooldownLeft} 週`; dis = true; }
+        else if (state.money < c.cost) { text = '資金不足'; dis = true; }
         const key = text + dis;
         if (r.key !== key) {
           r.key = key;
