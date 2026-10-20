@@ -8,6 +8,7 @@ const MAX_ROLLS_PER_CALL = 8;   // safety net if someone passes a huge dtMin
 export function advanceClock(state, dtMin) {
   const t = state.time;
   if (!(dtMin > 0)) return;
+  if (state.events && state.events.pendingDilemma) return;   // a decision modal freezes the clock
   t.clock += dtMin;
   let guard = 0;
   while (t.clock >= CLOSE_MIN && guard++ < MAX_ROLLS_PER_CALL) {

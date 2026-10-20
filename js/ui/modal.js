@@ -22,6 +22,7 @@ export function initModal() {
   }, true);
 }
 
+export function setResumeSpeed(sp) { if (pausedBy) pausedBy.prevSpeed = sp; }
 export function isModalOpen() { return !!current; }
 export function currentModalTag() { return current ? current.opts.tag : null; }
 
@@ -50,6 +51,7 @@ function render(opts) {
   if (typeof opts.body === 'string') body.textContent = opts.body;
   else if (opts.body) body.appendChild(opts.body);
   const actions = h('div', { class: 'modal-actions' });
+  if (opts.noActions) actions.hidden = true;
   const btns = opts.buttons && opts.buttons.length ? opts.buttons : [{ label: '確定', primary: true }];
   for (const b of btns) {
     const el = h('button', {

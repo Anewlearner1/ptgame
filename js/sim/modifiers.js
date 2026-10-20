@@ -51,8 +51,10 @@ export function applyOp(mods, key, op, value) {
   }
 }
 
-function weatherDef(kind) {
-  return (EV.WEATHER || []).find(w => w.kind === kind) || null;
+function weatherDef(weather) {
+  if (!weather) return null;
+  const list = EV.WEATHER || [];
+  return list.find(w => w.id && w.id === weather.id) || list.find(w => w.kind === weather.kind) || null;
 }
 
 function clampMods(m) {
@@ -86,7 +88,7 @@ export function recomputeMods(state) {
   }
 
   // 3. weather
-  const w = weatherDef(state.weather && state.weather.kind);
+  const w = weatherDef(state.weather);
   if (w) {
     applyPatch(m, w.mods);
     for (const t of Object.keys(w.typeBoost || {})) m.typeSpawn[t] = typeBase(m, t) * w.typeBoost[t];

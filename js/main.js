@@ -72,7 +72,8 @@ function boot() {
     last = now;
     if (ui.dirtyOcc) refreshDerived();
 
-    const speed = state.time.paused ? 0 : state.time.speed;
+    const blocked = !!state.events.pendingDilemma;   // a decision modal freezes the whole sim
+    const speed = (state.time.paused || blocked) ? 0 : state.time.speed;
     if (speed > 0) {
       let remain = dtSec * speed * MIN_PER_REAL_SEC;
       while (remain > 1e-6) {
