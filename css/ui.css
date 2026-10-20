@@ -12,7 +12,7 @@
 }
 /* narrow stage: keep part of the map visible while a panel is open (placing buildings needs it) */
 @media (max-width: 1100px) {
-  #stage #panel { width: min(480px, calc(100% - var(--sidebar-w) - 150px)); }
+  #stage #panel { width: min(440px, calc(100% - var(--sidebar-w) - 150px)); }
 }
 
 .u-panelbody { min-height: 120px; }

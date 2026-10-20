@@ -8,7 +8,12 @@ import { TREATMENTS } from '../data/treatments.js';
 // ---- tuning constants ----
 export const PV_MIN = 0.6;                  // floor of the diluted point value
 export const PV_MAX = 1.0;
-export const NHI_NTD_PER_POINT = 1.0;       // NT$ per NHI point at pointValue 1.0 (global income scale; balance knob)
+export const NHI_NTD_PER_POINT = 1.0;       // NT$ per NHI point at pointValue 1.0 (before REVENUE_SCALE)
+// GLOBAL REVENUE KNOB. Each on-screen patient stands for many real patients, so every NT$ of *income* that a
+// treatment produces is multiplied by this: NHI income = points * pointValue * NHI_NTD_PER_POINT * REVENUE_SCALE,
+// and a self-pay treatment credits price * priceMult * mods.selfPayPrice * REVENUE_SCALE (see selfPayPrice()).
+// Salaries / rent / build costs are NOT scaled. The UI therefore shows the (scaled) real credit via selfPayPrice().
+export const REVENUE_SCALE = 1.0;
 export const BANKRUPT_LIMIT = -300000;      // money below this at month end -> game over
 export const DEFAULT_UPKEEP = 0;            // object upkeep when def.upkeep is missing
 export const HISTORY_MAX = 240;             // months of history kept
@@ -83,7 +88,7 @@ export function selfPayPrice(state, treatmentId) {
   if (!t) return 0;
   const pm = (state.policy && state.policy.priceMult && state.policy.priceMult[treatmentId]);
   const mods = state.mods || {};
-  return Math.round((t.price || 0) * (typeof pm === 'number' ? pm : 1) * (typeof mods.selfPayPrice === 'number' ? mods.selfPayPrice : 1));
+  return Math.round((t.price || 0) * (typeof pm === 'number' ? pm : 1) * (typeof mods.selfPayPrice === 'number' ? mods.selfPayPrice : 1) * REVENUE_SCALE);
 }
 
 function onTreatmentDone(state, e) {
@@ -127,7 +132,7 @@ export function settleMonth(state) {
   const l = ensureLedger(state);
   const points = state.nhi.monthPoints || 0;
   const pv = getPointValue(state);
-  const nhiIncome = Math.round(points * pv * NHI_NTD_PER_POINT);
+  const nhiIncome = Math.round(points * pv * NHI_NTD_PER_POINT * REVENUE_SCALE);
   earn(state, nhiIncome, 'nhi');
 
   const c = monthlyCosts(state);
