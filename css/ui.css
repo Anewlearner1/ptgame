@@ -10,6 +10,13 @@
   #stage[data-panel="overview"] #panel,
   #stage[data-panel="clinic"] #panel { width: min(620px, 92vw, calc(100% - var(--sidebar-w) - 40px)); }
 }
+/* build panel stays slim so the lot remains visible while placing */
+@media (min-width: 1101px) {
+  #stage[data-panel="build"] #panel { width: min(440px, 92vw, calc(100% - var(--sidebar-w) - 40px)); }
+  #stage[data-panel="build"] .u-buildgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+/* toasts sit above the speed bar on the right so they never cover the open panel */
+#toast-layer { left: auto; right: 12px; bottom: 68px; transform: none; align-items: flex-end; width: min(420px, calc(100% - 32px)); }
 /* narrow stage: keep part of the map visible while a panel is open (placing buildings needs it) */
 @media (max-width: 1100px) {
   #stage #panel { width: min(440px, calc(100% - var(--sidebar-w) - 150px)); }

@@ -16,11 +16,12 @@ export const REP_PASS_BASE = 4;          // reputation on pass = base + (score -
 export const REP_PER_POINT = 0.35;
 export const REP_FAIL_BASE = 8;          // reputation loss on fail = base + (PASS - score) * REP_FAIL_PER_POINT
 export const REP_FAIL_PER_POINT = 0.25;
-export const BONUS_EXCELLENT = 50000;    // NT$ 優良獎勵金
-export const FINE_BASE = 30000;          // NT$ fine = base + per-failed-rule
-export const FINE_PER_FAILED_RULE = 15000;
+export const BONUS_EXCELLENT = 200000;    // NT$ 優良獎勵金
+export const FINE_BASE = 100000;          // NT$ fine = base + per-failed-rule
+export const FINE_PER_FAILED_RULE = 50000;
 export const ANTISLIP_TARGET = 0.4;      // coverage of walkable lot tiles by 防滑地墊/坡道
 export const SAT_TARGET = 50;            // yearly avg satisfaction
+export const NHI_ABUSE_PV = 0.9;          // a month only counts as 'abuse' when the diluted point value falls below this (mild saturation is fine)
 export const NHI_ABUSE_MONTHS_FAIL = 4;  // diluted months per year that count as full abuse
 export const SAT_WINDOW_MONTHS = 3;      // window for "current" average satisfaction used by expansion
 
@@ -106,7 +107,7 @@ export function evaluateRules(state, year) {
   const sat = avgSatisfaction(state, 12, year);
   add('satisfaction', 8, sat == null ? 1 : sat / SAT_TARGET, sat == null ? '本年度尚無病患資料。' : `全年平均滿意度 ${sat.toFixed(0)}（標準 ${SAT_TARGET}）。`);
 
-  const dil = (state.history || []).filter(h => h.year === year && (h.pointValue || 1) < 0.999).length;
+  const dil = (state.history || []).filter(h => h.year === year && (h.pointValue || 1) < NHI_ABUSE_PV).length;
   add('nhi_abuse', 12, 1 - dil / NHI_ABUSE_MONTHS_FAIL, dil ? `全年有 ${dil} 個月健保點數超出上限、點值被壓低。` : '健保申報量都在合理範圍內。');
   return results;
 }

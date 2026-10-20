@@ -42,7 +42,7 @@ export function initTopbar() {
   root.append(left, right);
   els.money.lbl.textContent = '';
   els.date.lbl.textContent = '';
-  els.rep.lbl.textContent = '名聲 ';
+  els.rep.lbl.textContent = '聲譽 ';
   els.pv.lbl.textContent = '點值 ';
   for (const k of POINT_KEYS) els['p_' + k].lbl.textContent = POINT_LABELS[k] + ' ';
   last = {};

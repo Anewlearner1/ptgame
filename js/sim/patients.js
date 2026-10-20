@@ -27,7 +27,7 @@ import { isStaffAvailable, assignTask, releaseStaff, staffAtStand, TUNE as STAFF
 export const TUNE = {
   MAX_PATIENTS: 60,
   BASE_ARRIVALS: 12,         // §2: arrivalsPerWeek = (BASE + rep * REP_FACTOR) * mods.spawnMult * ...
-  REP_FACTOR: 0.12,
+  REP_FACTOR: 0.16,
   RETURN_DISCOUNT: 0.3,      // new arrivals shrink by this share of the (capped) returning load
   RETURN_PROB: 0.88,         // chance a satisfied, not-yet-cured patient books another visit
   STOP_SPAWN_BEFORE_CLOSE: 100,
@@ -63,6 +63,9 @@ export const TUNE = {
   REP_NEUTRAL: 55,           // satisfaction at which a visit changes reputation by 0
   REP_ANGRY: 0.35,
   WAIT_BUBBLE: 0.006,
+  // Research-point yield per track (multiplies treatment.points * pointBias * skill * mods.researchGain). Balance knob:
+  // tuned so the first 30-40 point node is affordable after ~1 game month and the whole tree takes ~2-3 game years.
+  POINT_SCALE: { medical: 0.5, device: 0.35, service: 0.8 },
 };
 
 export const debug = { teleports: 0, repaths: 0, forcedSnaps: 0, skipped: 0, selfReg: 0, chats: 0, upsells: 0, upsellOffers: 0 };
@@ -723,7 +726,7 @@ function completeTreatment(c, p) {
   const skillF = 0.7 + 0.06 * skill;
   const gain = st.mods.researchGain || 1;
   for (const k of POINT_KEYS) {
-    st.points[k] += ((T.points && T.points[k]) || 0) * ((P.pointBias && P.pointBias[k]) || 1) * (staff ? skillF : 1) * gain;
+    st.points[k] += ((T.points && T.points[k]) || 0) * ((P.pointBias && P.pointBias[k]) || 1) * (staff ? skillF : 1) * gain * (TUNE.POINT_SCALE[k] == null ? 1 : TUNE.POINT_SCALE[k]);
   }
   p.hp += T.cure * p.cureScale * (staff ? 0.8 + 0.04 * skill : 1);
   p.paid.nhi += nhiPts; p.paid.self += price;

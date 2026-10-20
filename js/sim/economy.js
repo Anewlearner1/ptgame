@@ -13,7 +13,7 @@ export const NHI_NTD_PER_POINT = 1.0;       // NT$ per NHI point at pointValue 1
 // treatment produces is multiplied by this: NHI income = points * pointValue * NHI_NTD_PER_POINT * REVENUE_SCALE,
 // and a self-pay treatment credits price * priceMult * mods.selfPayPrice * REVENUE_SCALE (see selfPayPrice()).
 // Salaries / rent / build costs are NOT scaled. The UI therefore shows the (scaled) real credit via selfPayPrice().
-export const REVENUE_SCALE = 1.0;
+export const REVENUE_SCALE = 20;
 export const BANKRUPT_LIMIT = -300000;      // money below this at month end -> game over
 export const DEFAULT_UPKEEP = 0;            // object upkeep when def.upkeep is missing
 export const HISTORY_MAX = 240;             // months of history kept
@@ -82,6 +82,11 @@ export function getPointValue(state) {
   return Math.max(PV_MIN, Math.min(PV_MAX, cap / pts));
 }
 
+// NT$ the NHI points banked so far this month are worth at the current (diluted) point value. UI may show this.
+export function projectedNhiIncome(state) {
+  return Math.round(((state.nhi && state.nhi.monthPoints) || 0) * getPointValue(state) * NHI_NTD_PER_POINT * REVENUE_SCALE);
+}
+
 // Self-pay price after the player's slider and synergy bonus.
 export function selfPayPrice(state, treatmentId) {
   const t = TREATMENTS[treatmentId];
@@ -147,7 +152,7 @@ export function settleMonth(state) {
   const satisfaction = st.satN > 0 ? st.satSum / st.satN : 0;
 
   const record = {
-    points, pointValue: pv, income, expense, net, nhiIncome,
+    points, pointValue: pv, income, expense, net, nhiIncome, revenueScale: REVENUE_SCALE,
     selfIncome: l.income.self, otherIncome: l.income.other,
     salary: l.expense.salary, rent: l.expense.rent, maintain: l.expense.maintain, build: l.expense.build, otherExpense: l.expense.other,
     cap: nhiCap(state), diluted: pv < PV_MAX,

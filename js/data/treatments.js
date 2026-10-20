@@ -70,7 +70,7 @@ export const TREATMENTS = {
   redcord: {
     id: 'redcord', name: '懸吊運動治療', kind: 'self',
     objects: ['redcord'], staffRole: ['pt'],
-    duration: 60, nhiPoints: 0, price: 1800,
+    duration: 60, nhiPoints: 0, price: 6000,
     points: { medical: 1, device: 1, service: 1 },
     staminaCost: 5, requires: 'rs_redcord', cure: 0.25,
     intro: '繩索懸吊做全身性動作訓練，運動員與上班族都愛。',
@@ -78,7 +78,7 @@ export const TREATMENTS = {
   shockwave: {
     id: 'shockwave', name: '體外震波', kind: 'self',
     objects: ['shockwave', 'shockwave_room'], staffRole: ['doctor', 'pt'],
-    duration: 45, nhiPoints: 0, price: 2500,
+    duration: 45, nhiPoints: 0, price: 7000,
     points: { medical: 1, device: 3, service: 0 },
     staminaCost: 4, requires: 'rs_shockwave', cure: 0.3,
     intro: '高能量聲波打在痠痛的肌腱上，效果看得見。',
@@ -86,7 +86,7 @@ export const TREATMENTS = {
   laser: {
     id: 'laser', name: '高能量雷射', kind: 'self',
     objects: ['laser_room'], staffRole: ['pt', 'doctor'],
-    duration: 40, nhiPoints: 0, price: 3200,
+    duration: 40, nhiPoints: 0, price: 7500,
     points: { medical: 1, device: 3, service: 0 },
     staminaCost: 4, requires: 'rs_laser', cure: 0.28,
     intro: '光能深入組織促進修復，療程短、價格高。',
@@ -94,7 +94,7 @@ export const TREATMENTS = {
   manual_self: {
     id: 'manual_self', name: '自費徒手治療', kind: 'self',
     objects: ['manual_room'], staffRole: ['pt'],
-    duration: 60, nhiPoints: 0, price: 2200,
+    duration: 60, nhiPoints: 0, price: 7500,
     points: { medical: 2, device: 0, service: 1 },
     staminaCost: 14, requires: 'rs_manual', cure: 0.3,
     intro: '獨立診間裡一對一的徒手療程，時間充裕、手勁到位。',
@@ -102,7 +102,7 @@ export const TREATMENTS = {
   prp: {
     id: 'prp', name: 'PRP 增生療法', kind: 'self',
     objects: ['exam_room'], staffRole: ['doctor'],
-    duration: 60, nhiPoints: 0, price: 9000,
+    duration: 60, nhiPoints: 0, price: 12000,
     points: { medical: 3, device: 0, service: 1 },
     staminaCost: 6, requires: 'rs_prp', cure: 0.35,
     intro: '抽取自體血小板濃縮液注射，適合慢性肌腱病變。',
@@ -110,7 +110,7 @@ export const TREATMENTS = {
   insole: {
     id: 'insole', name: '客製化鞋墊', kind: 'self',
     objects: ['bed'], staffRole: ['pt'],
-    duration: 45, nhiPoints: 0, price: 3800,
+    duration: 45, nhiPoints: 0, price: 7000,
     points: { medical: 1, device: 2, service: 1 },
     staminaCost: 5, requires: 'rs_insole', cure: 0.2,
     intro: '步態掃描後量身製作鞋墊，從腳底改善膝腰負擔。',

@@ -189,7 +189,6 @@ function buildCommunity(body, state) {
       let r;
       try { r = EV.startCommunity(state, c.id); } catch (e) { console.error(e); r = { ok: false, reason: '無法舉辦' }; }
       if (r && r.ok === false) bus.emit('toast', { text: r.reason || '無法舉辦', kind: 'bad' });
-      else bus.emit('toast', { text: `開始舉辦：${c.name}`, kind: 'good' });
     } }, '舉辦');
     const eff = [];
     for (const k of Object.keys((c.effects && c.effects.spawn) || {})) eff.push({ text: `${(PATIENT_TYPES[k] || {}).name || k}來客 +${Math.round(c.effects.spawn[k] * 100)}%`, good: true });

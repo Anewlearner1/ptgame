@@ -280,6 +280,7 @@ function getBubble(text, kind) {
 const OVMAX = 160;
 const ovCanvas = new Array(OVMAX), ovX = new Float32Array(OVMAX), ovY = new Float32Array(OVMAX), ovA = new Float32Array(OVMAX);
 let ovN = 0;
+const ovRect = [];
 function addOverlay(c, wx, wy, a) {   // world coords (anchor = bottom centre of bubble)
   if (ovN >= OVMAX) return;
   ovCanvas[ovN] = c; ovX[ovN] = wx; ovY[ovN] = wy; ovA[ovN] = a; ovN++;
@@ -637,10 +638,21 @@ export function render(state, ui, now) {
 
   // ── screen-space overlay ──
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  for (let i = 0; i < ovN; i++) {
+  // crowd culling: walk front-to-back (later = nearer) and skip bubbles that would cover an already-placed one
+  let nRect = 0;
+  for (let i = ovN - 1; i >= 0; i--) {
     const c = ovCanvas[i];
     const sx = (ovX[i]) * z + cam.x, sy = (ovY[i]) * z + cam.y;
-    ctx.drawImage(c, Math.round(sx - c.cw / 2) - 1, Math.round(sy - c.ch) - 1, c.width / dpr, c.height / dpr);
+    const bx = Math.round(sx - c.cw / 2) - 1, by = Math.round(sy - c.ch) - 1, bw = c.width / dpr, bh = c.height / dpr;
+    let hit = false;
+    for (let k = 0; k < nRect; k++) {
+      const o = ovRect[k];
+      if (bx < o[0] + o[2] - 2 && bx + bw > o[0] + 2 && by < o[1] + o[3] - 2 && by + bh > o[1] + 2) { hit = true; break; }
+    }
+    if (hit) continue;
+    (ovRect[nRect] || (ovRect[nRect] = [0, 0, 0, 0]));
+    const r = ovRect[nRect++]; r[0] = bx; r[1] = by; r[2] = bw; r[3] = bh;
+    ctx.drawImage(c, bx, by, bw, bh);
   }
   // zone labels
   if (zones && zones.length) {

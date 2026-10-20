@@ -23,7 +23,7 @@ export const TUNE = {
   WALK_REGEN: 0.0007,
   OVERNIGHT_REGEN: 0.65,       // fraction of staminaMax restored when a new day (week) starts
   TIRED_FRAC: 0.30,            // below this fraction treatments run slower (patients.js)
-  TRAIN_COST_BASE: 15000, TRAIN_COST_PER_LEVEL: 8000, TRAIN_POINTS_BASE: 10,
+  TRAIN_COST_BASE: 40000, TRAIN_COST_PER_LEVEL: 20000, TRAIN_POINTS_BASE: 10,
   WANDER_MIN: 6, WANDER_SPAN: 16,
   BUBBLE_CHANCE: 0.004,        // per game-min per idle staff
 };

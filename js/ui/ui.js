@@ -2,7 +2,7 @@
 import { bus } from '../core/bus.js';
 import { ctx } from './ctx.js';
 import { h, clear } from './dom.js';
-import { initTooltip } from './tooltip.js';
+import { initTooltip, hideTooltip } from './tooltip.js';
 import { initToast } from './toast.js';
 import { initModal, isModalOpen, modalClosedRecently } from './modal.js';
 import { initModals, showTutorial, showHelp, showPending, snapshotLedger, resetPendingKey } from './modals.js';
@@ -17,6 +17,8 @@ import { mountOverview } from './panels/overview.js';
 import { mountMap, sampleHeat } from './panels/map.js';
 import { mountSystem, lsGet } from './panels/system.js';
 import { TIPS } from '../data/texts.js';
+import { zoomAt } from '../render/camera.js';
+import { TILE_W, TILE_H } from '../core/constants.js';
 
 const MOUNTS = { build: mountBuild, operate: mountOperate, clinic: mountClinic, overview: mountOverview, map: mountMap, system: mountSystem };
 const TITLES = { build: '🔨 建造', operate: '🔬 運作', clinic: '🏥 診所', overview: '📋 一覽', map: '🗺 地圖', system: '⚙ 系統' };
@@ -112,6 +114,7 @@ function remount(state, ui, force) {
   if (!force && ui.panel === shown) return;
   shown = ui.panel;
   live = null;
+  hideTooltip();
   clear(panelEl);
   if (!shown || !MOUNTS[shown]) {
     panelEl.hidden = true; stageEl.classList.remove('panel-open');
@@ -130,6 +133,17 @@ function remount(state, ui, force) {
   // shift the view so the map's centre moves into the part of the stage the panel leaves free
   const sr = stageEl.getBoundingClientRect(), pr = panelEl.getBoundingClientRect();
   shiftTarget = Math.max(0, Math.round((pr.right - sr.left) / 2));
+  fitLotBesidePanel(state, ui, sr.width - (pr.right - sr.left));
+}
+// If the lot would not fit in the part of the stage the panel leaves free, zoom out about the lot centre.
+function fitLotBesidePanel(state, ui, freeW) {
+  const l = state.lot, cam = ui.cam, canvas = document.getElementById('game');
+  const need = (l.w + l.h) * TILE_W / 2 + 140;
+  const zFit = Math.max(0.5, Math.floor((freeW - 24) / need * 20) / 20);
+  if (cam.zoom <= zFit) return;
+  const gx = l.x0 + l.w / 2, gy = l.y0 + l.h / 2;
+  const sx = cam.x + (gx - gy) * TILE_W / 2 * cam.zoom, sy = cam.y + (gx + gy) * TILE_H / 2 * cam.zoom;
+  zoomAt(cam, sx, sy, zFit, canvas);
 }
 function stepCam(ui) {
   if (shiftCur === shiftTarget) return;

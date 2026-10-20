@@ -191,7 +191,9 @@ export function showGameOver(p) {
 // ---------------------------------------------------------------- tutorial
 export function showTutorial(force) {
   const state = ctx.state;
-  if (!force && state.flags && state.flags.tutorialDone) return;
+  let seen = false;
+  try { seen = localStorage.getItem('ptgame.tutorialSeen') === '1'; } catch (e) { /* storage unavailable */ }
+  if (!force && ((state.flags && state.flags.tutorialDone) || seen)) return;
   const steps = (INTRO_STEPS || []).map(s => typeof s === 'string' ? { title: '', text: s } : s);
   if (!steps.length) return;
   let i = 0;
@@ -206,7 +208,10 @@ export function showTutorial(force) {
     dots.replaceChildren(...steps.map((_, k) => h('i', { class: k === i ? 'on' : '' })));
   }
   fill();
-  function done() { if (state.flags) state.flags.tutorialDone = true; }
+  function done() {
+    if (state.flags) state.flags.tutorialDone = true;
+    try { localStorage.setItem('ptgame.tutorialSeen', '1'); } catch (e) { /* ignore */ }
+  }
   let prevBtn, nextBtn;
   showModal({
     title: '🏥 新手導覽', body, tag: 'tutorial', pause: true, dismissable: true, onClose: done,

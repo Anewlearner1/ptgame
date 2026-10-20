@@ -5,6 +5,8 @@
 // - `typeBoost` multiplies a patient type's arrival weight while the weather is active.
 // - `slip` multiplies slip-and-fall probability while the weather is active (on top of mods.slipRisk).
 // - Event/dilemma `effects`: money (NT$, + gain / - cost), reputation, points {medical,device,service},
+// NOTE (balance): money / cost / upkeep values below were scaled x4 (events, dilemmas) and x3 (community, boards) when
+// income was rescaled (economy.REVENUE_SCALE), so events still sting relative to monthly revenue.
 //   sat (satisfaction delta for the involved patient), nhiPenalty (NHI points removed from state.nhi.monthPoints).
 // - Community `effects.spawn` is an additive delta on that patient type's spawn multiplier (0.3 -> x1.3).
 
@@ -54,7 +56,7 @@ export const RANDOM_EVENTS = [
     text: '里長打電話來：「醫生啊，里民活動中心下禮拜要辦健康日，你們來擺個攤？」',
     choices: [
       {
-        label: '好啊，免費幫大家篩檢', effects: { money: -30000, reputation: 8, points: { service: 10 } },
+        label: '好啊，免費幫大家篩檢', effects: { money: -120000, reputation: 8, points: { service: 10 } },
         result: '里民排成一排量血壓，里長笑到合不攏嘴，說要幫你們寫進里刊。',
       },
       {
@@ -68,11 +70,11 @@ export const RANDOM_EVENTS = [
     text: '健保署來函，要抽調上個月的病歷和申報資料。信封很厚，主任的表情很薄。',
     choices: [
       {
-        label: '配合調閱，全力準備', effects: { money: -20000, reputation: 3 },
+        label: '配合調閱，全力準備', effects: { money: -80000, reputation: 3 },
         result: '病歷寫得清清楚楚，審查員翻了三小時，最後蓋了個章說「還可以」。',
       },
       {
-        label: '交給行政處理，自己繼續看診', effects: { money: -60000, reputation: -8 },
+        label: '交給行政處理，自己繼續看診', effects: { money: -240000, reputation: -8 },
         result: '行政阿姨硬著頭皮補件，還是少了兩張簽名，罰單寄到了家裡。',
       },
     ],
@@ -82,7 +84,7 @@ export const RANDOM_EVENTS = [
     text: '地方電視台的記者說想拍「阿伯的膝蓋」專題，問你要不要上鏡頭。',
     choices: [
       {
-        label: '上節目分享復健觀念', effects: { reputation: 12, money: -5000 },
+        label: '上節目分享復健觀念', effects: { reputation: 12, money: -20000 },
         result: '你講得很清楚，還順便教觀眾怎麼做毛巾拉伸。播出後掛號電話快被打爆。',
       },
       {
@@ -96,7 +98,7 @@ export const RANDOM_EVENTS = [
     text: '隔壁大醫院的人資私訊你的員工，說薪水可以多兩成，還附停車位。',
     choices: [
       {
-        label: '加薪留人', effects: { money: -50000, reputation: 1 },
+        label: '加薪留人', effects: { money: -200000, reputation: 1 },
         result: '員工說「我再想想」，然後留下來了。你的薪資表多了一個零的感覺。',
       },
       {
@@ -110,7 +112,7 @@ export const RANDOM_EVENTS = [
     text: '儀器業務帶著笑容來：「醫生，這台新機器限時八折，現在下單還送保固！」',
     choices: [
       {
-        label: '買！機器看起來很厲害', effects: { money: -120000, points: { device: 20 } },
+        label: '買！機器看起來很厲害', effects: { money: -480000, points: { device: 20 } },
         result: '機器開箱那天，全診所都來拍照。說明書有三百頁，但螢幕很漂亮。',
       },
       {
@@ -124,11 +126,11 @@ export const RANDOM_EVENTS = [
     text: '颱風過後，馬路變成小河。診所一樓的地板泡在水裡，沙發還在飄。',
     choices: [
       {
-        label: '全體動員清理，搶救設備', effects: { money: -90000, reputation: 4 },
+        label: '全體動員清理，搶救設備', effects: { money: -360000, reputation: 4 },
         result: '同仁穿雨鞋、拿拖把，忙到半夜。病人隔天來看到，都說「你們很拚」。',
       },
       {
-        label: '停診兩週慢慢修', effects: { money: -40000, reputation: -10 },
+        label: '停診兩週慢慢修', effects: { money: -160000, reputation: -10 },
         result: '招牌上貼著「因故暫停營業」，病人的小本本上多了一個叉叉。',
       },
     ],
@@ -138,7 +140,7 @@ export const RANDOM_EVENTS = [
     text: '藥廠業務說想請醫生當「學術講者」，一場講座講師費很可觀，但要唸他們的投影片。',
     choices: [
       {
-        label: '接受，去講一場', effects: { money: 60000, reputation: -4 },
+        label: '接受，去講一場', effects: { money: 240000, reputation: -4 },
         result: '講座很順，錢也入袋。只是有位病人在下面小聲問：「醫生，你是在幫哪一家講話？」',
       },
       {
@@ -152,7 +154,7 @@ export const RANDOM_EVENTS = [
     text: '一位阿伯在大廳地板滑了一跤，家屬衝進來大聲問：「你們的地板是怎麼回事？」',
     choices: [
       {
-        label: '立刻送急診，全程陪同', effects: { money: -30000, reputation: 6, points: { service: 5 } },
+        label: '立刻送急診，全程陪同', effects: { money: -120000, reputation: 6, points: { service: 5 } },
         result: '阿伯只是擦傷加扭到腳，家屬紅著眼眶說：「還好你們有處理。」',
       },
       {
@@ -166,7 +168,7 @@ export const RANDOM_EVENTS = [
     text: '櫃檯護理師生日，同事們想辦個小派對，問醫生能不能出點經費。',
     choices: [
       {
-        label: '全額買蛋糕，犒賞辛苦', effects: { money: -20000, points: { service: 5 } },
+        label: '全額買蛋糕，犒賞辛苦', effects: { money: -80000, points: { service: 5 } },
         result: '一顆六吋蛋糕被分成二十塊，大家吃到嘴角都是奶油，士氣回升。',
       },
       {
@@ -180,7 +182,7 @@ export const RANDOM_EVENTS = [
     text: '有病人偷偷拍了你幫他做徒手治療的影片，上傳後居然爆紅，留言一堆「我也要看這醫生」。',
     choices: [
       {
-        label: '順勢拍衛教短片，好好經營', effects: { money: -20000, reputation: 15, points: { service: 10 } },
+        label: '順勢拍衛教短片，好好經營', effects: { money: -80000, reputation: 15, points: { service: 10 } },
         result: '短片教大家「坐久了記得起來動一動」，粉絲破萬，你的名字開始有人念對了。',
       },
       {
@@ -194,7 +196,7 @@ export const RANDOM_EVENTS = [
     text: '廠商發通知，你家那台電療儀有安全疑慮要召回，換新機要自費，還附一張道歉信。',
     choices: [
       {
-        label: '立刻換新，安全第一', effects: { money: -150000, reputation: 3, points: { device: 5 } },
+        label: '立刻換新，安全第一', effects: { money: -600000, reputation: 3, points: { device: 5 } },
         result: '新機器亮亮的，病人說「這台看起來比較可靠」，你心裡鬆了一口氣。',
       },
       {
@@ -208,7 +210,7 @@ export const RANDOM_EVENTS = [
     text: '保險業務說可以幫員工辦團體醫療險，保費算你們便宜，但要先簽一堆資料。',
     choices: [
       {
-        label: '幫員工加保', effects: { money: -40000, reputation: 2 },
+        label: '幫員工加保', effects: { money: -160000, reputation: 2 },
         result: '員工收到保單很開心，說「醫生你人真好」。你只好把它當作福利。',
       },
       {
@@ -222,7 +224,7 @@ export const RANDOM_EVENTS = [
     text: '衛生局公告長照整合補助，申請表有十七頁，光是附件就要三個月。',
     choices: [
       {
-        label: '申請，準備一整箱資料', effects: { money: 80000, reputation: 2 },
+        label: '申請，準備一整箱資料', effects: { money: 320000, reputation: 2 },
         result: '行政阿姨熬夜影印，終於把補助拿下來。她說：「這輩子再也不想看到影印機。」',
       },
       {
@@ -250,7 +252,7 @@ export const RANDOM_EVENTS = [
     text: '路邊臨停的救護車（不是我們的）被拖吊，里民抱怨說是診所門口讓車子亂停。',
     choices: [
       {
-        label: '請行政去跟交通局溝通', effects: { money: -20000 },
+        label: '請行政去跟交通局溝通', effects: { money: -80000 },
         result: '行政阿姨跑了三趟區公所，罰單打折了一半，她說以後她要買機車。',
       },
       {
@@ -264,37 +266,37 @@ export const RANDOM_EVENTS = [
 export const COMMUNITY = [
   {
     id: 'temple_sarcopenia', name: '宮廟肌少症篩檢', desc: '廟埕擺攤量握力、測步速，阿嬤們排隊排到拜拜的香爐旁。',
-    cost: 25000, durationWeeks: 2,
+    cost: 75000, durationWeeks: 2,
     effects: { spawn: { elder: 0.3 }, reputation: 5, points: { service: 10 } }, cooldownWeeks: 6,
   },
   {
     id: 'health_talk', name: '社區衛教講座', desc: '社區活動中心的小講座，教大家正確的姿勢與熱敷觀念。',
-    cost: 10000, durationWeeks: 2,
+    cost: 30000, durationWeeks: 2,
     effects: { spawn: { office: 0.1, elder: 0.1 }, reputation: 3, points: { service: 8 } }, cooldownWeeks: 4,
   },
   {
     id: 'school_scoliosis', name: '校園脊椎側彎篩檢', desc: '國小體檢後來一波側彎篩檢，家長聽到「要不要來看看」都緊張兮兮。',
-    cost: 40000, durationWeeks: 3,
+    cost: 120000, durationWeeks: 3,
     effects: { spawn: { kid: 0.4 }, reputation: 6, points: { medical: 10, service: 5 } }, cooldownWeeks: 8,
   },
   {
     id: 'company_health', name: '公司健康促進講座', desc: '到科技公司的會議室講坐著工作的痠痛，同仁一邊聽一邊偷偷伸懶腰。',
-    cost: 35000, durationWeeks: 2,
+    cost: 105000, durationWeeks: 2,
     effects: { spawn: { office: 0.35 }, reputation: 4, points: { service: 8 } }, cooldownWeeks: 6,
   },
   {
     id: 'village_walk', name: '里民健走活動', desc: '每天早上繞里內走一圈，阿伯阿嬤帶著保溫杯，運動員也跟著跑。',
-    cost: 15000, durationWeeks: 4,
+    cost: 45000, durationWeeks: 4,
     effects: { spawn: { elder: 0.2, sports: 0.2 }, reputation: 3, points: { service: 6 } }, cooldownWeeks: 4,
   },
   {
     id: 'ltc_partner', name: '長照據點合作', desc: '和社區長照據點簽約，每週定期去帶動能運動，阿嬤們說比去大樓下棋還好玩。',
-    cost: 80000, durationWeeks: 6,
+    cost: 240000, durationWeeks: 6,
     effects: { spawn: { elder: 0.5 }, reputation: 12, points: { service: 20, medical: 5 } }, cooldownWeeks: 10,
   },
   {
     id: 'night_run', name: '夜市路跑熱身站', desc: '在夜市出口設熱身站，發小冰棒、貼運動貼布，順便幫跑者看看膝蓋。',
-    cost: 30000, durationWeeks: 2,
+    cost: 90000, durationWeeks: 2,
     effects: { spawn: { sports: 0.4 }, reputation: 6, points: { medical: 5 } }, cooldownWeeks: 6,
   },
 ];
@@ -365,7 +367,7 @@ export const DILEMMAS = [
         result: '他說「好吧，那就快一點」，評估花了五分鐘，震波打完他說：「還真有差！」',
       },
       {
-        label: '收自費，直接排震波', effects: { sat: 3, money: 20000, reputation: -4 },
+        label: '收自費，直接排震波', effects: { sat: 3, money: 80000, reputation: -4 },
         result: '收據很漂亮，但同事小聲說：「我們好像把流程跳過了。」',
       },
     ],
@@ -379,7 +381,7 @@ export const DILEMMAS = [
         result: '阿伯有點失望，但也慢慢接受：「原來不是越多越好喔。」',
       },
       {
-        label: '好，每天做，收費照算', effects: { money: 30000, reputation: -8, nhiPenalty: 300 },
+        label: '好，每天做，收費照算', effects: { money: 120000, reputation: -8, nhiPenalty: 300 },
         result: '帳單很漂亮，健保署的審查委員看到的時候，眉毛挑得很高。',
       },
     ],
@@ -393,7 +395,7 @@ export const DILEMMAS = [
         result: '老闆說：「醫生你很誠實耶，我下次介紹朋友來。」',
       },
       {
-        label: '給他十堂，收錢收到手軟', effects: { money: 80000, reputation: -10 },
+        label: '給他十堂，收錢收到手軟', effects: { money: 320000, reputation: -10 },
         result: '帳戶多了一大筆錢，但老闆做到第四堂就說不痛了，之後再也沒來過。',
       },
     ],
@@ -407,7 +409,7 @@ export const DILEMMAS = [
         result: '家長嘆氣說：「好吧，那週末可以多來一次嗎？」你說週末我們也有門診。',
       },
       {
-        label: '每天排滿，收費照算', effects: { money: 40000, reputation: -6 },
+        label: '每天排滿，收費照算', effects: { money: 160000, reputation: -6 },
         result: '小朋友玩得超開心，但家長在群組裡問：「為什麼感統一定要每天來？」',
       },
     ],
@@ -417,7 +419,7 @@ export const DILEMMAS = [
     text: '阿姨拍著掛號櫃檯大喊：「我一個半小時了耶！你們到底是怎麼排班的啦！」',
     choices: [
       {
-        label: '真誠道歉，免費加送一次熱敷', effects: { sat: 10, reputation: 2, money: -8000 },
+        label: '真誠道歉，免費加送一次熱敷', effects: { sat: 10, reputation: 2, money: -32000 },
         result: '阿姨嘴上說「下次不要這樣」，但熱敷時已經靠在枕頭上打呼了。',
       },
       {
@@ -439,7 +441,7 @@ export const DILEMMAS = [
         result: '阿伯不滿地走了，但他家的小孫子在候診區偷偷把這句話錄起來。',
       },
       {
-        label: '這次先不收費，給個人情', effects: { sat: 8, money: -15000 },
+        label: '這次先不收費，給個人情', effects: { sat: 8, money: -60000 },
         result: '阿伯很感動，回去跟鄰居說你們「很有人情味」，但你的帳本少了一筆。',
       },
     ],
@@ -449,7 +451,7 @@ export const DILEMMAS = [
     text: '阿嬤躺在電療床上皺眉：「醫生，這台機器一直嗡嗡叫，我頭好痛，是不是壞了？」',
     choices: [
       {
-        label: '換一台新機器，給她看', effects: { money: -60000, sat: 6, reputation: 2 },
+        label: '換一台新機器，給她看', effects: { money: -240000, sat: 6, reputation: 2 },
         result: '阿嬤摸著新機器說：「這台比較安靜，好很多。」你偷偷把舊機器的螺絲拆下來留著。',
       },
       {
@@ -463,7 +465,7 @@ export const DILEMMAS = [
     text: '一位病人投訴護理師講話太大聲，還說「你們是在趕人嗎？」',
     choices: [
       {
-        label: '調查後處理，當面道歉', effects: { sat: 5, reputation: 4, money: -5000 },
+        label: '調查後處理，當面道歉', effects: { sat: 5, reputation: 4, money: -20000 },
         result: '護理師紅著眼眶說：「我以後會注意語氣。」病人說：「有道歉就好。」',
       },
       {
@@ -476,37 +478,37 @@ export const DILEMMAS = [
 
 export const BOARDS = [
   {
-    id: 'back_knee', name: '護腰護膝篇', cost: 8000, upkeep: 500,
+    id: 'back_knee', name: '護腰護膝篇', cost: 24000, upkeep: 1500,
     effects: { patience: 0.05 },
     desc: '看板教大家躺下、起身的正確姿勢，候診的人看著看著就忘了等待的煩躁。',
   },
   {
-    id: 'hot_cold', name: '冷熱敷觀念', cost: 6000, upkeep: 300,
+    id: 'hot_cold', name: '冷熱敷觀念', cost: 18000, upkeep: 900,
     effects: { selfPayConv: 0.02 },
     desc: '急性扭傷先冰、慢性痠痛才熱，看板講得很白話，大家都說「原來如此」。',
   },
   {
-    id: 'kid_milestone', name: '兒童發展里程碑', cost: 15000, upkeep: 400,
+    id: 'kid_milestone', name: '兒童發展里程碑', cost: 45000, upkeep: 1200,
     effects: { patience: 0.05, researchGain: 0.02 },
     desc: '幾個月會翻身、幾歲會跑跳，家長對照著看，焦慮少了，來問問題的也變多了。',
   },
   {
-    id: 'elder_fall', name: '長者防跌五招', cost: 12000, upkeep: 400,
+    id: 'elder_fall', name: '長者防跌五招', cost: 36000, upkeep: 1200,
     effects: { slipRisk: -0.1, elderSat: 2 },
     desc: '起床先坐五秒、浴室加扶手、拖鞋要穿好。阿嬤拍照存進 LINE 群組。',
   },
   {
-    id: 'selfpay_explain', name: '自費項目說明', cost: 10000, upkeep: 300,
+    id: 'selfpay_explain', name: '自費項目說明', cost: 30000, upkeep: 900,
     effects: { selfPayConv: 0.04 },
     desc: '健保與自費差在哪、值不值得，寫清楚講明白，「為什麼要自費」少被問一次。',
   },
   {
-    id: 'elder_nutrition', name: '長輩營養與肌少症', cost: 20000, upkeep: 500,
+    id: 'elder_nutrition', name: '長輩營養與肌少症', cost: 60000, upkeep: 1500,
     effects: { elderSat: 3 },
     desc: '吃足蛋白質、多曬太陽、動一動。阿公說：「原來不是老了才會沒力。」',
   },
   {
-    id: 'office_posture', name: '久坐族的頸肩操', cost: 9000, upkeep: 300,
+    id: 'office_posture', name: '久坐族的頸肩操', cost: 27000, upkeep: 900,
     effects: { patience: 0.03, selfPayConv: 0.01 },
     desc: '每小時起來伸個懶腰，看板上的小人偶跟你一起抖肩。上班族笑著拍了照。',
   },

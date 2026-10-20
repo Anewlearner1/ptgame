@@ -7,6 +7,8 @@
 //   maxStaff: { n }  extra staff slots on top of the lot's maxStaff
 //   rep:      { value }  one-off reputation gain when the node completes
 
+// Balance note: nodes with base cost >= 90 were scaled x1.5 (cheap 30-60 starter nodes unchanged) so that, together with
+// patients.TUNE.POINT_SCALE, the first node is affordable after ~1 game month and the whole tree takes ~2-3 game years.
 export const RESEARCH_TRACKS = [
   { id: 'medical', name: '醫術', pointKey: 'medical', desc: '看病的真本事：評估、徒手、職能與語言治療。' },
   { id: 'device', name: '儀器', pointKey: 'device', desc: '機器與器材：熱敷、震波、雷射、懸吊與鞋墊。' },
@@ -32,12 +34,12 @@ const NODES = [
     ],
   },
   {
-    id: 'rs_prp', name: 'PRP 增生療法', track: 'medical', cost: 120, weeks: 3, requires: ['rs_ultrasound'],
+    id: 'rs_prp', name: 'PRP 增生療法', track: 'medical', cost: 180, weeks: 3, requires: ['rs_ultrasound'],
     desc: '抽自己的血打回去，聽起來很玄，但自費病人很買單。',
     effects: [{ type: 'unlockTreatment', ids: ['prp'] }],
   },
   {
-    id: 'rs_manual', name: '徒手治療進階', track: 'medical', cost: 90, weeks: 2, requires: ['rs_evidence'],
+    id: 'rs_manual', name: '徒手治療進階', track: 'medical', cost: 135, weeks: 2, requires: ['rs_evidence'],
     desc: '手法再細一點，捏、推、拉都有章法。治療師的手腕會感謝你。',
     effects: [
       { type: 'unlockBuild', ids: ['manual_room'] },
@@ -45,7 +47,7 @@ const NODES = [
     ],
   },
   {
-    id: 'rs_ot', name: '職能治療入門', track: 'medical', cost: 90, weeks: 2, requires: ['rs_evidence'],
+    id: 'rs_ot', name: '職能治療入門', track: 'medical', cost: 135, weeks: 2, requires: ['rs_evidence'],
     desc: '球池、平衡木、繪本架一次到位，小朋友玩到不想回家。',
     effects: [
       { type: 'unlockBuild', ids: ['si_room', 'fine_table', 'ball_pit', 'soft_mat', 'bookshelf'] },
@@ -53,7 +55,7 @@ const NODES = [
     ],
   },
   {
-    id: 'rs_geriatric', name: '長者肌少照護', track: 'medical', cost: 110, weeks: 2, requires: ['rs_evidence'],
+    id: 'rs_geriatric', name: '長者肌少照護', track: 'medical', cost: 165, weeks: 2, requires: ['rs_evidence'],
     desc: '阿公阿嬤的肌肉會流失，但「多動動」真的有用。長輩口碑直線上升。',
     effects: [
       { type: 'mod', key: 'elderSat', op: 'add', value: 4 },
@@ -61,7 +63,7 @@ const NODES = [
     ],
   },
   {
-    id: 'rs_st', name: '語言治療入門', track: 'medical', cost: 120, weeks: 2, requires: ['rs_ot'],
+    id: 'rs_st', name: '語言治療入門', track: 'medical', cost: 180, weeks: 2, requires: ['rs_ot'],
     desc: '中風後的失語、小孩的構音，都要靠它。言語治療師終於有地方坐了。',
     effects: [
       { type: 'unlockBuild', ids: ['speech_room'] },
@@ -69,7 +71,7 @@ const NODES = [
     ],
   },
   {
-    id: 'rs_pediatric', name: '兒童發展評估', track: 'medical', cost: 180, weeks: 3, requires: ['rs_ot'],
+    id: 'rs_pediatric', name: '兒童發展評估', track: 'medical', cost: 270, weeks: 3, requires: ['rs_ot'],
     desc: '「我家小孩到底是慢還是不一樣？」先評估，家長比較安心。',
     effects: [
       { type: 'mod', key: 'typeSpawn.kid', op: 'mul', value: 1.2 },
@@ -77,7 +79,7 @@ const NODES = [
     ],
   },
   {
-    id: 'rs_sports_med', name: '運動傷害評估', track: 'medical', cost: 220, weeks: 3, requires: ['rs_manual', 'rs_ultrasound'],
+    id: 'rs_sports_med', name: '運動傷害評估', track: 'medical', cost: 330, weeks: 3, requires: ['rs_manual', 'rs_ultrasound'],
     desc: '半月板、跟腱、肩旋轉袖，週末運動員的傷你都看得出來。',
     effects: [
       { type: 'mod', key: 'typeSpawn.sports', op: 'mul', value: 1.2 },
@@ -85,7 +87,7 @@ const NODES = [
     ],
   },
   {
-    id: 'rs_chronic', name: '慢性疼痛多模式照護', track: 'medical', cost: 400, weeks: 4, requires: ['rs_prp', 'rs_geriatric'],
+    id: 'rs_chronic', name: '慢性疼痛多模式照護', track: 'medical', cost: 600, weeks: 4, requires: ['rs_prp', 'rs_geriatric'],
     desc: '藥、運動、心理、徒手一起來。病人說你「會聽人講話」，這句話最值錢。',
     effects: [
       { type: 'mod', key: 'patience', op: 'add', value: 0.1 },
@@ -105,7 +107,7 @@ const NODES = [
     effects: [{ type: 'mod', key: 'staffStamina', op: 'add', value: -0.05 }],
   },
   {
-    id: 'rs_shockwave', name: '體外震波技術', track: 'device', cost: 130, weeks: 2, requires: ['rs_heat'],
+    id: 'rs_shockwave', name: '體外震波技術', track: 'device', cost: 195, weeks: 2, requires: ['rs_heat'],
     desc: '咚咚咚的震波打在足底筋膜上，痛到病人叫媽媽，然後說「好像有差」。',
     effects: [
       { type: 'unlockBuild', ids: ['shockwave', 'shockwave_room'] },
@@ -113,7 +115,7 @@ const NODES = [
     ],
   },
   {
-    id: 'rs_redcord', name: '懸吊運動系統', track: 'device', cost: 180, weeks: 3, requires: ['rs_maint'],
+    id: 'rs_redcord', name: '懸吊運動系統', track: 'device', cost: 270, weeks: 3, requires: ['rs_maint'],
     desc: '吊著做運動，聽起來像在玩遊樂園，其實是很正經的核心訓練。',
     effects: [
       { type: 'unlockBuild', ids: ['redcord'] },
@@ -121,12 +123,12 @@ const NODES = [
     ],
   },
   {
-    id: 'rs_insole', name: '足弓評估與客製鞋墊', track: 'device', cost: 160, weeks: 2, requires: ['rs_maint'],
+    id: 'rs_insole', name: '足弓評估與客製鞋墊', track: 'device', cost: 240, weeks: 2, requires: ['rs_maint'],
     desc: '掃描腳型、訂做鞋墊。扁平足的朋友說：原來我的膝蓋痛是腳的問題。',
     effects: [{ type: 'unlockTreatment', ids: ['insole'] }],
   },
   {
-    id: 'rs_laser', name: '高能量雷射', track: 'device', cost: 260, weeks: 3, requires: ['rs_shockwave'],
+    id: 'rs_laser', name: '高能量雷射', track: 'device', cost: 390, weeks: 3, requires: ['rs_shockwave'],
     desc: '雷射室一開，眼鏡要戴好。深層組織加熱，自費病人很愛這一味。',
     effects: [
       { type: 'unlockBuild', ids: ['laser_room'] },
@@ -134,7 +136,7 @@ const NODES = [
     ],
   },
   {
-    id: 'rs_gait', name: '步態分析系統', track: 'device', cost: 320, weeks: 4, requires: ['rs_insole', 'rs_laser'],
+    id: 'rs_gait', name: '步態分析系統', track: 'device', cost: 480, weeks: 4, requires: ['rs_insole', 'rs_laser'],
     desc: '走路的時候重心歪哪裡一目瞭然。跌倒風險降低，走路也好看了。',
     effects: [
       { type: 'mod', key: 'slipRisk', op: 'add', value: -0.2 },
@@ -164,12 +166,12 @@ const NODES = [
     effects: [{ type: 'rep', value: 15 }],
   },
   {
-    id: 'rs_insurance', name: '健保申報優化', track: 'service', cost: 150, weeks: 2, requires: ['rs_admin'],
+    id: 'rs_insurance', name: '健保申報優化', track: 'service', cost: 225, weeks: 2, requires: ['rs_admin'],
     desc: '申報流程順了，翻桌率跟著上來。健保署的人不一定喜歡，但病人會喜歡。',
     effects: [{ type: 'mod', key: 'nhiTurnover', op: 'add', value: 0.08 }],
   },
   {
-    id: 'rs_staffing', name: '人力排班制度', track: 'service', cost: 90, weeks: 2, requires: ['rs_admin'],
+    id: 'rs_staffing', name: '人力排班制度', track: 'service', cost: 135, weeks: 2, requires: ['rs_admin'],
     desc: '排班表不再靠一張白板和三通 LINE。多一個位子，也省一點薪水。',
     effects: [
       { type: 'maxStaff', n: 1 },
@@ -177,12 +179,12 @@ const NODES = [
     ],
   },
   {
-    id: 'rs_selfpay', name: '自費方案包裝', track: 'service', cost: 140, weeks: 2, requires: ['rs_edu', 'rs_queue'],
+    id: 'rs_selfpay', name: '自費方案包裝', track: 'service', cost: 210, weeks: 2, requires: ['rs_edu', 'rs_queue'],
     desc: '套裝療程、回診優惠卡，把單次自費變成「我下個月還要來」。',
     effects: [{ type: 'mod', key: 'selfPayConv', op: 'add', value: 0.08 }],
   },
   {
-    id: 'rs_expand', name: '擴建規劃', track: 'service', cost: 250, weeks: 3, requires: ['rs_staffing', 'rs_rep'],
+    id: 'rs_expand', name: '擴建規劃', track: 'service', cost: 375, weeks: 3, requires: ['rs_staffing', 'rs_rep'],
     desc: '先把藍圖畫好，等銀行經理點頭。擴建資格的前置作業，順便多一個治療師位子。',
     effects: [
       { type: 'rep', value: 8 },
@@ -190,7 +192,7 @@ const NODES = [
     ],
   },
   {
-    id: 'rs_brand', name: '院長品牌經營', track: 'service', cost: 500, weeks: 5, requires: ['rs_expand', 'rs_selfpay'],
+    id: 'rs_brand', name: '院長品牌經營', track: 'service', cost: 750, weeks: 5, requires: ['rs_expand', 'rs_selfpay'],
     desc: '出書、上節目、臉書粉專每天一則貼文。院長的名字終於比藥名還好記。',
     effects: [
       { type: 'rep', value: 30 },

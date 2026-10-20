@@ -10,6 +10,9 @@ import { recomputeZones } from './synergy.js';
 import { recomputeMods } from './modifiers.js';
 import { rollWeather } from './events.js';
 import { formatDate } from './calendar.js';
+import { BUILDABLES } from '../data/buildables.js';
+import { PATIENT_TYPES } from '../data/patients.js';
+import { STAFF_ROLES } from '../data/staffdefs.js';
 
 export const SAVE_SLOTS = ['1', '2', '3'];      // manual slots; 'auto' is the autosave slot
 const NESTED_KEYS = ['time', 'points', 'weather', 'lot', 'door', 'policy', 'research', 'nhi', 'ledger', 'stats', 'events', 'inspections', 'flags'];
@@ -67,7 +70,13 @@ function hydrate(raw) {
 function applyPayload(state, payload) {
   if (!payload || typeof payload !== 'object' || !payload.state) return false;
   if (typeof payload.version === 'number' && payload.version > SAVE_VERSION) return false;
-  const merged = hydrate(payload.state);
+  const st = payload.state;
+  // reject obviously foreign / truncated JSON instead of silently resetting the clinic
+  if (typeof st !== 'object' || typeof st.money !== 'number' || !st.time || !st.lot || !Array.isArray(st.objects)) return false;
+  const merged = hydrate(st);
+  merged.objects = merged.objects.filter(o => o && BUILDABLES[o.defId]);
+  merged.staff = merged.staff.filter(s => s && STAFF_ROLES[s.role]);
+  merged.patients = merged.patients.filter(p => p && PATIENT_TYPES[p.type]);
   replaceState(state, merged);
   state.time.speed = state.time.speed || 1;
   state.time.paused = !!state.time.paused;
