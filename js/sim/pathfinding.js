@@ -2,7 +2,7 @@
 // Agents may only walk inside the lot (plus the single door tile outside it): shortest paths therefore never
 // leak through the street when the interior is walled off by furniture.
 import { MAP_W, MAP_H } from '../core/constants.js';
-import { isWalkable, inLot, adjacentTiles } from '../core/grid.js';
+import { isWalkable, inLot, adjacentTiles, entryTile } from '../core/grid.js';
 
 const N = MAP_W * MAP_H;
 const gScore = new Int32Array(N);
@@ -83,15 +83,24 @@ function rebuild(endIdx, startIdx) {
   return out;
 }
 
+// Extra cost of stepping onto a tile where somebody is standing still (soft obstacle: walk around if it is cheap).
+export const CROWD_COST = 3;
+
 // A* from (sx,sy) to (tx,ty). Integer tiles; the start tile itself may be blocked (agent stood on a sofa / got built over).
-export function findPath(state, sx, sy, tx, ty) {
+// `crowd` (optional Set of tile indices y*MAP_W+x) marks tiles occupied by standing agents: they are never hard
+// obstacles (the path may always cross them) but cost CROWD_COST extra, so queues get walked around. Crowd
+// searches bypass the path cache (the crowd changes every tick).
+export function findPath(state, sx, sy, tx, ty, crowd) {
   sx = Math.floor(sx); sy = Math.floor(sy); tx = Math.floor(tx); ty = Math.floor(ty);
   if (sx === tx && sy === ty) return [];
   if (!isWalkable(state, tx, ty)) return null;
   checkCache(state);
+  const useCrowd = !!(crowd && crowd.size);
   const key = ((sy * MAP_W + sx) * N) + ty * MAP_W + tx;
-  const hit = cache.get(key);
-  if (hit !== undefined) return hit ? hit.slice() : null;
+  if (!useCrowd) {
+    const hit = cache.get(key);
+    if (hit !== undefined) return hit ? hit.slice() : null;
+  }
 
   const restrict = regionTile(state, sx, sy) && regionTile(state, tx, ty);
   const sIdx = sy * MAP_W + sx, tIdx = ty * MAP_W + tx;
@@ -106,7 +115,6 @@ export function findPath(state, sx, sy, tx, ty) {
     closed[cur] = gen;
     if (cur === tIdx) { result = rebuild(cur, sIdx); break; }
     const cx = cur % MAP_W, cy = (cur / MAP_W) | 0;
-    const g = gScore[cur] + 1;
     for (let d = 0; d < 4; d++) {
       const nx = cx + DX[d], ny = cy + DY[d];
       if (nx < 0 || ny < 0 || nx >= MAP_W || ny >= MAP_H) continue;
@@ -114,6 +122,7 @@ export function findPath(state, sx, sy, tx, ty) {
       if (restrict && !regionTile(state, nx, ny)) continue;
       const ni = ny * MAP_W + nx;
       if (closed[ni] === gen) continue;
+      const g = gScore[cur] + 1 + (useCrowd && ni !== tIdx && crowd.has(ni) ? CROWD_COST : 0);
       if (seen[ni] === gen && gScore[ni] <= g) continue;
       seen[ni] = gen; gScore[ni] = g; parent[ni] = cur;
       // tie-break towards the goal (h * 1.001 scaled to ints)
@@ -121,7 +130,7 @@ export function findPath(state, sx, sy, tx, ty) {
       hpush(ni, (g + h) * 16 + h);
     }
   }
-  cache.set(key, result);
+  if (!useCrowd) cache.set(key, result);
   return result ? result.slice() : null;
 }
 
@@ -173,6 +182,19 @@ export function findPathNear(state, sx, sy, tx, ty, claimed) {
     if (isWalkable(state, nx, ny) && regionTile(state, nx, ny) && !(claimed && claimed.has(nx + ',' + ny))) goals.push({ x: nx, y: ny });
   }
   return bfsToAny(state, sx, sy, goals);
+}
+
+// The tile behind a reception counter where its nurse stands: the walkable adjacent tile farthest from the entrance
+// (patients queue on the street side). null when the counter is boxed in.
+export function receptionPost(state, obj) {
+  const e = entryTile(state);
+  let best = null, bd = -1;
+  for (const t of adjacentTiles(state, obj)) {
+    if (!regionTile(state, t.x, t.y)) continue;
+    const d = Math.abs(t.x - e.x) + Math.abs(t.y - e.y) + (t.x + t.y * 0.01) * 0.001;
+    if (d > bd) { bd = d; best = t; }
+  }
+  return best;
 }
 
 // Are all remaining path tiles still walkable? (used after map changes). `lastOpen` skips the final tile

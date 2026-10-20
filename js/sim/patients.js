@@ -9,7 +9,7 @@
 // Extra module state lives in state.agents (see getMeta).
 import { bus } from '../core/bus.js';
 import { newId, state as gameState } from '../core/state.js';
-import { OPEN_MIN, CLOSE_MIN, WALK_TILES_PER_MIN, POINT_KEYS } from '../core/constants.js';
+import { OPEN_MIN, CLOSE_MIN, WALK_TILES_PER_MIN, POINT_KEYS, MAP_W } from '../core/constants.js';
 import { entryTile, adjacentTiles, footprint, inLot } from '../core/grid.js';
 import { BUILDABLES } from '../data/buildables.js';
 import { TREATMENTS } from '../data/treatments.js';
@@ -17,11 +17,11 @@ import { PATIENT_TYPES } from '../data/patients.js';
 import { STAFF_NAMES } from '../data/staffdefs.js';
 import { LINES } from '../data/texts.js';
 import { LOTS } from '../data/lots.js';
-import { findPath, findPathToAdjacent, findPathNear, moveAlongPath, pathStillValid, agentTileOk } from './pathfinding.js';
+import { findPath, findPathToAdjacent, findPathNear, moveAlongPath, pathStillValid, agentTileOk, receptionPost } from './pathfinding.js';
 import { comfortScoreAt, anxietyReliefAt, floorGripAt, floorWalkMultAt } from './modifiers.js';
 import { isTreatmentUnlocked } from './research.js';
 import { selfPayPrice, resolveCured } from './economy.js';
-import { isStaffAvailable, assignTask, releaseStaff, staffAtStand, TUNE as STAFF_TUNE } from './staff.js';
+import { isStaffAvailable, assignTask, releaseStaff, staffAtStand, tiredFactor, TUNE as STAFF_TUNE } from './staff.js';
 
 // ================= tuning knobs =================
 export const TUNE = {
@@ -34,8 +34,13 @@ export const TUNE = {
   REG_MIN: 4,                // registration duration (game-min)
   REG_SELF_MULT: 2.5,        // self-registration (no nurse) is this much slower
   REG_FALLBACK_WAIT: 22,     // minutes queuing for a busy nurse before self-registering
+  REG_QUEUE_DEPTH: 3,        // claimants per reception counter: the one being served + patients already standing beside it
+                             // (walking is slow compared with a registration, so the line must be pre-positioned)
+  REG_LOAD_W: 1.0, REG_DIST_W: 0.8,   // queue anchor: prefer a near counter, spill to others once the line there is longer
+  REG_PRE_RANGE: 5,          // tiles: only patients this close to a counter may take a 'next in line' place there
+  REG_WAIT_BONUS: 0.25,      // queue score: tiles of distance a patient 'earns' per minute already waited
   SAT_START: 62,
-  DRAIN_BASE: 0.42,          // patience / min while waiting
+  DRAIN_BASE: 0.34,          // patience / min while waiting
   SEAT_DRAIN: 0.65,          // drain multiplier while seated
   STAND_DRAIN: 1.25,         // ... while standing (elders: x1.3 more)
   SAT_PER_PATIENCE: 0.25,    // satisfaction lost per patience point lost
@@ -70,7 +75,7 @@ export const TUNE = {
 
 export const debug = { teleports: 0, repaths: 0, forcedSnaps: 0, skipped: 0, selfReg: 0, chats: 0, upsells: 0, upsellOffers: 0 };
 
-const rnd = Math.random;
+const rnd = () => Math.random();   // late-bound so test harnesses can seed Math.random
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
 const key = (x, y) => x + ',' + y;
@@ -113,7 +118,7 @@ function buildCtx(state, dt) {
     state, dt,
     objById: new Map(), patById: new Map(), staffById: new Map(),
     byDef: {}, standTaken: new Set(), spotTaken: new Set(), seatTaken: new Set(),
-    feasMemo: new Map(), seats: null, staff: state.staff, preBy: new Map(),
+    feasMemo: new Map(), seats: null, staff: state.staff, preBy: new Map(), crowd: new Set(),
   };
   for (const o of state.objects) {
     c.objById.set(o.id, o);
@@ -128,6 +133,9 @@ function buildCtx(state, dt) {
     if (p.seat) c.seatTaken.add(p.seat.x + ',' + p.seat.y + '#' + (p.seat.slot || 0));
   }
   for (const s of state.staff) if (s.task && s.stand && s.task.treatmentId !== '__chat') c.standTaken.add(tk(s.stand));
+  // tiles with somebody standing still = soft obstacles for A* (see pathfinding.CROWD_COST)
+  for (const p of state.patients) if (!p.moving && !p.path.length && p.stage !== 'arriving' && p.stage !== 'leaving') c.crowd.add(Math.floor(p.y) * MAP_W + Math.floor(p.x));
+  for (const s of state.staff) if (!s.moving && !(s.path && s.path.length)) c.crowd.add(Math.floor(s.y) * MAP_W + Math.floor(s.x));
   return c;
 }
 
@@ -217,7 +225,7 @@ function teleportTo(a, tx, ty) { a.x = tx + 0.5; a.y = ty + 0.5; a.path = []; de
 
 function routeToTile(c, a, tx, ty) {
   a.dest = { x: tx, y: ty };
-  const path = findPath(c.state, a.x, a.y, tx, ty);
+  const path = findPath(c.state, a.x, a.y, tx, ty, c.crowd);
   if (path) { a.path = path; return true; }
   teleportTo(a, tx, ty);
   return false;
@@ -445,7 +453,12 @@ function runArrivals(c, meta, dt) {
 function freeObj(c, id) {
   const o = c.objById.get(id);
   if (!o) return;
-  const nxt = c.state.patients.find(q => q.pre && q.targetObj === id);
+  let nxt = null;
+  // among several claimants (reception lines) the one who is ready first goes next: fewest tiles left, then oldest claim
+  for (const q of c.state.patients) {
+    if (!q.pre || q.targetObj !== id) continue;
+    if (!nxt || q.path.length < nxt.path.length || (q.path.length === nxt.path.length && (q.claimT || 0) < (nxt.claimT || 0))) nxt = q;
+  }
   if (nxt) { nxt.pre = false; o.busy = true; o.usedBy = nxt.id; o.staffId = null; c.preBy.delete(id); }
   else { o.busy = false; o.usedBy = null; o.staffId = null; }
 }
@@ -593,39 +606,121 @@ function enterReception(c, p) {
   if (!st.queue.includes(p.id)) st.queue.push(p.id);
 }
 
+// Reception counters serve one patient at a time, but a counter can also be "claimed" by the patients next in line
+// (p.pre = true, up to TUNE.REG_QUEUE_DEPTH in all): they walk to free stand tiles beside the counter while the current
+// one is still being served, so the counter never idles for a walk (a walk across the lot takes longer than a
+// registration). Claims go to the nearest queued patient (distance minus a waiting bonus) instead of strictly FIFO,
+// which keeps walks short and spreads load over several counters.
 function assignRegistration(c) {
   const st = c.state;
-  if (!st.queue.length) return;
-  // sanitize
-  st.queue = st.queue.filter(id => { const p = c.patById.get(id); return p && p.stage === 'to_reception'; });
-  const recs = (c.byDef.reception || []).filter(o => !o.busy && !o.usedBy);
+  const recs = c.byDef.reception || [];
   if (!recs.length) return;
-  const anyNurse = st.staff.some(s => s.role === 'nurse');
+  st.queue = st.queue.filter(id => { const p = c.patById.get(id); return p && p.stage === 'to_reception'; });
+
+  const act = new Set(), nClaim = new Map();
+  for (const p of st.patients) {
+    if (!p.targetObj || (p.stage !== 'to_reception' && p.stage !== 'registering')) continue;
+    if (!p.pre) act.add(p.targetObj);
+    nClaim.set(p.targetObj, (nClaim.get(p.targetObj) || 0) + 1);
+  }
+  const waitQ = [];
   for (const id of st.queue) {
     const p = c.patById.get(id);
-    if (!p || p.targetObj || recs.length === 0) continue;
-    if (p.stun > 0) continue;
-    // nearest free reception
-    let ri = 0, bd = Infinity;
-    recs.forEach((o, i) => { const d = Math.abs(o.x - p.x) + Math.abs(o.y - p.y); if (d < bd) { bd = d; ri = i; } });
-    const rec = recs[ri];
-    let nurse = pickStaff(c, ['nurse'], rec, true);
-    let selfReg = false;
-    if (!nurse) {
-      if (!anyNurse || p.qT > TUNE.REG_FALLBACK_WAIT) selfReg = true; else continue;
+    if (p && !p.targetObj && p.stun <= 0) waitQ.push(p);
+  }
+  if (!waitQ.length) { serveRegistrations(c); return; }
+
+  const give = (sl) => {
+    let bi = -1, bs = Infinity;
+    for (let i = 0; i < waitQ.length; i++) {
+      const p = waitQ[i];
+      if (sl.noNurse && p.qT <= TUNE.REG_FALLBACK_WAIT) continue;
+      if (sl.pre && Math.abs(sl.o.x - p.x) + Math.abs(sl.o.y - p.y) > TUNE.REG_PRE_RANGE) continue;
+      const sc = Math.abs(sl.o.x - p.x) + Math.abs(sl.o.y - p.y) - TUNE.REG_WAIT_BONUS * p.qT;
+      if (sc < bs) { bs = sc; bi = i; }
     }
-    const res = pickStands(c, p, rec, nurse);
-    if (!res) continue;
-    recs.splice(ri, 1);
-    rec.busy = true; rec.usedBy = p.id; rec.staffId = nurse ? nurse.id : null;
-    p.targetObj = rec.id; p.staffId = nurse ? nurse.id : null; p.selfReg = selfReg;
-    p.stand = res.pStand; p.path = res.pPath; p.dest = res.pStand; p.spot = null; p.stT = 0;
-    c.standTaken.add(tk(res.pStand));
-    if (nurse) {
-      cancelStaffChat(c, nurse);
-      assignTask(st, nurse, { patientId: p.id, objId: rec.id, treatmentId: '__register', remaining: TUNE.REG_MIN, stand: res.sStand }, res.sStand, res.sPath);
-      c.standTaken.add(tk(res.sStand));
-    } else debug.selfReg++;
+    if (bi < 0) return false;
+    const p = waitQ[bi];
+    const res = pickRegStand(c, p, sl.o);
+    if (!res) return false;
+    waitQ.splice(bi, 1);
+    p.targetObj = sl.o.id; p.staffId = null; p.selfReg = false; p.pre = sl.pre; p.nurseWait = 0; p.claimT = st.time.clock + st.time.week * 1000;
+    p.stand = res.stand; p.path = res.path; p.dest = res.stand; p.spot = null; p.stT = 0;
+    if (!sl.pre) { sl.o.busy = true; sl.o.usedBy = p.id; sl.o.staffId = null; act.add(sl.o.id); }
+    nClaim.set(sl.o.id, (nClaim.get(sl.o.id) || 0) + 1);
+    c.standTaken.add(tk(res.stand));
+    return true;
+  };
+
+  // 1. free counters (nobody served / heading there): open the ones with a free nurse nearby first. A counter without
+  //    any free nurse only opens for a patient who has waited long enough to register alone (or when there is no nurse at all).
+  const freeNurses = st.staff.filter(s => s.role === 'nurse' && isStaffAvailable(s));
+  const noNurseAtAll = !st.staff.some(s => s.role === 'nurse');
+  const open = recs.filter(o => !act.has(o.id) && !o.usedBy);
+  const used = new Set();
+  while (open.length && waitQ.length) {
+    let bo = -1, bn = -1, bd = Infinity;
+    for (let i = 0; i < open.length; i++) for (let j = 0; j < freeNurses.length; j++) {
+      if (used.has(j)) continue;
+      const d = Math.abs(open[i].x - freeNurses[j].x) + Math.abs(open[i].y - freeNurses[j].y);
+      if (d < bd) { bd = d; bo = i; bn = j; }
+    }
+    if (bo < 0) break;
+    used.add(bn);
+    give({ o: open.splice(bo, 1)[0], pre: false });
+  }
+  for (const o of open) if (waitQ.length) give({ o, pre: false, noNurse: !noNurseAtAll });
+
+  // 2. places in line beside counters that are in service, spread round-robin over the counters
+  for (let k = 0; k < TUNE.REG_QUEUE_DEPTH && waitQ.length; k++) {
+    for (const o of recs) {
+      if (!waitQ.length) break;
+      if (!act.has(o.id) || (nClaim.get(o.id) || 0) > k) continue;
+      give({ o, pre: true });
+    }
+  }
+  serveRegistrations(c);
+}
+
+// stand tile beside a counter for a customer: any free adjacent tile except the nurse's post
+function pickRegStand(c, p, rec) {
+  const post = receptionPost(c.state, rec);
+  const claimed = new Set(c.standTaken);
+  if (post) claimed.add(tk(post));
+  let r = findPathToAdjacent(c.state, p.x, p.y, rec, claimed);
+  if (!r) r = findPathToAdjacent(c.state, p.x, p.y, rec, c.standTaken);
+  return r;
+}
+
+// patients that hold a counter (not just a place in line) get a nurse; with none around they register themselves, slowly
+function serveRegistrations(c) {
+  const st = c.state;
+  const anyNurse = st.staff.some(s => s.role === 'nurse');
+  const spd = WALK_TILES_PER_MIN * STAFF_TUNE.WALK_BOOST * STAFF_TUNE.STAFF_SPEED;
+  for (const p of st.patients) {
+    if (p.stage !== 'to_reception' || !p.targetObj || p.pre || p.staffId || p.selfReg) continue;
+    const rec = c.objById.get(p.targetObj);
+    if (!rec) continue;
+    const nurse = pickStaff(c, ['nurse'], rec, true);
+    if (!nurse) {
+      if (!anyNurse || p.qT > TUNE.REG_FALLBACK_WAIT) { p.selfReg = true; debug.selfReg++; }
+      continue;
+    }
+    // the nurse works from the post behind the counter
+    const post = receptionPost(st, rec);
+    let sr = null;
+    if (post && !(p.stand && p.stand.x === post.x && p.stand.y === post.y)) {
+      const path = findPath(st, nurse.x, nurse.y, post.x, post.y, c.crowd);
+      if (path) sr = { stand: post, path };
+    }
+    if (!sr) sr = pickStaffStand(c, nurse, rec, p.stand);
+    if (!sr) continue;
+    // do not tie a nurse down for a patient who is still far away
+    if (etaMin(p.path, patientSpeed(c, p)) > etaMin(sr.path, spd) + TUNE.STAFF_LEAD) continue;
+    p.staffId = nurse.id; rec.staffId = nurse.id;
+    cancelStaffChat(c, nurse);
+    assignTask(st, nurse, { patientId: p.id, objId: rec.id, treatmentId: '__register', remaining: TUNE.REG_MIN, stand: sr.stand }, sr.stand, sr.path);
+    c.standTaken.add(tk(sr.stand));
   }
 }
 
@@ -673,7 +768,7 @@ function treatDuration(c, p, T, staff) {
   if (T.kind === 'nhi') d /= Math.max(0.2, c.state.mods.nhiTurnover || 1);
   if (staff) {
     d *= 1.1 - 0.02 * staff.skill;
-    if (staff.stamina < staff.staminaMax * STAFF_TUNE.TIRED_FRAC) d *= 1.2;
+    d *= tiredFactor(staff);
   }
   return Math.max(5, d);
 }
@@ -798,13 +893,29 @@ function tickWait(c, p, dt) {
   if (p.patience <= 0) startLeaving(c, p, 'angry');
 }
 
+// where a queuing patient should stand: next to the least crowded reception counter (spread over all counters)
+function queueAnchor(c, p, load) {
+  const recs = c.byDef.reception;
+  if (!recs || !recs.length) return receptionCenter(c);
+  let best = recs[0], bs = Infinity;
+  for (const o of recs) {
+    const sc = (load.get(o.id) || 0) * TUNE.REG_LOAD_W + (Math.abs(o.x - p.x) + Math.abs(o.y - p.y)) * TUNE.REG_DIST_W;
+    if (sc < bs) { bs = sc; best = o; }
+  }
+  load.set(best.id, (load.get(best.id) || 0) + 1);
+  const ctr = centerOf(c, best);
+  ctr.id = best.id;
+  return ctr;
+}
+
 function assignSpots(c) {
   const st = c.state;
   const need = st.patients.filter(p => p.needSpot && !p.chat && p.stun <= 0 && (p.stage === 'waiting' || (p.stage === 'to_reception' && !p.targetObj)));
   if (!need.length) return;
   need.sort((a, b) => (a.waitStart || 0) - (b.waitStart || 0));
   const seats = seatList(c);
-  const rc = receptionCenter(c);
+  const qLoad = new Map();
+  for (const q of st.patients) if (q.stage === 'to_reception' && q.spot && !q.targetObj && q.qRec) qLoad.set(q.qRec, (qLoad.get(q.qRec) || 0) + 1);
   for (const p of need) {
     // 1. a free seat (waiting patients only)
     if (p.stage === 'waiting' && seats.length && !p.seat) {
@@ -827,10 +938,15 @@ function assignSpots(c) {
     // 2. already has a standing spot: keep it (keep polling for a free seat while waiting)
     if (p.spot) { p.needSpot = p.stage === 'waiting' && seats.length > 0; continue; }
     // 3. pick a standing spot
-    const cands = pickSpot(c, p, rc);
+    let near;
+    if (p.stage === 'to_reception') {
+      near = queueAnchor(c, p, qLoad);
+      p.qRec = near.id || null;
+    } else near = receptionCenter(c);
+    const cands = pickSpot(c, p, near);
     let done = false;
     for (const cd of cands) {
-      const path = findPath(st, p.x, p.y, cd.x, cd.y);
+      const path = findPath(st, p.x, p.y, cd.x, cd.y, c.crowd);
       if (path) {
         p.spot = { x: cd.x, y: cd.y }; p.path = path; p.dest = p.spot;
         c.spotTaken.add(tk(p.spot)); done = true; break;
@@ -1090,14 +1206,24 @@ function updatePatient(c, p, dt) {
       if (p.targetObj) {
         const staff = p.staffId && c.staffById.get(p.staffId);
         const arrived = walk(c, p, dt);
-        p.stT = (p.moving || (staff && staff.moving)) ? 0 : (p.stT || 0) + dt;
-        if (arrived && (!staff || staffAtStand(staff))) {
-          p.stage = 'registering';
-          const t = TUNE.REG_MIN * (p.selfReg ? TUNE.REG_SELF_MULT : (1.1 - 0.02 * (staff ? staff.skill : 5)));
-          p.remaining = p.total = t;
-          if (staff) { staff.state = 'working'; staff.task.remaining = t; staff.task.total = t; }
-          st.queue = st.queue.filter(id => id !== p.id);
-        } else if (p.stT > TUNE.STUCK_MIN) { forceSnap(c, p, staff); }
+        if (p.pre) {
+          // next in line: stand beside the counter until the current patient is done
+          p.stT = 0;
+          if (arrived) tickWait(c, p, dt);
+        } else if (arrived && !p.selfReg && !staff) {
+          // holds the counter but no nurse is free yet
+          p.stT = 0;
+          tickWait(c, p, dt);
+        } else {
+          p.stT = (p.moving || (staff && staff.moving)) ? 0 : (p.stT || 0) + dt;
+          if (arrived && (p.selfReg || (staff && staffAtStand(staff)))) {
+            p.stage = 'registering';
+            const t = TUNE.REG_MIN * (p.selfReg ? TUNE.REG_SELF_MULT : (1.1 - 0.02 * (staff ? staff.skill : 5)) * tiredFactor(staff));
+            p.remaining = p.total = t;
+            if (staff) { staff.state = 'working'; staff.task.remaining = t; staff.task.total = t; }
+            st.queue = st.queue.filter(id => id !== p.id);
+          } else if (p.stT > TUNE.STUCK_MIN) { forceSnap(c, p, staff); }
+        }
       } else {
         walk(c, p, dt);
         tickWait(c, p, dt);

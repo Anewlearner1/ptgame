@@ -10,22 +10,26 @@ import { STAFF_ROLES, STAFF_NAMES, TRAITS } from '../data/staffdefs.js';
 import { LINES } from '../data/texts.js';
 import { spend } from './economy.js';
 import { maxStaffOf } from './research.js';
-import { findPath, findPathToAdjacent, moveAlongPath, agentTileOk } from './pathfinding.js';
+import { findPath, findPathToAdjacent, moveAlongPath, agentTileOk, receptionPost } from './pathfinding.js';
 
 // ---- tuning knobs ----
 export const TUNE = {
   POOL_MIN: 3, POOL_MAX: 5,
   STAFF_SPEED: 1.0,            // walk multiplier
   WALK_BOOST: 1.7,             // global walking-speed scale (patients + staff) on top of constants.WALK_TILES_PER_MIN
-  REST_BELOW: 0.15,            // stamina fraction that sends an idle staff member to the rest room
-  REST_UNTIL: 0.80,
+  REST_BELOW: 0.30,            // stamina fraction that sends a staff member to the rest room (after the current patient)
+  REST_UNTIL: 0.85,
+  REG_STAMINA: 0.22,           // stamina / min a nurse burns while registering a patient
   IDLE_REGEN: 0.0018,          // stamina fraction / min while idle without a rest room
   WALK_REGEN: 0.0007,
   OVERNIGHT_REGEN: 0.65,       // fraction of staminaMax restored when a new day (week) starts
-  TIRED_FRAC: 0.30,            // below this fraction treatments run slower (patients.js)
+  TIRED_FRAC: 0.30,            // below this fraction work (treatment / registration) gets slower (see tiredFactor)
+  TIRED_SLOW: 0.8,             // extra duration at stamina 0 (x1.8 total)
   TRAIN_COST_BASE: 40000, TRAIN_COST_PER_LEVEL: 20000, TRAIN_POINTS_BASE: 10,
   WANDER_MIN: 6, WANDER_SPAN: 16,
   BUBBLE_CHANCE: 0.004,        // per game-min per idle staff
+  TIRED_BUBBLE: 0.03,          // per game-min: tired staff mutter (visible 'tired' bubble) while working
+  REST_RETRY: 6,               // game-min before a staff member whose rest request failed asks again
 };
 
 // role -> object defs the role likes to hang around
@@ -38,7 +42,7 @@ const HOME = {
 };
 const ROLE_WEIGHT = { pt: 3, nurse: 2, doctor: 1.3, ot: 1.2, st: 0.9 };
 
-const rnd = Math.random;
+const rnd = () => Math.random();   // late-bound so test harnesses can seed Math.random
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
 const tileOf = (a) => ({ x: Math.floor(a.x), y: Math.floor(a.y) });
@@ -121,7 +125,7 @@ export function createStaff(state, role, cand, tx, ty) {
     id: newId(state), role, name: c.name, skill: c.skill, charm: c.charm,
     stamina: max, staminaMax: max, salary: c.salary, trait: c.trait || null, level: 1,
     x: tx + 0.5, y: ty + 0.5, path: [], state: 'idle', task: null, wait: 2 + rnd() * 6,
-    dir: 1, moving: false, bubble: null, restObj: null,
+    dir: 1, moving: false, bubble: null, restObj: null, wantRest: false, tired: false,
   };
 }
 
@@ -169,8 +173,16 @@ export function train(state, staffId) {
 export function isChatTask(s) { return !!(s.task && s.task.treatmentId === '__chat'); }
 
 // Free to be given a new job (chatting staff can be interrupted; resting / walking-to-rest cannot).
+// Work-duration multiplier: 1 while rested, rising to 1 + TIRED_SLOW at zero stamina below TIRED_FRAC.
+export function tiredFactor(s) {
+  if (!s || !s.staminaMax) return 1;
+  const f = s.stamina / s.staminaMax;
+  if (f >= TUNE.TIRED_FRAC) return 1;
+  return 1 + TUNE.TIRED_SLOW * (TUNE.TIRED_FRAC - Math.max(0, f)) / TUNE.TIRED_FRAC;
+}
+
 export function isStaffAvailable(s) {
-  if (s.state === 'resting' || s.restObj) return false;
+  if (s.state === 'resting' || s.restObj || s.wantRest) return false;
   if (s.task && !isChatTask(s)) return false;
   return true;
 }
@@ -229,6 +241,7 @@ function seekRest(state, s) {
   }
   if (!best) return false;
   best.o.busy = true; best.o.staffId = s.id;
+  s.wantRest = false;
   s.restObj = best.o.id;
   s.stand = best.r.stand;
   s.path = best.r.path;
@@ -238,17 +251,36 @@ function seekRest(state, s) {
   return true;
 }
 
+// Nurses each keep to "their" reception counter (round robin by id) and stand on its post instead of roaming
+// between counters: walking across the clinic takes far longer than a registration itself.
+function nurseHome(state, s, homes) {
+  const mates = state.staff.filter(x => x.role === 'nurse').sort((a, b) => a.id - b.id);
+  const sorted = homes.slice().sort((a, b) => a.id - b.id);
+  const idx = Math.max(0, mates.indexOf(s));
+  return { obj: sorted[idx % sorted.length], owner: idx < sorted.length };
+}
+
 function wander(state, s) {
   const homeDefs = HOME[s.role] || [];
   const homes = state.objects.filter(o => homeDefs.includes(o.defId));
-  let tx, ty;
+  let tx, ty, exact = false;
   if (homes.length) {
-    const adj = adjacentTiles(state, pick(homes)).filter(t => agentTileOk(state, t.x, t.y));
-    if (adj.length) { const t = pick(adj); tx = t.x; ty = t.y; }
+    let home = null;
+    if (s.role === 'nurse') {
+      const h = nurseHome(state, s, homes);
+      home = h.obj;
+      const post = h.owner && receptionPost(state, home);
+      if (post) { tx = post.x; ty = post.y; exact = true; }
+    } else home = pick(homes);
+    if (tx === undefined) {
+      const adj = adjacentTiles(state, home).filter(t => agentTileOk(state, t.x, t.y));
+      if (adj.length) { const t = pick(adj); tx = t.x; ty = t.y; }
+    }
   }
   if (tx === undefined) { const e = entryTile(state); tx = e.x + Math.floor(rnd() * 5) - 2; ty = e.y - 2 - Math.floor(rnd() * 3); }
-  if (rnd() < 0.35) { tx += Math.floor(rnd() * 3) - 1; ty += Math.floor(rnd() * 3) - 1; }
+  if (!exact && rnd() < 0.35) { tx += Math.floor(rnd() * 3) - 1; ty += Math.floor(rnd() * 3) - 1; }
   if (!agentTileOk(state, tx, ty)) return;
+  if (Math.floor(s.x) === tx && Math.floor(s.y) === ty) return;
   const p = findPath(state, s.x, s.y, tx, ty);
   if (p && p.length) { s.path = p; s.state = 'walking'; }
 }
@@ -264,6 +296,14 @@ export function updateStaff(state, dtMin) {
   for (const p of state.patients) patientIds.add(p.id);
   const speed = staffSpeed(state);
   const stMul = (state.mods && state.mods.staffStamina) || 1;
+  // rest rooms nobody is using or heading for, minus staff already queued for one (each tired person only
+  // reserves a room when one is really free, so nobody gets locked out of work waiting for a busy room)
+  let freeRooms = 0, flagged = 0;
+  for (const o of state.objects) {
+    const def = BUILDABLES[o.defId];
+    if (def && def.restRecovery > 0 && !o.busy && !o.usedBy && !o.staffId) freeRooms++;
+  }
+  for (const s of state.staff) if (s.wantRest && !s.restObj) flagged++;
 
   for (const s of state.staff) {
     if (!s.path) s.path = [];
@@ -285,12 +325,20 @@ export function updateStaff(state, dtMin) {
     }
 
     const max = s.staminaMax;
+    if (s.restCd > 0) s.restCd -= dtMin;
+    s.tired = s.stamina < max * TUNE.TIRED_FRAC;
+    // low stamina: ask for a rest room slot; the request only bites BETWEEN tasks (isStaffAvailable is false meanwhile),
+    // so the current patient is always finished first
+    if (!s.wantRest && !s.restObj && s.state !== 'resting' && s.stamina <= max * TUNE.REST_BELOW && !(s.restCd > 0) && freeRooms > flagged) {
+      s.wantRest = true; flagged++;
+    } else if (s.wantRest && s.stamina > max * (TUNE.REST_BELOW + 0.12)) { s.wantRest = false; flagged = Math.max(0, flagged - 1); }
 
     if (s.state === 'working') {
       if (!s.task) { s.state = 'idle'; continue; }
       const T = TREATMENTS[s.task.treatmentId];
-      const rate = T ? (T.staminaCost * stMul / Math.max(1, T.duration)) : (3 * stMul / 4);
+      const rate = T ? (T.staminaCost * stMul / Math.max(1, T.duration)) : (TUNE.REG_STAMINA * stMul);
       s.stamina = Math.max(0, s.stamina - rate * dtMin);
+      if (s.tired && !s.bubble && rnd() < TUNE.TIRED_BUBBLE * dtMin) say(s, 'tired');
       continue;
     }
 
@@ -300,6 +348,12 @@ export function updateStaff(state, dtMin) {
       s.stamina = Math.min(max, s.stamina + (rec || max * TUNE.IDLE_REGEN) * dtMin);
       if (s.stamina >= max * TUNE.REST_UNTIL || !ro) { freeRest(state, s); s.state = 'idle'; s.wait = 1; }
       continue;
+    }
+
+    // tired and between tasks (a chat is not a task): go and rest
+    if (s.wantRest && !s.restObj && (!s.task || isChatTask(s))) {
+      if (seekRest(state, s)) { flagged = Math.max(0, flagged - 1); freeRooms--; continue; }
+      s.wantRest = false; flagged = Math.max(0, flagged - 1); s.restCd = TUNE.REST_RETRY;
     }
 
     // walking / idle / chatting
@@ -321,10 +375,6 @@ export function updateStaff(state, dtMin) {
     s.stamina = Math.min(max, s.stamina + max * TUNE.IDLE_REGEN * dtMin);
     if (s.task) continue;                      // waiting for the patient at the station
 
-    if (s.stamina <= max * TUNE.REST_BELOW) {
-      s.restCd = (s.restCd || 0) - dtMin;
-      if (s.restCd <= 0) { s.restCd = 6; if (seekRest(state, s)) continue; }
-    }
     s.wait -= dtMin;
     if (s.wait <= 0) {
       s.wait = TUNE.WANDER_MIN + rnd() * TUNE.WANDER_SPAN;
