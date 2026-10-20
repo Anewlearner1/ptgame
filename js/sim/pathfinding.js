@@ -240,3 +240,31 @@ export function moveAlongPath(a, dtMin, speed, onTile) {
   a.moving = moved;
   return moved;
 }
+
+// Rescue for an agent that is standing still on a tile a blocking object now covers (built over it, or a 3x3 room dropped
+// on top): A* from inside a boxed-in cell can have no way out, so snap it to the nearest standable tile that connects
+// to the entrance. `allow` ({x,y}) is a tile the agent may legitimately stand on (its sofa seat). Returns true if moved.
+export function rescueIfBlocked(state, a, allow) {
+  const tx = Math.floor(a.x), ty = Math.floor(a.y);
+  if (isWalkable(state, tx, ty)) return false;
+  if (allow && allow.x === tx && allow.y === ty) return false;
+  const e = entryTile(state);
+  let tried = 0;
+  for (let r = 1; r <= 24 && tried < 8; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      const rem = r - Math.abs(dx);
+      for (const dy of rem === 0 ? [0] : [-rem, rem]) {
+        const nx = tx + dx, ny = ty + dy;
+        if (!agentTileOk(state, nx, ny)) continue;
+        tried++;
+        const p = findPath(state, nx, ny, e.x, e.y);
+        if (p === null) continue;
+        a.x = nx + 0.5; a.y = ny + 0.5; a.path = []; a.moving = false;
+        return true;
+      }
+    }
+  }
+  // nowhere connected: fall back to the entrance itself
+  a.x = e.x + 0.5; a.y = e.y + 0.5; a.path = []; a.moving = false;
+  return true;
+}

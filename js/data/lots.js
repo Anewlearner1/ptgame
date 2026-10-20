@@ -42,8 +42,8 @@ export const LOTS = [
     maxStaff: 15,
     expandCost: 2500000,
     requires: {
-      minReputation: 150, minYear: 2, minStaff: 7, minAvgSat: 65, needRamp: true, minSeats: 4,
-      label: '聲譽 ≥ 150、第 2 年起、員工 ≥ 7、平均滿意度 ≥ 65、有無障礙坡道、候診座位 ≥ 4',
+      minReputation: 150, minYear: 2, minStaff: 7, minAvgSat: 65, needRamp: true, minSeats: 4, research: 'rs_expand',
+      label: '聲譽 ≥ 150、第 2 年起、員工 ≥ 7、平均滿意度 ≥ 65、有無障礙坡道、候診座位 ≥ 4、完成研發「擴建規劃」（服務點數）',
     },
   },
   {
@@ -56,8 +56,8 @@ export const LOTS = [
     maxStaff: 22,
     expandCost: 6000000,
     requires: {
-      minReputation: 320, minYear: 3, minStaff: 11, minAvgSat: 72, needRamp: true, minSeats: 6,
-      label: '聲譽 ≥ 320、第 3 年起、員工 ≥ 11、平均滿意度 ≥ 72、有無障礙坡道、候診座位 ≥ 6',
+      minReputation: 320, minYear: 3, minStaff: 11, minAvgSat: 72, needRamp: true, minSeats: 6, research: 'rs_expand',
+      label: '聲譽 ≥ 320、第 3 年起、員工 ≥ 11、平均滿意度 ≥ 72、有無障礙坡道、候診座位 ≥ 6、完成研發「擴建規劃」（服務點數）',
     },
   },
 ];

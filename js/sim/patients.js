@@ -17,7 +17,7 @@ import { PATIENT_TYPES } from '../data/patients.js';
 import { STAFF_NAMES } from '../data/staffdefs.js';
 import { LINES } from '../data/texts.js';
 import { LOTS } from '../data/lots.js';
-import { findPath, findPathToAdjacent, findPathNear, moveAlongPath, pathStillValid, agentTileOk, receptionPost } from './pathfinding.js';
+import { findPath, findPathToAdjacent, findPathNear, moveAlongPath, pathStillValid, agentTileOk, receptionPost, rescueIfBlocked } from './pathfinding.js';
 import { comfortScoreAt, anxietyReliefAt, floorGripAt, floorWalkMultAt } from './modifiers.js';
 import { isTreatmentUnlocked } from './research.js';
 import { selfPayPrice, resolveCured } from './economy.js';
@@ -43,6 +43,8 @@ export const TUNE = {
   DRAIN_BASE: 0.34,          // patience / min while waiting
   SEAT_DRAIN: 0.65,          // drain multiplier while seated
   STAND_DRAIN: 1.25,         // ... while standing (elders: x1.3 more)
+  NO_SEAT_DRAIN: 1.6,        // extra patience drain multiplier while the clinic has no waiting seat at all (bad-layout penalty)
+  NO_SEAT_SAT: 0.02,          // satisfaction / min lost on top, same condition
   SAT_PER_PATIENCE: 0.25,    // satisfaction lost per patience point lost
   COMFORT_SAT: 0.06,         // satisfaction / min at max comfort
   SAT_PER_TREATMENT: 3,
@@ -162,7 +164,12 @@ function seatList(c) {
     const cells = footprint(o);
     const per = Math.max(1, Math.ceil(def.seats / cells.length));
     const nCells = Math.min(cells.length, Math.ceil(def.seats / per));
-    for (let i = 0; i < nCells; i++) for (let s = 0; s < per; s++) out.push({ objId: o.id, x: cells[i].x, y: cells[i].y, slot: s });
+    for (let i = 0; i < nCells; i++) {
+      // a seat cell walled in by other furniture could neither be reached nor left: do not offer it
+      const { x, y } = cells[i];
+      if (!(agentTileOk(c.state, x + 1, y) || agentTileOk(c.state, x - 1, y) || agentTileOk(c.state, x, y + 1) || agentTileOk(c.state, x, y - 1))) continue;
+      for (let s = 0; s < per; s++) out.push({ objId: o.id, x, y, slot: s });
+    }
   }
   c.seats = out;
   return out;
@@ -534,6 +541,10 @@ function onMapChanged(c) {
       dropAssignment(c, p);
       continue;
     }
+    if (p.spot && !p.seat && !agentTileOk(st, p.spot.x, p.spot.y)) {     // something was built on the waiting spot
+      p.spot = null; p.needSpot = true; p.path = []; p.dest = null;
+      continue;
+    }
     if (!p.path.length) continue;
     const lastOpen = !!p.seat && p.dest && p.dest.x === p.seat.x && p.dest.y === p.seat.y;
     if (!pathStillValid(st, p.path, lastOpen)) {
@@ -882,9 +893,10 @@ function tickWait(c, p, dt) {
   const cm = clamp(p.cmf / 12, 0, 1), rl = clamp(p.rel / 12, 0, 1);
   const seated = !!p.seat && p.path.length === 0 && atTile(p, p.seat);
   const rate = TUNE.DRAIN_BASE / Math.max(0.2, mods.patience || 1) * (1 - 0.4 * cm - 0.3 * rl) * (seated ? TUNE.SEAT_DRAIN : TUNE.STAND_DRAIN * (PATIENT_TYPES[p.type].needsRamp ? 1.3 : 1));
-  const dp = rate * dt;
+  const noSeat = !seated && !seatList(c).length;
+  const dp = rate * dt * (noSeat ? TUNE.NO_SEAT_DRAIN : 1);
   p.patience -= dp;
-  p.satisfaction += cm * TUNE.COMFORT_SAT * dt - dp * TUNE.SAT_PER_PATIENCE;
+  p.satisfaction += cm * TUNE.COMFORT_SAT * dt - dp * TUNE.SAT_PER_PATIENCE - (noSeat ? TUNE.NO_SEAT_SAT * dt : 0);
   if (!p.bubble && rnd() < TUNE.WAIT_BUBBLE * dt) say(p, 'wait');
   if (!p.flags.complained && p.patience < p.patienceMax * 0.35) {
     p.flags.complained = true;
@@ -1316,6 +1328,7 @@ export function updatePatients(state, dtMin) {
   const list = state.patients.slice();
   for (const p of list) {
     if (p.stage === 'gone') continue;
+    if (!p.path.length && rescueIfBlocked(state, p, p.seat) && (p.stage === 'waiting' || p.stage === 'to_reception') && !p.targetObj) { p.dest = null; p.needSpot = true; }
     updatePatient(c, p, dtMin);
   }
 

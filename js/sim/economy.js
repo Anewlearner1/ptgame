@@ -9,10 +9,10 @@ import { TREATMENTS } from '../data/treatments.js';
 export const PV_MIN = 0.6;                  // floor of the diluted point value
 export const PV_MAX = 1.0;
 export const NHI_NTD_PER_POINT = 1.0;       // NT$ per NHI point at pointValue 1.0 (before REVENUE_SCALE)
-// GLOBAL REVENUE KNOB. Each on-screen patient stands for many real patients, so every NT$ of *income* that a
-// treatment produces is multiplied by this: NHI income = points * pointValue * NHI_NTD_PER_POINT * REVENUE_SCALE,
-// and a self-pay treatment credits price * priceMult * mods.selfPayPrice * REVENUE_SCALE (see selfPayPrice()).
-// Salaries / rent / build costs are NOT scaled. The UI therefore shows the (scaled) real credit via selfPayPrice().
+// NHI REVENUE KNOB. Each on-screen patient stands for many real patients, so NHI income is multiplied by this:
+// NHI income = points * pointValue * NHI_NTD_PER_POINT * REVENUE_SCALE.
+// Self-pay is NOT scaled: a treatment credits exactly selfPayPrice() = price * priceMult * mods.selfPayPrice
+// (the self-pay list prices in data/treatments.js are already tuned as per-visit NT$). Salaries / rent / build costs are not scaled either.
 export const REVENUE_SCALE = 20;
 export const BANKRUPT_LIMIT = -300000;      // money below this at month end -> game over
 export const DEFAULT_UPKEEP = 0;            // object upkeep when def.upkeep is missing
@@ -42,6 +42,7 @@ export function initEconomy() {
 
 // ---- money primitives ----
 export function spend(state, amount, category = 'other') {
+  if (!Number.isFinite(amount)) return false;     // NaN / Infinity would poison state.money
   amount = Math.max(0, Math.round(amount));
   if (state.money < amount) return false;
   const l = ensureLedger(state);
@@ -53,7 +54,7 @@ export function spend(state, amount, category = 'other') {
 
 export function earn(state, amount, category = 'other') {
   amount = Math.round(amount);
-  if (!(amount > 0)) return;
+  if (!(amount > 0) || !Number.isFinite(amount)) return;
   const l = ensureLedger(state);
   const k = LEDGER_INCOME_KEYS.includes(category) ? category : 'other';
   state.money += amount;
@@ -62,7 +63,7 @@ export function earn(state, amount, category = 'other') {
 
 // Unconditional expense (salary/rent may push money negative).
 function charge(state, amount, category) {
-  amount = Math.max(0, Math.round(amount));
+  amount = Number.isFinite(amount) ? Math.max(0, Math.round(amount)) : 0;
   const l = ensureLedger(state);
   state.money -= amount;
   l.expense[category] += amount;

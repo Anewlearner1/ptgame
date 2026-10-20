@@ -3,6 +3,7 @@ import { bus } from '../core/bus.js';
 import { state as singleton, ui } from '../core/state.js';
 import { BUILDABLES } from '../data/buildables.js';
 import { LOTS, INSPECTION_RULES } from '../data/lots.js';
+import { RESEARCH } from '../data/research.js';
 import { rebuildOccupancy } from '../core/grid.js';
 import { spend, lotDef } from './economy.js';
 import { recomputeMods } from './modifiers.js';
@@ -10,7 +11,7 @@ import { recomputeZones } from './synergy.js';
 
 // ---- tuning constants ----
 export const PASS_SCORE = 70;            // 0..100
-export const CRITICAL_RULES = ['staff_license'];   // fraction < 0.5 on any of these fails the inspection outright
+export const CRITICAL_RULES = ['staff_license'];   // a rule flagged `critical` (see evaluateRules) fails the inspection outright
 export const EXCELLENT_SCORE = 88;       // pays a bonus
 export const REP_PASS_BASE = 4;          // reputation on pass = base + (score - PASS) * REP_PER_POINT
 export const REP_PER_POINT = 0.35;
@@ -83,7 +84,7 @@ export function evaluateRules(state, year) {
   const results = [];
   const ruleW = (id, dflt) => { const r = (INSPECTION_RULES || []).find(x => x.id === id); return r ? r.weight : dflt; };
   const nameOf = (id, dflt) => { const r = (INSPECTION_RULES || []).find(x => x.id === id); return r ? r.name : dflt; };
-  const add = (id, dflt, frac, note) => results.push({ id, name: nameOf(id, id), weight: ruleW(id, dflt), frac: Math.max(0, Math.min(1, frac)), ok: frac >= 0.999, note });
+  const add = (id, dflt, frac, note, critical = false) => results.push({ id, name: nameOf(id, id), weight: ruleW(id, dflt), frac: Math.max(0, Math.min(1, frac)), ok: frac >= 0.999, note, critical });
 
   const ramp = hasRamp(state);
   add('ramp', 10, ramp ? 1 : 0, ramp ? '有設置無障礙坡道。' : '未設置無障礙坡道，輪椅無法順利通行。');
@@ -102,7 +103,8 @@ export function evaluateRules(state, year) {
   if (!hasPT) miss.push('物理治療師');
   if ((objDefs.has('si_room') || objDefs.has('fine_table')) && !staffCountOf(state, 'ot')) { lic -= 0.25; miss.push('職能治療師'); }
   if (objDefs.has('speech_room') && !staffCountOf(state, 'st')) { lic -= 0.25; miss.push('語言治療師'); }
-  add('staff_license', 10, lic, miss.length ? '缺少執照人員：' + miss.join('、') + '。' : '執照人員配置齊全。');
+  // no doctor or no PT on the books = cannot legally operate -> automatic fail (OT / ST gaps only cost points)
+  add('staff_license', 10, lic, miss.length ? '缺少執照人員：' + miss.join('、') + '。' : '執照人員配置齊全。', !hasDoc || !hasPT);
 
   const sat = avgSatisfaction(state, 12, year);
   add('satisfaction', 8, sat == null ? 1 : sat / SAT_TARGET, sat == null ? '本年度尚無病患資料。' : `全年平均滿意度 ${sat.toFixed(0)}（標準 ${SAT_TARGET}）。`);
@@ -117,7 +119,7 @@ export function runInspection(state) {
   const rules = evaluateRules(state, year);
   const totalW = rules.reduce((s, r) => s + r.weight, 0) || 1;
   const score = Math.round(rules.reduce((s, r) => s + r.weight * r.frac, 0) / totalW * 100);
-  const critical = rules.some(r => CRITICAL_RULES.includes(r.id) && r.frac < 0.5);
+  const critical = rules.some(r => CRITICAL_RULES.includes(r.id) && r.critical);
   const pass = score >= PASS_SCORE && !critical;
   const failed = rules.filter(r => !r.ok);
   const notes = rules.map(r => (r.ok ? '✔ ' : '✘ ') + r.name + '：' + r.note);
@@ -137,7 +139,9 @@ export function runInspection(state) {
 
   const result = { year, pass, score, notes, rewardOrFine, reputationDelta: repDelta, rules: rules.map(r => ({ id: r.id, name: r.name, ok: r.ok, frac: r.frac, note: r.note })) };
   state.inspections.lastYearResult = result;
-  (state.inspections.log || (state.inspections.log = [])).push({ year, pass, score, rewardOrFine });
+  const ilog = state.inspections.log || (state.inspections.log = []);
+  ilog.push({ year, pass, score, rewardOrFine });
+  if (ilog.length > 40) ilog.splice(0, ilog.length - 40);
   bus.emit('inspection:result', result);
   return result;
 }
@@ -160,7 +164,7 @@ export function canExpand(state) {
   }
   if (r.needRamp) chk(hasRamp(state), '有無障礙坡道');
   if (r.minSeats) chk(countSeats(state) >= r.minSeats, `候診座位 ≥ ${r.minSeats}（目前 ${countSeats(state)}）`);
-  if (r.research) chk((state.research.done || []).includes(r.research), `完成研發 ${r.research}`);
+  if (r.research) chk((state.research.done || []).includes(r.research), `完成研發「${(RESEARCH[r.research] || {}).name || r.research}」`);
   chk(state.money >= (next.expandCost || 0), `資金 ≥ NT$ ${(next.expandCost || 0).toLocaleString('en-US')}`);
   const missing = checks.filter(c => !c.ok).map(c => c.label);
   return { ok: missing.length === 0, missing, checks, cost: next.expandCost || 0, target: next.name };

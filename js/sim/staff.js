@@ -10,7 +10,7 @@ import { STAFF_ROLES, STAFF_NAMES, TRAITS } from '../data/staffdefs.js';
 import { LINES } from '../data/texts.js';
 import { spend } from './economy.js';
 import { maxStaffOf } from './research.js';
-import { findPath, findPathToAdjacent, moveAlongPath, agentTileOk, receptionPost } from './pathfinding.js';
+import { findPath, findPathToAdjacent, moveAlongPath, agentTileOk, receptionPost, rescueIfBlocked } from './pathfinding.js';
 
 // ---- tuning knobs ----
 export const TUNE = {
@@ -324,6 +324,7 @@ export function updateStaff(state, dtMin) {
       if (!ro) { s.restObj = null; if (s.state === 'resting') s.state = 'idle'; s.path = []; }
     }
 
+    if (!s.path.length) rescueIfBlocked(state, s);     // built over: pop out of the object
     const max = s.staminaMax;
     if (s.restCd > 0) s.restCd -= dtMin;
     s.tired = s.stamina < max * TUNE.TIRED_FRAC;
