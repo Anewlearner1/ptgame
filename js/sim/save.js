@@ -256,7 +256,7 @@ function sanitizeAchv(m) {
   c.weekSeen = (Array.isArray(c0.weekSeen) ? c0.weekSeen : []).filter(v => Number.isFinite(v)).slice(-500);
   c.selfPayEver = !!c0.selfPayEver;
   if (Number.isFinite(c0.startMoney)) c.startMoney = c0.startMoney;
-  if (Number.isFinite(c0.lowestMoneySeen)) c.lowestMoneySeen = Math.min(c0.lowestMoneySeen, m.money);
+  if (Number.isFinite(c0.lowestMoneySeen)) c.lowestMoneySeen = c0.lowestMoneySeen;
   for (const k of ['trackMonth', 'trackYear']) {
     if (c0[k] === null) c[k] = null;
     else if (Number.isFinite(c0[k])) c[k] = c0[k];

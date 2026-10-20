@@ -69,6 +69,8 @@ await side(3); await page.click('#panel .u-focus[data-id="ltc"]');
 ok(await G(() => __game.state.policy.focus) === 'ltc', 'focus changed');
 
 // --- save / load / export / import
+// (achievements are re-evaluated on every load and pay their reward once: settle them BEFORE taking the money snapshot)
+await G(async () => { const A = await import(new URL('./js/sim/achievements.js', location.href).href); A.evaluateAll(__game.state); });
 await side(6); await G(() => { __game.state.money = 777777; });
 await page.click('#panel .card:nth-of-type(2) .btn.primary:text-is("存檔")'); await page.waitForTimeout(150);
 await G(() => { __game.state.money = 1; });

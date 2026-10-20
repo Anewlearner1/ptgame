@@ -51,7 +51,7 @@ export const ACHIEVEMENTS = [
   { id: 'c_zone_all', name: '專區大滿貫', desc: '黃金三寶區、高階自費專區、早療放電樂園同時啟動。', cat: 'challenge', tier: 2, hidden: false, badge: '🗺️', title: '專區規劃師' },
   { id: 'c_zero_slip_year', name: '零滑倒一整年', desc: '一個完整年度（12 個月）內零人滑倒，且至少服務 200 位病患。', cat: 'challenge', tier: 3, hidden: false, badge: '🦶', title: '防滑達人' },
   { id: 'c_no_angry_month', name: '笑臉迎人', desc: '單月內沒有任何病患因滿意度低於 25 或候診超時而憤怒離開，且該月服務 20 人以上。', cat: 'challenge', tier: 2, hidden: false, badge: '😊' },
-  { id: 'c_full_house', name: '門庭若市', desc: '單週服務人數達到店面上限的 90% 以上。', cat: 'challenge', tier: 2, hidden: false, badge: '🈵' },
+  { id: 'c_full_house', name: '門庭若市', desc: '擴建後，單週服務人數達到店面上限的 90% 以上。', cat: 'challenge', tier: 2, hidden: false, badge: '🈵' },
   { id: 'c_pure_nhi', name: '純健保硬撐', desc: '第 1 年全程未收取任何自費治療費，且年底資金不低於起始資金。', cat: 'challenge', tier: 2, hidden: false, badge: '🧾', title: '純健保硬漢' },
   { id: 'c_one_week_cure', name: '神醫降臨', desc: '單週治癒 10 位以上病患。', cat: 'challenge', tier: 2, hidden: false, badge: '💊', reward: { pointKey: 'medical' } },
   { id: 'h_coffee', name: '咖啡成癮', desc: '同時擁有 3 台咖啡機。', cat: 'challenge', tier: 1, hidden: true, hint: '診所裡的咖啡香越來越濃了……', badge: '☕☕' },

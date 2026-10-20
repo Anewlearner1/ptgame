@@ -32,7 +32,8 @@
 // c_zone_*              = state.zones contains the synergy id (zones are recomputed by build.js before map:changed fires).
 // c_zero_slip_year      = at year:end: fully tracked year, slipThisYear == 0 and servedThisYear >= 200.
 // c_no_angry_month      = at nhi:settled: fully tracked month, angryThisMonth == 0 and servedThisMonth >= 20.
-// c_full_house          = unique patients served this week >= ceil(0.9 * lot.maxPatientsPerWeek) (checked live, mid-week).
+// c_full_house          = lot level >= 1 AND unique patients served this week >= ceil(0.9 * lot.maxPatientsPerWeek) (checked live, mid-week).
+//                         (the starter lot's cap of 22 is reached too easily, so it needs the first expansion)
 // c_pure_nhi            = at year:end of year 1: tracked since day 1, no self-pay ever, money >= counters.startMoney (money at the first
 //                         event of the game = START_MONEY minus the starter-clinic charge).
 // c_one_week_cure       = curedThisWeek (patient:left with cured) >= 10, checked live.
@@ -61,7 +62,7 @@ const monthIdx = (y, m) => y * 12 + (m - 1);
 // ---------------- state ----------------
 function freshCounters() {
   return {
-    totalSelfPayMonth: 0, dilemmasDone: {}, communityDone: {}, auditPassStreak: 0, chatCount: 0,
+    totalSelfPayMonth: 0, dilemmasDone: { painkiller: 0, skip_doctor: 0, overtreat: 0, complain: 0 }, communityDone: {}, auditPassStreak: 0, chatCount: 0,
     slipThisYear: 0, angryThisMonth: 0, servedThisMonth: 0, servedThisYear: 0,
     servedThisWeek: 0, curedThisWeek: 0, elderThisWeek: 0, slipThisWeek: 0, weekSeen: [],
     selfPayEver: false,
@@ -79,6 +80,7 @@ export function ensure(state) {
   const c = a.counters, f = freshCounters();
   for (const k of Object.keys(f)) if (c[k] === undefined) c[k] = f[k];
   if (!c.dilemmasDone || typeof c.dilemmasDone !== 'object') c.dilemmasDone = {};
+  for (const k of DILEMMA_KINDS) if (typeof c.dilemmasDone[k] !== 'number') c.dilemmasDone[k] = 0;
   if (!c.communityDone || typeof c.communityDone !== 'object') c.communityDone = {};
   if (!Array.isArray(c.weekSeen)) c.weekSeen = [];
   const t = state.time || { year: 1, month: 1, week: 1, clock: 480 };
@@ -165,7 +167,7 @@ const R = {
     if (!p) return false;
     return cnt(s).trackMonth === monthIdx(p.year, p.month) && cnt(s).angryThisMonth === 0 && cnt(s).servedThisMonth >= 20;
   } },
-  c_full_house: { on: ['treatment:done', 'week:end'], check: (s) => cnt(s).servedThisWeek >= fullHouseNeed(s), prog: (s) => [Math.min(cnt(s).servedThisWeek, fullHouseNeed(s)), fullHouseNeed(s)] },
+  c_full_house: { on: ['treatment:done', 'week:end'], check: (s) => (s.lotLevel || 0) >= 1 && cnt(s).servedThisWeek >= fullHouseNeed(s), prog: (s) => [Math.min(cnt(s).servedThisWeek, fullHouseNeed(s)), fullHouseNeed(s)] },
   c_pure_nhi: { on: ['year:end'], check: (s, p) => {
     const y = p && p.year != null ? p.year : s.time.year;
     const c = cnt(s), start = typeof c.startMoney === 'number' ? c.startMoney : START_MONEY;

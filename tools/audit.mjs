@@ -92,13 +92,16 @@ function wire() {
   bus.on('toast', () => {});
 }
 function refresh() { rebuildOccupancy(state); Syn.recomputeZones(state); Mod.recomputeMods(state); ui.dirtyOcc = false; }
-function fresh(seed = SEED) {
+// liveAchv=false (default): every achievement is pre-unlocked so reward payouts cannot disturb the exact-money assertions of the other
+// sections; the achievements section and the long runs pass true to exercise the real system.
+function fresh(seed = SEED, liveAchv = false) {
   wire();
   seedRng(seed);
   globalThis.localStorage.clear();
   Sav.newGame(state);
   state.seed = seed;
   refresh();
+  if (!liveAchv) for (const d of ACHD.ACHIEVEMENTS) state.achv.unlocked[d.id] = { year: 1, month: 1, week: 1 };
   return state;
 }
 function resolvePending() {
@@ -983,7 +986,7 @@ const POLICY = {
   },
 };
 function longRun(policy, years, seed) {
-  fresh(seed);
+  fresh(seed, true);
   if (policy === 'rich' || policy === 'richstatic') {
     // steady-state stress: L1 lot, everything researched, many stations + staff, high reputation (busy clinic, many agents)
     state.money = 9e6; state.reputation = 200; state.research.done = Object.keys(RESEARCH);
@@ -1063,7 +1066,7 @@ function achievementsSection() {
   let unl = [], toasts = [];
   const offU = bus.on('achievement:unlocked', e => unl.push(e.id));
   const offT = bus.on('toast', t => toasts.push(t));
-  const FRESH = () => { fresh(); Ach.ensure(state); bus.emit('mods:dirty', {}); unl = []; toasts = []; };
+  const FRESH = () => { fresh(SEED, true); Ach.ensure(state); bus.emit('mods:dirty', {}); unl = []; toasts = []; };
   const add = (defId, x = 0, y = 0) => state.objects.push({ id: state.nextId++, defId, x, y, rot: 0, busy: false, usedBy: null, staffId: null, wear: 0 });
   const pat = (type = 'elder', extra = {}) => ({ id: state.nextId++, type, treated: 1, ...extra });
   const treat = (p, selfPay = 0) => bus.emit('treatment:done', { patient: p, treatmentId: 'x', nhiPoints: 0, selfPay, staffId: null });
@@ -1101,7 +1104,7 @@ function achievementsSection() {
     c_zone_all: () => { state.zones = [{ id: 'golden3' }, { id: 'premium' }, { id: 'kidpark' }]; bus.emit('map:changed', {}); },
     c_zero_slip_year: () => { for (let i = 0; i < 200; i++) left(pat('office')); yearEnd(); },
     c_no_angry_month: () => { for (let i = 0; i < 20; i++) left(pat('office')); settle(); },
-    c_full_house: () => { for (let i = 0, n = Math.ceil(0.9 * LOTS[state.lotLevel].maxPatientsPerWeek); i < n; i++) treat(pat('office')); },
+    c_full_house: () => { state.lotLevel = Math.max(state.lotLevel, 1); for (let i = 0, n = Math.ceil(0.9 * LOTS[state.lotLevel].maxPatientsPerWeek); i < n; i++) treat(pat('office')); },
     c_pure_nhi: () => { state.money = state.achv.counters.startMoney + 1000; yearEnd(); },
     c_one_week_cure: () => { for (let i = 0; i < 10; i++) left(pat(), { cured: true }); },
     h_coffee: () => { add('coffee', 1, 1); add('coffee', 3, 1); add('coffee', 5, 1); bus.emit('map:changed', {}); },
@@ -1218,6 +1221,17 @@ function achievementsSection() {
   check('achv sanitize: badges truncated to MAX_BADGES, title without title text dropped', state.achv.badges.length === ACHD.MAX_BADGES && state.achv.title === null);
   const junk3 = JSON.parse(exp); junk3.state.achv = 'garbage'; FRESH();
   check('achv sanitize: non-object achv is repaired', Sav.importSave(state, JSON.stringify(junk3)) && typeof state.achv.unlocked === 'object' && Array.isArray(state.achv.badges));
+
+  // ---- a reward is never paid twice across save -> load -> save -> load ----
+  FRESH(); state.money = 3e6; state.stats.patientsTotal = 150;           // m_cash_2m + m_pat_100 satisfied but not yet unlocked
+  const dumpA = Sav.exportSave(state);
+  FRESH(); Sav.importSave(state, dumpA);
+  const paid = state.money - 3e6, wantPaid = 2 * ACHD.ACHIEVEMENT_TIERS[1].money;
+  check('achv: loading a save pays the retroactive rewards once', Ach.isUnlocked(state, 'm_cash_2m') && Ach.isUnlocked(state, 'm_pat_100') && paid >= wantPaid, `${paid} vs ${wantPaid}`);
+  const moneyAfter = state.money, nUnl = Ach.unlockedCount(state), dumpB = Sav.exportSave(state);
+  FRESH(); Sav.importSave(state, dumpB); const m2 = state.money; const dumpC = Sav.exportSave(state);
+  FRESH(); Sav.importSave(state, dumpC);
+  check('achv: save -> load -> save -> load never re-pays', m2 === moneyAfter && state.money === moneyAfter && Ach.unlockedCount(state) === nUnl, `${moneyAfter} ${m2} ${state.money}`);
 
   // ---- integration: real month roll + real treatments feed the counters ----
   FRESH(); runMonths(2);
