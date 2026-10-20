@@ -149,11 +149,9 @@ export function showPending(raw) {
   showModal({
     title: (isDilemma ? '🤔 兩難抉擇：' : '📰 事件：') + (d.title || ''),
     body, noActions: true, dismissable: false, pause: false, tag: 'dilemma',
-    onShow: el => {
-      el.addEventListener('keydown', e => {
-        const n = parseInt(e.key, 10);
-        if (n >= 1 && n <= d.choices.length) { e.preventDefault(); choose(d, n - 1); }
-      });
+    onKey: e => {
+      const n = parseInt(e.key, 10);
+      if (n >= 1 && n <= d.choices.length) { e.preventDefault(); choose(d, n - 1); }
     },
   });
 }

@@ -337,9 +337,9 @@ function drawPerson(g, s, front, pose, frame, right) {
   if (front) {
     const ex = 6 + dxs, ex2 = 9 + dxs;
     if (s.glasses) {
-      R(ex - 1, hy + 3, 3, 3, '#46465a'); R(ex2 - 1, hy + 3, 3, 3, '#46465a');
-      R(ex, hy + 4, 1, 1, '#e8f4ff'); R(ex2, hy + 4, 1, 1, '#e8f4ff');
-      R(ex, hy + 4, 1, 1, '#22222a'); R(ex2, hy + 4, 1, 1, '#22222a');
+      R(ex - 1, hy + 3, 3, 3, '#e8f4ff'); R(ex2 - 1, hy + 3, 3, 3, '#e8f4ff');
+      R(ex - 1, hy + 3, 3, 1, '#46465a'); R(ex2 - 1, hy + 3, 3, 1, '#46465a'); R(ex - 1, hy + 5, 3, 1, '#46465a'); R(ex2 - 1, hy + 5, 3, 1, '#46465a');
+      R(ex, hy + 4, 1, 1, '#22222a'); R(ex2, hy + 4, 1, 1, '#22222a'); R(ex + 2, hy + 4, ex2 - ex - 3, 1, '#46465a');
     } else {
       R(ex, hy + 4, 1, 2, '#22222a'); R(ex2, hy + 4, 1, 2, '#22222a');
       if (kid) { R(ex - 1, hy + 5, 1, 1, '#f5a0a0'); R(ex2 + 1, hy + 5, 1, 1, '#f5a0a0'); }

@@ -19,9 +19,6 @@ const FONT = '"Noto Sans TC","PingFang TC","Microsoft JhengHei","Heiti TC",sans-
 let canvas = null, ctx = null;
 const view = { w: 0, h: 0, dpr: 1 };
 let layer = null, layerCtx = null, layerSig = '';
-let floorSnap = new Uint8Array(MAP_W * MAP_H);
-const floorIds = ['', 'floor_mat', 'floor_wood', 'ramp'];
-function floorCode(id) { if (!id) return 0; let i = floorIds.indexOf(id); if (i < 0) { floorIds.push(id); i = floorIds.length - 1; } return i; }
 
 // ───────────────────────── init / resize ─────────────────────────
 export function initRenderer(cv) {
@@ -56,8 +53,7 @@ function ensureSize() {
 function groundKind(gx, gy, lot, door, state) {
   const inL = gx >= lot.x0 && gy >= lot.y0 && gx < lot.x0 + lot.w && gy < lot.y0 + lot.h;
   if (inL) {
-    const f = state.map.floor[gy] && state.map.floor[gy][gx];
-    return f || (((gx + gy) & 1) ? 'lot2' : 'lot');
+    return ((gx + gy) & 1) ? 'lot2' : 'lot';   // painted floors are drawn per frame (cheap, no layer rebuilds)
   }
   const dy = gy - door.y;
   if (dy === 0 && gx === door.x) return 'doormat';
@@ -83,19 +79,6 @@ function layerSignature(state) {
   const l = state.lot, d = state.door;
   let s = l.x0 + ',' + l.y0 + ',' + l.w + ',' + l.h + '|' + d.x + ',' + d.y + '|' + state.clinicName;
   return s;
-}
-
-function floorsChanged(state) {
-  const l = state.lot;
-  let changed = false;
-  for (let y = l.y0; y < l.y0 + l.h; y++) {
-    const row = state.map.floor[y];
-    for (let x = l.x0; x < l.x0 + l.w; x++) {
-      const c = floorCode(row && row[x]);
-      if (floorSnap[y * MAP_W + x] !== c) { floorSnap[y * MAP_W + x] = c; changed = true; }
-    }
-  }
-  return changed;
 }
 
 function buildLayer(state) {
@@ -141,7 +124,6 @@ function buildLayer(state) {
       }
       if (gy > door.y + 7 && gy < MAP_H && k.startsWith('grass')) { if (r < 0.16) add(r < 0.05 ? 'tree2' : 'tree', gx, gy); }
       if (gy === door.y + 1 && gx % 6 === 1 && Math.abs(gx - door.x) > 2) add('lamp', gx, gy);
-      if (gy === door.y + 1 && (gx === door.x - 4 || gx === door.x + 4)) add('bench', gx, gy);
       if (gy === door.y && (gx === door.x - 2 || gx === door.x + 2)) add('planter', gx, gy);
       if (gy === door.y + 7 && gx % 6 === 4) add('lamp', gx, gy);
     }
@@ -482,6 +464,7 @@ function getGridPath(lot) {
 }
 
 // ───────────────────────── frame ─────────────────────────
+const tint = { on: false, x: 0, y: 0, w: 0, h: 0, col: '' };
 let lastNow = 0, carClock = 0, hoverTick = 0;
 const BG = '#1f2e3a';
 const DAY_KEYS = [[0, 255, 232, 200], [0.1, 255, 250, 240], [0.22, 255, 255, 255], [0.62, 255, 255, 255], [0.8, 255, 214, 168], [0.92, 196, 170, 206], [1, 128, 132, 196]];
@@ -494,8 +477,7 @@ export function render(state, ui, now) {
 
   // static layer rebuild when needed
   const sig = layerSignature(state);
-  const fch = floorsChanged(state);
-  if (sig !== layerSig || fch || !layer._built) { layerSig = sig; buildLayer(state); layer._built = true; }
+  if (sig !== layerSig || !layer._built) { layerSig = sig; buildLayer(state); layer._built = true; }
   const osig = objSignature(state);
   if (String(osig) !== objSig) { objSig = String(osig); rebuildRecs(state); }
   if (hooks.refreshHover && ui.tool && ui.tool.mode !== 'none' && now - hoverTick > 160) { hoverTick = now; hooks.refreshHover(); }
@@ -516,6 +498,15 @@ export function render(state, ui, now) {
   }
 
   const lot = state.lot;
+  // painted floors
+  for (let y = lot.y0; y < lot.y0 + lot.h; y++) {
+    const row = state.map.floor[y];
+    if (!row) continue;
+    for (let x = lot.x0; x < lot.x0 + lot.w; x++) {
+      const id = row[x];
+      if (id) { const fs = getFloorSprite(id); ctx.drawImage(fs, isoX(x, y) - 32, isoY(x, y)); }
+    }
+  }
   const tool = ui.tool || { mode: 'none' };
   const hov = ui.hover || { x: -1, y: -1 };
   const tNow = now / 1000;
@@ -554,12 +545,13 @@ export function render(state, ui, now) {
       ctx.fillStyle = ok ? 'rgba(80,230,120,0.35)' : 'rgba(240,70,70,0.40)';
       rectPath(ctx, o.x, o.y, w, h); ctx.fill();
       ghostO = { def, rot, o, ok, w, h };
+      tint.on = true; tint.x = o.x; tint.y = o.y; tint.w = w; tint.h = h; tint.col = ok ? 'rgba(80,230,120,0.18)' : 'rgba(240,70,70,0.22)';
     } else if (tool.mode === 'paint' && tool.defId) {
       fillTile(ctx, hx, hy, hov.valid ? 'rgba(80,230,120,0.45)' : 'rgba(240,70,70,0.45)');
     } else if (tool.mode === 'demolish') {
       const ti = tileRec[hy * MAP_W + hx];
       let hit = false;
-      if (ti >= 0) { const r = recs[ti]; ctx.fillStyle = 'rgba(240,60,60,0.45)'; rectPath(ctx, r.x0, r.y0, r.w, r.h); ctx.fill(); hit = true; }
+      if (ti >= 0) { const r = recs[ti]; ctx.fillStyle = 'rgba(240,60,60,0.45)'; rectPath(ctx, r.x0, r.y0, r.w, r.h); ctx.fill(); hit = true; tint.on = true; tint.x = r.x0; tint.y = r.y0; tint.w = r.w; tint.h = r.h; tint.col = 'rgba(240,60,60,0.30)'; }
       else {
         for (const r of flatRecs) if (hx >= r.x0 && hx < r.x1 && hy >= r.y0 && hy < r.y1) { ctx.fillStyle = 'rgba(240,60,60,0.45)'; rectPath(ctx, r.x0, r.y0, r.w, r.h); ctx.fill(); hit = true; break; }
       }
@@ -619,6 +611,11 @@ export function render(state, ui, now) {
     }
   }
 
+  if (tint.on) {
+    // tool tint over the objects too, so a covered footprint is still readable
+    ctx.fillStyle = tint.col; rectPath(ctx, tint.x, tint.y, tint.w, tint.h); ctx.fill();
+    tint.on = false;
+  }
   // ghost
   if (ghostO) {
     const spr = getObjectSprite(ghostO.def.id, ghostO.rot);
@@ -712,7 +709,7 @@ function drawAtmosphere(state, now, dpr) {
   if (kind === 'rain' || kind === 'meiyu' || kind === 'typhoon') {
     const heavy = kind === 'typhoon';
     const n = heavy ? 220 : 130, len = heavy ? 22 : 14, sl = heavy ? 0.55 : 0.18, sp = heavy ? 1500 : 900;
-    g.strokeStyle = heavy ? 'rgba(210,225,255,0.55)' : 'rgba(190,215,255,0.45)'; g.lineWidth = 1.3;
+    g.strokeStyle = heavy ? 'rgba(210,225,255,0.55)' : 'rgba(200,225,255,0.6)'; g.lineWidth = 1.3;
     g.beginPath();
     for (let i = 0; i < n; i++) {
       const px = (i * 97.31 + ts * sp * sl) % (W + 60) - 30;

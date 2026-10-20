@@ -15,9 +15,13 @@ export function initModal() {
   root = document.getElementById('modal-root');
   document.addEventListener('keydown', e => {
     if (!current) return;
+    const editable = e.target && /^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName);
+    if (current.opts.onKey) current.opts.onKey(e);
+    // keep game hotkeys (space, 1/2/3, R, G) from reaching the map while a dialog is open
+    if (!editable && (e.key === ' ' || /^[123rRgG]$/.test(e.key))) { e.stopPropagation(); if (e.key !== ' ' || !(e.target && e.target.tagName === 'BUTTON')) e.preventDefault(); return; }
     if (e.key === 'Escape' && current.opts.dismissable !== false) {
       e.preventDefault(); e.stopPropagation(); closeModal();
-    } else if (e.key === 'Enter' && !(e.target && /^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName))) {
+    } else if (e.key === 'Enter' && !(e.target && /^(TEXTAREA|INPUT|SELECT|BUTTON)$/.test(e.target.tagName))) {
       const primary = current.el.querySelector('.modal-actions .btn.primary:not([disabled])');
       if (primary) { e.preventDefault(); primary.click(); }
     }

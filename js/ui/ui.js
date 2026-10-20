@@ -28,6 +28,7 @@ let lastTick = 0;
 let lastTool = 'none';
 let hintIdx = 0, hintAt = 0;
 let dirty = true;
+let shiftCur = 0, shiftTarget = 0;   // px the camera is nudged right so the open panel doesn't hide the lot
 
 export function initUI(state, ui) {
   ctx.state = state; ctx.ui = ui;
@@ -51,6 +52,7 @@ export function initUI(state, ui) {
   bus.on('ui:escape', () => onEscape(state, ui));
   bus.on('state:loaded', () => {
     dirty = true; resetPendingKey();
+    shiftCur = 0;                      // main.js re-centred the camera
     remount(state, ui, true);
     setTimeout(() => { if (!state.flags.tutorialDone) showTutorial(); }, 50);
   });
@@ -58,6 +60,11 @@ export function initUI(state, ui) {
   bus.on('week:start', () => { dirty = true; });
   bus.on('map:changed', () => { dirty = true; });
   document.addEventListener('keydown', e => onKey(e, state, ui));
+  // after a mouse click, drop button focus so Space / number hotkeys go to the game, not the last-clicked button
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('button, .card[role="button"]');
+    if (b && e.detail > 0 && b.tagName !== 'INPUT') setTimeout(() => { if (document.activeElement === b) b.blur(); }, 0);
+  });
 
   // default speed preference (applied once on a fresh load)
   const ds = parseInt(lsGet('ptgame.defaultSpeed', '1'), 10);
@@ -108,6 +115,7 @@ function remount(state, ui, force) {
   clear(panelEl);
   if (!shown || !MOUNTS[shown]) {
     panelEl.hidden = true; stageEl.classList.remove('panel-open');
+    shiftTarget = 0;
     return;
   }
   const close = h('button', { class: 'panel-close', type: 'button', 'aria-label': '關閉', onclick: () => { ui.panel = null; syncPanel(state, ui); } }, '✕');
@@ -119,11 +127,21 @@ function remount(state, ui, force) {
   stageEl.dataset.panel = shown;
   live = MOUNTS[shown](body, state, ui);
   if (live && live.update) live.update(state, ui);
+  // shift the view so the map's centre moves into the part of the stage the panel leaves free
+  const sr = stageEl.getBoundingClientRect(), pr = panelEl.getBoundingClientRect();
+  shiftTarget = Math.max(0, Math.round((pr.right - sr.left) / 2));
+}
+function stepCam(ui) {
+  if (shiftCur === shiftTarget) return;
+  const d = Math.abs(shiftTarget - shiftCur) < 1 ? shiftTarget - shiftCur : (shiftTarget - shiftCur) * 0.22;
+  shiftCur += d;
+  if (ui.cam) ui.cam.x += d;
 }
 
 export function updateUI(state, ui, force) {
   // cheap per-frame work: panel switching by other modules, Esc-tool bookkeeping
   if (ui.panel !== shown) remount(state, ui, false);
+  stepCam(ui);
   const now = performance.now();
   if (!force && !dirty && now - lastTick < 200) { lastTool = ui.tool.mode; return; }
   lastTick = now; dirty = false;
