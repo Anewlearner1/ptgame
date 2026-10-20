@@ -105,6 +105,66 @@ await shot('play_gameover');
 await G(() => [...document.querySelectorAll('.modal .btn')].find(b => /重新開業/.test(b.textContent))?.click()); await page.waitForTimeout(600);
 ok(await G(() => __game.state.objects.length === 7 && __game.state.money > 1e6), 'new game after game over');
 
+
+// =====================================================================================================
+// --- 成就 / 稱號與徽章 (S-F: UI + signboard). Kept in its own section; docs/ACHIEVEMENTS.md §5.4/§5.5
+// =====================================================================================================
+await closeModals();
+await G(() => { __game.bus.emit('speed:set', { speed: 0 }); __game.state.reputation = 300; const A = __game.state.achv; A.title = null; A.badges = []; A.unlocked = {}; });
+const unlockIds = ['m_first_month', 'm_cash_2m', 'm_pat_100', 'm_rep_100', 'm_rep_250', 'm_lot1', 'm_year3', 'c_zone_golden', 'c_zone_premium', 'c_zone_kidpark', 't_cold_week'];
+await G(ids => { ids.forEach((id, i) => { __game.state.achv.unlocked[id] = { year: 1, month: 1 + (i % 12), week: 1 + (i % 4) }; }); }, unlockIds);
+await page.keyboard.press('Escape');
+await G(() => { __game.ui.panel = null; });
+await page.waitForTimeout(250);
+await side(3);
+await page.click('#panel .tab:has-text("稱號與徽章")'); await page.waitForTimeout(350);
+ok(await G(() => /11 \/ 41/.test(document.querySelector('#panel .u-achcount')?.textContent || '')), 'achv panel: unlocked counter 11 / 41');
+ok(await G(() => document.querySelectorAll('#panel .u-ach').length) === 41, 'achv panel: 41 cards');
+ok(await G(() => document.querySelectorAll('#panel .u-achtabs .tab').length) === 4, 'achv panel: category tabs (全部 + 3)');
+await page.click('#panel .u-achtabs .tab:has-text("在地")'); await page.waitForTimeout(150);
+ok(await G(() => [...document.querySelectorAll('#panel .u-ach')].filter(c => !c.hidden).every(c => c.dataset.cat === 'taiwan')), 'achv panel: category tab filters cards');
+await page.click('#panel .u-achtabs .tab:has-text("挑戰")'); await page.waitForTimeout(150);
+ok(await G(() => [...document.querySelectorAll('#panel .u-ach.u-masked')].filter(c => !c.hidden).length) >= 3
+  && await G(() => [...document.querySelectorAll('#panel .u-ach.u-masked .u-achname')].every(n => n.textContent === '？？？')), 'achv panel: hidden achievements masked as ？？？');
+await page.click('#panel .u-achtabs .tab:has-text("全部")'); await page.waitForTimeout(150);
+const card = id => `#panel [data-ach="${id}"]`;
+const canvasShot = async () => (await page.locator('#game').screenshot()).toString('base64');
+await G(() => { __game.ui.panel = null; }); await page.waitForTimeout(250);
+const sig0 = await canvasShot();
+await side(3); await page.click('#panel .tab:has-text("稱號與徽章")'); await page.waitForTimeout(250);
+// equip a title
+await page.click(`${card('t_cold_week')} .btn:text-is("配戴稱號")`); await page.waitForTimeout(250);
+ok(await G(() => __game.state.achv.title) === 't_cold_week', 'achv: equip title via button');
+ok(await G(() => document.querySelector('#topbar .tb-title') && !document.querySelector('#topbar .tb-title').hidden && /〔寒流守護者〕/.test(document.querySelector('#topbar .tb-title').textContent)), 'achv: topbar shows 〔稱號〕');
+ok(await G(() => /〔寒流守護者〕/.test(document.querySelector('#panel .u-curtitle').textContent)), 'achv panel: current title shows displayTitle');
+ok(await G(() => document.querySelector('#panel [data-ach="t_cold_week"] .btn:not([hidden])').textContent) === '取消配戴', 'achv: equip button toggles to 取消配戴');
+await page.click(`${card('t_cold_week')} .btn:text-is("取消配戴")`); await page.waitForTimeout(250);
+ok(await G(() => __game.state.achv.title) === null && await G(() => document.querySelector('#topbar .tb-title').hidden), 'achv: unequip removes title from topbar');
+await page.click(`${card('t_cold_week')} .btn:text-is("配戴稱號")`); await page.waitForTimeout(150);
+// hang badges (max 3, 4th refused with a message)
+for (const id of ['m_first_month', 'm_cash_2m', 'm_pat_100']) { await page.click(`${card(id)} .btn:text-is("掛上招牌")`); await page.waitForTimeout(120); }
+ok(await G(() => __game.state.achv.badges.length) === 3, 'achv: 3 badges hung');
+await page.click(`${card('m_rep_100')} .btn:text-is("掛上招牌")`); await page.waitForTimeout(200);
+ok(await G(() => __game.state.achv.badges.length) === 3 && await G(() => !document.querySelector('#panel .u-achnote').hidden), 'achv: 4th badge refused with a notice');
+await page.click(`${card('m_pat_100')} .btn:text-is("取下招牌")`); await page.waitForTimeout(150);
+ok(await G(() => __game.state.achv.badges.join()) === 'm_first_month,m_cash_2m', 'achv: badge removed');
+await page.click(`${card('m_pat_100')} .btn:text-is("掛上招牌")`); await page.waitForTimeout(150);
+// signboard re-rendered with badges (canvas differs once the panel is closed again)
+await G(() => { __game.ui.panel = null; }); await page.waitForTimeout(500);
+ok(await canvasShot() !== sig0, 'achv: signboard / canvas changed after hanging badges');
+await shot('play_achv');
+// in-place refresh: a card keeps its DOM identity while an unlock event arrives
+await side(3); await page.click('#panel .tab:has-text("稱號與徽章")'); await page.waitForTimeout(250);
+await G(() => { document.querySelector('#panel [data-ach="c_zone_all"]')._keep = 1; __game.state.achv.unlocked.c_zone_all = { year: 1, month: 2, week: 2 }; __game.bus.emit('achievement:unlocked', { id: 'c_zone_all' }); });
+await page.waitForTimeout(400);
+ok(await G(() => document.querySelector('#panel [data-ach="c_zone_all"]')._keep === 1 && /已於/.test(document.querySelector('#panel [data-ach="c_zone_all"] .u-achwhen').textContent)), 'achv panel: unlock event refreshes cards in place');
+// persistence across reload
+await G(async () => { const S = await import('/js/sim/save.js'); S.saveGame(__game.state, 'auto'); });
+await page.reload(); await page.waitForTimeout(1200); await closeModals();
+ok(await G(() => __game.state.achv.title === 't_cold_week' && __game.state.achv.badges.length === 3), 'achv: title + badges survive reload');
+ok(await G(() => /〔寒流守護者〕/.test(document.querySelector('#topbar .tb-title')?.textContent || '')), 'achv: topbar title after reload');
+await G(() => { const A = __game.state.achv; A.title = null; A.badges = []; });
+
 const real = problems.filter(p => !/\[save\] import failed/.test(p));
 console.log(real.length ? 'CONSOLE PROBLEMS:\n' + real.join('\n') : 'no console problems');
 await browser.close();

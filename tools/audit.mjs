@@ -3,7 +3,7 @@
 // Usage (from repo root; no server needed):
 //   node tools/audit.mjs                 # everything, 5 simulated years per long-run policy (a few minutes)
 //   node tools/audit.mjs --quick         # 2 years per policy (~1-2 min) - good for CI
-//   node tools/audit.mjs --only features,edge,save   # run only some sections: features | edge | save | longrun
+//   node tools/audit.mjs --only features,edge,save   # run only some sections: features | edge | save | longrun | achievements
 //   node tools/audit.mjs --years 3 --policies idle,chaos --seed 7 [--verbose]
 // Exit code 1 if any assertion fails. Prints a feature-conformance table at the end.
 //
@@ -40,6 +40,8 @@ const B = await imp('sim/build.js');
 const Sav = await imp('sim/save.js');
 const P = await imp('sim/patients.js');
 const S = await imp('sim/staff.js');
+const Ach = await imp('sim/achievements.js');
+const ACHD = await imp('data/achievements.js');
 const { BUILDABLES } = await imp('data/buildables.js');
 const { TREATMENTS } = await imp('data/treatments.js');
 const { RESEARCH } = await imp('data/research.js');
@@ -82,7 +84,7 @@ let wired = false;
 function wire() {
   if (wired) return;
   wired = true;
-  Eco.initEconomy(); Ev.initEvents(); Res.initResearch(); Ins.initInspection();
+  Eco.initEconomy(); Ev.initEvents(); Res.initResearch(); Ins.initInspection(); Ach.initAchievements();
   bus.on('mods:dirty', () => Mod.recomputeMods(state));
   bus.on('map:changed', () => { ui.dirtyOcc = true; });
   bus.on('week:end', () => P.closeUp(state));
@@ -162,6 +164,16 @@ function invariants() {
   }
   const cells = new Map();
   for (const o of state.objects) { if (BUILDABLES[o.defId].blocks === false) continue; for (const c of footprint(o)) { const k = c.x + ',' + c.y; must(!cells.has(k), 'overlapping blocking objects at ' + k); cells.set(k, o.id); } }
+  { // achievements (state.achv) stay well-formed
+    const A = state.achv, known = new Set(ACHD.ACHIEVEMENTS.map(d => d.id));
+    must(A && typeof A === 'object' && A.unlocked && A.counters && Array.isArray(A.badges), 'achv shape');
+    if (A && A.unlocked) {
+      for (const id of Object.keys(A.unlocked)) must(known.has(id), 'achv unknown id ' + id);
+      must(A.badges.length <= ACHD.MAX_BADGES && A.badges.every(id => A.unlocked[id]), 'achv badges invalid');
+      must(A.title === null || !!(A.unlocked[A.title] && (ACHD.ACHIEVEMENTS.find(d => d.id === A.title) || {}).title), 'achv title invalid');
+      for (const [k, v] of Object.entries(A.counters)) if (typeof v === 'number') must(Number.isFinite(v) && (k === 'lowestMoneySeen' || k === 'startMoney' || v >= 0), 'achv counter ' + k + '=' + v);
+    }
+  }
   const e = entryTile(state);
   must(!cells.has(e.x + ',' + e.y), 'entry tile blocked');
   must(state.time.week >= 1 && state.time.week <= 4 && state.time.month >= 1 && state.time.month <= 12, 'calendar out of range');
@@ -1042,9 +1054,184 @@ function longrunSection() {
 }
 
 // =====================================================================================================
+// SECTION: achievements (docs/ACHIEVEMENTS.md §4 / §5.6)
+// =====================================================================================================
+function achievementsSection() {
+  section('Achievements');
+  const defs = ACHD.ACHIEVEMENTS;
+  check('achv: 41 definitions, unique ids, 4 hidden', defs.length === 41 && new Set(defs.map(d => d.id)).size === 41 && defs.filter(d => d.hidden).length === 4);
+  let unl = [], toasts = [];
+  const offU = bus.on('achievement:unlocked', e => unl.push(e.id));
+  const offT = bus.on('toast', t => toasts.push(t));
+  const FRESH = () => { fresh(); Ach.ensure(state); bus.emit('mods:dirty', {}); unl = []; toasts = []; };
+  const add = (defId, x = 0, y = 0) => state.objects.push({ id: state.nextId++, defId, x, y, rot: 0, busy: false, usedBy: null, staffId: null, wear: 0 });
+  const pat = (type = 'elder', extra = {}) => ({ id: state.nextId++, type, treated: 1, ...extra });
+  const treat = (p, selfPay = 0) => bus.emit('treatment:done', { patient: p, treatmentId: 'x', nhiPoints: 0, selfPay, staffId: null });
+  const left = (p, o = {}) => bus.emit('patient:left', { patient: p, satisfaction: 70, cured: false, reason: 'done', ...o });
+  const weekEnd = () => { bus.emit('week:end', { ...state.time }); state.events.pendingDilemma = null; state.time.paused = false; };
+  const settle = (rec = {}) => bus.emit('nhi:settled', { year: state.time.year, month: state.time.month, nhiIncome: 100000, selfIncome: 0, income: 100000, ...rec });
+  const yearEnd = (y = 1) => Ach.evaluate(state, 'year:end', { year: y });   // (direct: the real year:end would also run a real inspection)
+  const mkStaff = (role) => state.staff.push({ id: state.nextId++, role, skill: 5, charm: 5, salary: 1000 });
+  const dil = (t) => bus.emit('dilemma:resolved', { ok: true, kind: 'dilemma', trigger: t, id: 'x' });
+  const SC = {
+    m_first_month: () => { state.history.push({ year: 1, month: 1, money: 1e6 }); settle(); },
+    m_cash_2m: () => { state.money = 2.1e6; weekEnd(); }, m_cash_10m: () => { state.money = 10.1e6; weekEnd(); },
+    m_pat_100: () => { state.stats.patientsTotal = 100; left(pat()); }, m_pat_1000: () => { state.stats.patientsTotal = 1000; left(pat()); }, m_pat_5000: () => { state.stats.patientsTotal = 5000; left(pat()); },
+    m_cured_100: () => { state.stats.cured = 100; left(pat(), { cured: true }); },
+    m_rep_100: () => { state.reputation = 101; left(pat()); }, m_rep_250: () => { state.reputation = 251; left(pat()); }, m_rep_600: () => { state.reputation = 601; left(pat()); },
+    m_lot1: () => { state.lotLevel = 1; bus.emit('lot:expanded', { level: 1 }); }, m_lot2: () => { state.lotLevel = 2; bus.emit('lot:expanded', { level: 2 }); }, m_lot3: () => { state.lotLevel = 3; bus.emit('lot:expanded', { level: 3 }); },
+    m_year3: () => { state.time.year = 4; bus.emit('year:start', { year: 4 }); },
+    m_five_roles: () => { state.staff = []; for (const r of K.ROLES) mkStaff(r); weekEnd(); },
+    m_research_all: () => { state.research.done = Object.keys(RESEARCH); bus.emit('research:done', { id: 'x' }); },
+    t_cold_week: () => { state.weather = { kind: 'cold' }; for (let i = 0; i < 15; i++) treat(pat('elder')); weekEnd(); },
+    t_rain_safe: () => { state.weather = { kind: 'rain' }; for (let i = 0; i < 12; i++) treat(pat('office')); weekEnd(); },
+    t_typhoon: () => { state.weather = { kind: 'typhoon' }; for (let i = 0; i < 5; i++) treat(pat('office')); weekEnd(); },
+    t_temple: () => { state.money = 1e6; Ev.startCommunity(state, 'temple_sarcopenia'); },
+    t_community_all: () => { for (const c of EVD.COMMUNITY) bus.emit('community:started', { id: c.id }); },
+    t_audit: () => bus.emit('inspection:result', { pass: true, score: 75 }),
+    t_audit_excellent: () => bus.emit('inspection:result', { pass: true, score: Ins.EXCELLENT_SCORE }),
+    t_audit_3: () => { for (let i = 0; i < 3; i++) bus.emit('inspection:result', { pass: true, score: 75 }); },
+    t_dilemma_5: () => { for (let i = 0; i < 5; i++) dil('painkiller'); },
+    t_dilemma_all: () => { for (const t of ['painkiller', 'skip_doctor', 'overtreat', 'complain']) dil(t); },
+    t_selfpay_40: () => settle({ nhiIncome: 60000, selfIncome: 40000 }),
+    t_board_3: () => { state.policy.boards = EVD.BOARDS.slice(0, 3).map(b => b.id); bus.emit('mods:dirty', {}); },
+    c_zone_golden: () => { add('heatbox', 12, 12); add('tens', 14, 12); add('traction', 16, 12); Syn.recomputeZones(state); bus.emit('map:changed', {}); },
+    c_zone_premium: () => { add('manual_room', 12, 12); add('shockwave', 14, 12); add('coffee', 15, 12); Syn.recomputeZones(state); bus.emit('map:changed', {}); },
+    c_zone_kidpark: () => { add('ball_pit', 12, 12); add('soft_mat', 14, 12); add('bookshelf', 16, 12); Syn.recomputeZones(state); bus.emit('map:changed', {}); },
+    c_zone_all: () => { state.zones = [{ id: 'golden3' }, { id: 'premium' }, { id: 'kidpark' }]; bus.emit('map:changed', {}); },
+    c_zero_slip_year: () => { for (let i = 0; i < 200; i++) left(pat('office')); yearEnd(); },
+    c_no_angry_month: () => { for (let i = 0; i < 20; i++) left(pat('office')); settle(); },
+    c_full_house: () => { for (let i = 0, n = Math.ceil(0.9 * LOTS[state.lotLevel].maxPatientsPerWeek); i < n; i++) treat(pat('office')); },
+    c_pure_nhi: () => { state.money = state.achv.counters.startMoney + 1000; yearEnd(); },
+    c_one_week_cure: () => { for (let i = 0; i < 10; i++) left(pat(), { cured: true }); },
+    h_coffee: () => { add('coffee', 1, 1); add('coffee', 3, 1); add('coffee', 5, 1); bus.emit('map:changed', {}); },
+    h_chat: () => { for (let i = 0; i < 50; i++) bus.emit('patient:chat', { patient: pat('elder') }); },
+    h_comeback: () => { state.money = 10000; weekEnd(); state.money = 1.1e6; weekEnd(); },
+    h_plants: () => { for (let i = 0; i < 10; i++) add('plant', i, 2); bus.emit('map:changed', {}); },
+  };
+  const NO_EXACT_REWARD = new Set(['t_temple', 'h_comeback', 'm_cash_2m', 'm_cash_10m', 'c_pure_nhi']);
+  check('achv: a scenario exists for every definition', defs.every(d => SC[d.id]), defs.filter(d => !SC[d.id]).map(d => d.id).join(','));
+  let nOk = 0;
+  for (const d of defs) {
+    if (!SC[d.id]) continue;
+    FRESH();
+    // everything else pre-unlocked so only this achievement pays out (exact reward accounting)
+    for (const o of defs) if (o.id !== d.id) state.achv.unlocked[o.id] = { year: 1, month: 1, week: 1 };
+    const m0 = state.money, r0 = state.reputation, p0 = { ...state.points };
+    SC[d.id]();
+    state.events.pendingDilemma = null;
+    const okU = Ach.isUnlocked(state, d.id);
+    check(`achv ${d.id}: unlocks when condition is forced`, okU);
+    if (!okU) continue;
+    nOk++;
+    check(`achv ${d.id}: unlock event + good toast exactly once`, unl.filter(x => x === d.id).length === 1 && toasts.filter(t => t.kind === 'good' && t.text.includes(d.name)).length === 1);
+    const T = ACHD.ACHIEVEMENT_TIERS[d.tier], ov = d.reward || {};
+    const key = d.tier === 3 ? 'service' : (ov.pointKey || 'service');
+    if (!NO_EXACT_REWARD.has(d.id)) check(`achv ${d.id}: money reward == tier/override`, state.money - m0 === (ov.money ?? T.money), `${state.money - m0}`);
+    if (!/^m_rep|^t_temple/.test(d.id)) check(`achv ${d.id}: reputation reward`, near(state.reputation - r0, ov.rep ?? T.rep, 1e-6), `${state.reputation - r0}`);
+    if (d.id !== 't_temple') check(`achv ${d.id}: points reward in the right track`, K.POINT_KEYS.every(k => near(state.points[k] - p0[k], k === key ? T.points : 0, 1e-6)));
+    const m1 = state.money; SC[d.id](); state.events.pendingDilemma = null;
+    check(`achv ${d.id}: second trigger does not unlock/pay again`, unl.filter(x => x === d.id).length === 1 && (NO_EXACT_REWARD.has(d.id) || state.money === m1));
+  }
+  feature('Achievements: 41 unlock conditions', nOk === 41 ? 'OK' : 'PARTIAL', `${nOk}/41 forced via events`);
+
+  // ---- negatives ----
+  FRESH(); state.weather = { kind: 'rain' }; for (let i = 0; i < 12; i++) treat(pat('office')); bus.emit('patient:slip', { patient: pat() }); weekEnd();
+  check('achv: rain week with a slip does not unlock t_rain_safe', !Ach.isUnlocked(state, 't_rain_safe'));
+  FRESH(); state.weather = { kind: 'cold' }; for (let i = 0; i < 14; i++) treat(pat('elder')); weekEnd();
+  check('achv: 14 elders in a cold week is not enough', !Ach.isUnlocked(state, 't_cold_week'));
+  FRESH(); state.weather = { kind: 'cold' }; for (let i = 0; i < 15; i++) { const p = pat('elder'); treat(p); treat(p); }
+  check('achv: weekly served counts unique patients', state.achv.counters.servedThisWeek === 15);
+  weekEnd(); check('achv: weekly counters reset at week:end', state.achv.counters.servedThisWeek === 0 && state.achv.counters.weekSeen.length === 0);
+  FRESH(); for (let i = 0; i < 25; i++) left(pat('office')); left(pat('office'), { reason: 'angry', satisfaction: 10 }); settle();
+  check('achv: an angry leaver blocks c_no_angry_month', !Ach.isUnlocked(state, 'c_no_angry_month'));
+  FRESH(); for (let i = 0; i < 25; i++) left(pat('office')); left(pat('office'), { satisfaction: 24 }); settle();
+  check('achv: satisfaction < 25 counts as angry', !Ach.isUnlocked(state, 'c_no_angry_month'));
+  FRESH(); for (let i = 0; i < 19; i++) left(pat('office')); settle();
+  check('achv: < 20 served blocks c_no_angry_month', !Ach.isUnlocked(state, 'c_no_angry_month'));
+  FRESH(); for (let i = 0; i < 200; i++) left(pat('office')); bus.emit('patient:slip', { patient: pat() }); state.events.pendingDilemma = null; yearEnd();
+  check('achv: one slip blocks c_zero_slip_year', !Ach.isUnlocked(state, 'c_zero_slip_year'));
+  FRESH(); treat(pat(), 500); state.money = 5e6; yearEnd();
+  check('achv: a self-pay treatment blocks c_pure_nhi', !Ach.isUnlocked(state, 'c_pure_nhi'));
+  FRESH(); state.achv.counters.trackYear = null; state.money = 5e6; yearEnd();
+  check('achv: untracked (migrated mid-year) year cannot grant c_pure_nhi', !Ach.isUnlocked(state, 'c_pure_nhi'));
+  FRESH(); bus.emit('inspection:result', { pass: false, score: 30 }); check('achv: failed audit does not unlock t_audit', !Ach.isUnlocked(state, 't_audit'));
+  FRESH(); bus.emit('inspection:result', { pass: true, score: 80 }); bus.emit('inspection:result', { pass: true, score: 80 }); bus.emit('inspection:result', { pass: false, score: 30 }); bus.emit('inspection:result', { pass: true, score: 80 });
+  check('achv: a failed audit resets the streak', !Ach.isUnlocked(state, 't_audit_3') && state.achv.counters.auditPassStreak === 1);
+  FRESH(); bus.emit('dilemma:resolved', { ok: true, kind: 'event', trigger: null }); check('achv: random events are not dilemmas', Object.values(state.achv.counters.dilemmasDone).every(v => v === 0));
+  FRESH(); settle({ nhiIncome: 61000, selfIncome: 39000 }); check('achv: 39% self-pay share does not unlock', !Ach.isUnlocked(state, 't_selfpay_40'));
+  FRESH(); state.money = 900000; weekEnd(); state.money = 1.5e6; weekEnd(); check('achv: h_comeback needs money to have dipped < 50k', !Ach.isUnlocked(state, 'h_comeback'));
+  FRESH(); for (let i = 0; i < 49; i++) bus.emit('patient:chat', { patient: pat('elder') }); bus.emit('patient:chat', { patient: pat('office') }); check('achv: only elder chats count', !Ach.isUnlocked(state, 'h_chat'));
+  FRESH(); state.money = 5e6; const rc = Ev.startCommunity(state, 'health_talk'); check('achv: startCommunity emits community:started', rc.ok && state.achv.counters.communityDone.health_talk === 1);
+
+  // ---- listAchievements masking / progress ----
+  FRESH(); let L = Ach.listAchievements(state);
+  check('achv: listAchievements returns 41 rows', L.length === 41);
+  const hid = L.filter(x => x.def.hidden);
+  check('achv: locked hidden ones masked (name ？？？, hint shown, no progress)', hid.length === 4 && hid.every(x => x.masked && x.def.name === '？？？' && x.def.desc === x.def.hint && !x.unlocked && x.goal === 0));
+  check('achv: masked rows do not leak real names or titles', !hid.some(x => defs.some(d => d.hidden && JSON.stringify(x).includes(d.name))));
+  SC.h_chat(); L = Ach.listAchievements(state); const hc = L.find(x => x.def.id === 'h_chat');
+  check('achv: hidden achievement is revealed after unlock', hc.unlocked && !hc.masked && hc.def.name === '聊天治百病' && hc.at && hc.at.year === 1 && hc.progress === hc.goal && hc.goal === 50);
+  state.stats.patientsTotal = 40; const pr = Ach.listAchievements(state).find(x => x.def.id === 'm_pat_100');
+  check('achv: progress from metric (patientsTotal 40/100)', pr.progress === 40 && pr.goal === 100);
+
+  // ---- title / badges ----
+  FRESH();
+  check('achv: equipTitle rejects locked / unknown', !Ach.equipTitle(state, 'm_cash_10m') && !Ach.equipTitle(state, 'nope'));
+  SC.m_cash_10m(); state.reputation = 260;
+  check('achv: equipTitle + displayTitle format', Ach.equipTitle(state, 'm_cash_10m') && Ach.displayTitle(state) === '〔千萬院長〕地方復健名醫', Ach.displayTitle(state));
+  SC.m_cash_2m(); check('achv: equipTitle rejects achievements without a title', !Ach.equipTitle(state, 'm_cash_2m') && state.achv.title === 'm_cash_10m');
+  check('achv: equipTitle(null) clears', Ach.equipTitle(state, null) && state.achv.title === null && Ach.displayTitle(state) === '地方復健名醫');
+  SC.m_pat_100(); SC.m_lot1(); SC.m_year3(); SC.m_five_roles();
+  check('achv: setBadges accepts 3 unlocked', Ach.setBadges(state, ['m_pat_100', 'm_lot1', 'm_year3']) && state.achv.badges.length === 3);
+  check('achv: setBadges rejects >3 / locked / duplicates and keeps the old list', !Ach.setBadges(state, ['m_pat_100', 'm_lot1', 'm_year3', 'm_five_roles']) && !Ach.setBadges(state, ['h_coffee']) && !Ach.setBadges(state, ['m_pat_100', 'm_pat_100']) && state.achv.badges.length === 3);
+  check('achv: badgeIcons <= 4 entries', Ach.badgeIcons(state).length <= 4 && Ach.badgeIcons(state).length >= 3);
+  FRESH(); defs.slice(0, 10).forEach(d => { state.achv.unlocked[d.id] = {}; });
+  const m10 = Ach.badgeIcons(state)[0]; defs.slice(10, 20).forEach(d => { state.achv.unlocked[d.id] = {}; }); const m20 = Ach.badgeIcons(state)[0];
+  defs.slice(20, 30).forEach(d => { state.achv.unlocked[d.id] = {}; }); const m30 = Ach.badgeIcons(state)[0]; defs.slice(30).forEach(d => { state.achv.unlocked[d.id] = {}; });
+  check('achv: milestone badge 10/20/30/all = 🥉🥈🥇🏆', m10 === '🥉' && m20 === '🥈' && m30 === '🥇' && Ach.badgeIcons(state)[0] === '🏆');
+
+  // ---- evaluateAll retroactive ----
+  FRESH(); state.money = 11e6; state.stats.patientsTotal = 1200; state.stats.cured = 150; state.reputation = 300; state.lotLevel = 1; state.history.push({ year: 1, month: 1, money: 1e6 }); state.research.done = Object.keys(RESEARCH);
+  toasts = []; const got = Ach.evaluateAll(state);
+  check('achv: evaluateAll catches up state-derivable ones', got.length >= 8, String(got.length));
+  check('achv: > 5 retroactive unlocks produce a single summary toast', toasts.length === 1);
+  check('achv: evaluateAll is idempotent', Ach.evaluateAll(state).length === 0);
+
+  // ---- save / load / migration ----
+  FRESH(); SC.m_cash_10m(); SC.h_chat(); SC.m_pat_100(); Ach.equipTitle(state, 'm_cash_10m'); Ach.setBadges(state, ['m_pat_100']);
+  state.achv.counters.communityDone.health_talk = 2; state.achv.counters.dilemmasDone.painkiller = 3;
+  const exp = Sav.exportSave(state), before = JSON.parse(JSON.stringify(state.achv));
+  FRESH(); check('achv: import round trip', Sav.importSave(state, exp));
+  check('achv: unlocked / title / badges / counters survive save->load', JSON.stringify(state.achv.unlocked) === JSON.stringify(before.unlocked) && state.achv.title === 'm_cash_10m' && JSON.stringify(state.achv.badges) === '["m_pat_100"]' && state.achv.counters.communityDone.health_talk === 2 && state.achv.counters.dilemmasDone.painkiller === 3 && state.achv.counters.chatCount === 50);
+  const v1 = JSON.parse(exp); v1.version = 1; v1.state.version = 1; delete v1.state.achv; v1.state.money = 2.5e6; v1.state.stats.patientsTotal = 120; v1.state.history = [{ year: 1, month: 1, money: 1e6, income: 1, expense: 1, net: 0 }]; v1.state.time.week = 3; v1.state.time.clock = 700;
+  FRESH(); check('achv: v1 save imports', Sav.importSave(state, JSON.stringify(v1)));
+  check('achv: v1 -> v2 migration adds achv and retro-unlocks money / patients / first month', state.version === K.SAVE_VERSION && Ach.isUnlocked(state, 'm_cash_2m') && Ach.isUnlocked(state, 'm_pat_100') && Ach.isUnlocked(state, 'm_first_month') && !Ach.isUnlocked(state, 'm_cash_10m') && !Ach.isUnlocked(state, 'h_chat'));
+  check('achv: migrated mid-year save does not track year / month as complete', state.achv.counters.trackYear == null && state.achv.counters.trackMonth == null);
+  const junk = JSON.parse(exp);
+  junk.state.achv = { unlocked: { m_cash_2m: { year: 2, month: 3, week: 1 }, bogus_id: {} }, counters: { chatCount: 'abc', slipThisYear: '7', dilemmasDone: { painkiller: 'x', evil: 9 }, communityDone: { nope: 3 } }, title: 'm_cash_10m', badges: ['m_cash_2m', 'h_coffee', 'zzz', 'm_cash_2m', 'm_pat_100', 'm_lot1', 'm_year3'] };
+  FRESH(); check('achv: junk achv imports', Sav.importSave(state, JSON.stringify(junk)));
+  const A = state.achv;
+  check('achv sanitize: unknown ids dropped, counters numeric, locked title/badges removed', !('bogus_id' in A.unlocked) && A.unlocked.m_cash_2m.year === 2 && A.counters.chatCount === 0 && A.counters.slipThisYear === 7 && !('evil' in A.counters.dilemmasDone) && !('nope' in A.counters.communityDone) && A.title === null && JSON.stringify(A.badges) === '["m_cash_2m"]', JSON.stringify(A.badges));
+  const junk2 = JSON.parse(exp); junk2.state.achv = { unlocked: Object.fromEntries(defs.map(d => [d.id, {}])), counters: {}, title: 'm_cash_2m', badges: defs.slice(0, 6).map(d => d.id) };
+  FRESH(); Sav.importSave(state, JSON.stringify(junk2));
+  check('achv sanitize: badges truncated to MAX_BADGES, title without title text dropped', state.achv.badges.length === ACHD.MAX_BADGES && state.achv.title === null);
+  const junk3 = JSON.parse(exp); junk3.state.achv = 'garbage'; FRESH();
+  check('achv sanitize: non-object achv is repaired', Sav.importSave(state, JSON.stringify(junk3)) && typeof state.achv.unlocked === 'object' && Array.isArray(state.achv.badges));
+
+  // ---- integration: real month roll + real treatments feed the counters ----
+  FRESH(); runMonths(2);
+  check('achv: after 2 simulated months m_first_month is unlocked and the invariants hold', Ach.isUnlocked(state, 'm_first_month') && invariants().length === 0, invariants().join('; '));
+  check('achv: real play feeds the counters (a patient was counted)', state.achv.counters.servedThisMonth > 0 || state.achv.counters.servedThisYear > 0);
+  offU(); offT();
+  feature('Achievements: save v2 migration + sanitize', 'OK', 'v1 import retro-unlocks; junk achv repaired');
+}
+
+// =====================================================================================================
 if (want('features')) featuresSection();
 if (want('edge')) edgeSection();
 if (want('save')) saveSection();
+if (want('achievements')) achievementsSection();
 if (want('longrun')) longrunSection();
 
 if (FEATURES.length) {

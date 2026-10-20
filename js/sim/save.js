@@ -16,7 +16,8 @@ import { STAFF_ROLES } from '../data/staffdefs.js';
 import { LOTS } from '../data/lots.js';
 import { RESEARCH } from '../data/research.js';
 import { FOCUS } from '../data/patients.js';
-import { WEATHER, BOARDS } from '../data/events.js';
+import { WEATHER, BOARDS, COMMUNITY } from '../data/events.js';
+import { ACHIEVEMENTS, MAX_BADGES } from '../data/achievements.js';
 import { POINT_KEYS } from '../core/constants.js';
 
 export const SAVE_SLOTS = ['1', '2', '3'];      // manual slots; 'auto' is the autosave slot
@@ -58,6 +59,14 @@ export function saveGame(state, slot = 'auto') {
 // and add MIGRATIONS[<old version>] here. Missing fields are otherwise filled by hydrate()/sanitize() below.
 export const MIGRATIONS = {
   0: (st) => st,     // pre-versioned dumps: nothing structural to change, hydrate() fills the gaps
+  // v1 -> v2: achievements. Adds state.achv; the state-derivable ones are paid out by achievements.evaluateAll() on 'state:loaded'.
+  1: (st) => {
+    if (!st.achv || typeof st.achv !== 'object') st.achv = { unlocked: {}, counters: {}, title: null, badges: [] };
+    const c = st.achv.counters && typeof st.achv.counters === 'object' ? st.achv.counters : (st.achv.counters = {});
+    // periods already running cannot be tracked retroactively (trackMonth/trackYear stay undefined -> achievements.ensure() sets null)
+    if (c.selfPayEver === undefined) c.selfPayEver = !!(st.ledger && st.ledger.income && st.ledger.income.self > 0);
+    return st;
+  },
 };
 function migrate(st, fromVersion) {
   let v = Number.isFinite(fromVersion) ? fromVersion : 0;
@@ -219,7 +228,46 @@ function sanitize(m) {
     // (an inconsistent claim - station or staff that no longer exists - is repaired by patients.js reconcile())
   }
   m.queue = m.queue.filter(id => pids.has(id));
+  sanitizeAchv(m);
   return m;
+}
+
+// achievements: counters numeric, unknown ids dropped, badges <= MAX_BADGES and unlocked, title must be an unlocked achievement with a title
+const ACHV_NUM_COUNTERS = ['totalSelfPayMonth', 'auditPassStreak', 'chatCount', 'slipThisYear', 'angryThisMonth', 'servedThisMonth', 'servedThisYear',
+  'servedThisWeek', 'curedThisWeek', 'elderThisWeek', 'slipThisWeek'];
+const DILEMMA_KEYS = ['painkiller', 'skip_doctor', 'overtreat', 'complain'];
+function sanitizeAchv(m) {
+  const defs = new Map(ACHIEVEMENTS.map(d => [d.id, d]));
+  const a = m.achv && typeof m.achv === 'object' && !Array.isArray(m.achv) ? m.achv : {};
+  const unlocked = {};
+  const src = a.unlocked && typeof a.unlocked === 'object' && !Array.isArray(a.unlocked) ? a.unlocked : {};
+  for (const [id, at] of Object.entries(src)) {
+    if (!defs.has(id)) continue;
+    const o = at && typeof at === 'object' ? at : {};
+    unlocked[id] = { year: Math.max(1, Math.floor(num(o.year, 1))), month: clampN(Math.floor(num(o.month, 1)), 1, 12, 1), week: clampN(Math.floor(num(o.week, 1)), 1, 4, 1) };
+  }
+  const c0 = a.counters && typeof a.counters === 'object' && !Array.isArray(a.counters) ? a.counters : {};
+  const c = {};
+  for (const k of ACHV_NUM_COUNTERS) c[k] = Math.max(0, Math.floor(num(c0[k], 0)));
+  c.dilemmasDone = {};
+  for (const k of DILEMMA_KEYS) c.dilemmasDone[k] = Math.max(0, Math.floor(num(c0.dilemmasDone && c0.dilemmasDone[k], 0)));
+  c.communityDone = {};
+  for (const def of COMMUNITY || []) { const n = Math.max(0, Math.floor(num(c0.communityDone && c0.communityDone[def.id], 0))); if (n > 0) c.communityDone[def.id] = n; }
+  c.weekSeen = (Array.isArray(c0.weekSeen) ? c0.weekSeen : []).filter(v => Number.isFinite(v)).slice(-500);
+  c.selfPayEver = !!c0.selfPayEver;
+  if (Number.isFinite(c0.startMoney)) c.startMoney = c0.startMoney;
+  if (Number.isFinite(c0.lowestMoneySeen)) c.lowestMoneySeen = Math.min(c0.lowestMoneySeen, m.money);
+  for (const k of ['trackMonth', 'trackYear']) {
+    if (c0[k] === null) c[k] = null;
+    else if (Number.isFinite(c0[k])) c[k] = c0[k];
+  }   // left undefined when missing: achievements.ensure() derives it
+  const badges = [];
+  for (const id of Array.isArray(a.badges) ? a.badges : []) {
+    const d = defs.get(id);
+    if (d && d.badge && unlocked[id] && !badges.includes(id) && badges.length < MAX_BADGES) badges.push(id);
+  }
+  const td = typeof a.title === 'string' ? defs.get(a.title) : null;
+  m.achv = { unlocked, counters: c, title: td && td.title && unlocked[td.id] ? td.id : null, badges };
 }
 function createInitialStateMods() { return base0().mods; }
 function base0() { return quietly(() => createInitialState()); }

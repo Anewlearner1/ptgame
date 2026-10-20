@@ -219,3 +219,64 @@
   .u-two { grid-template-columns: 1fr; }
   .u-keys { grid-template-columns: 1fr; }
 }
+
+/* ---------- achievements: 稱號與徽章 (診所 panel) + topbar title ---------- */
+.tb-title .tb-val { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.tb-item[hidden] { display: none; }
+@media (max-width: 1100px) { .tb-title .tb-val { max-width: 130px; } }
+.u-repdet { margin-top: 6px; }
+.u-repdet summary { cursor: pointer; padding: 2px 0; }
+.u-repdet .u-list2 { margin-top: 6px; }
+.u-achsum { display: flex; flex-direction: column; gap: 4px; margin: 2px 0 8px; font-size: 14px; }
+.u-achcount { font-size: 17px; }
+.u-signicons { font-size: 17px; letter-spacing: 2px; }
+.u-achnote { padding: 4px 8px; margin-bottom: 6px; background: #fff1cf; box-shadow: inset 0 0 0 2px var(--wood); font-weight: 700; }
+.u-achnote[hidden] { display: none; }
+.tabs.u-achtabs { gap: 3px; }
+.tabs.u-achtabs .tab { font-size: 12px; padding: 4px 8px 6px; }
+.tabs.u-achtabs .tab.active { padding-bottom: 9px; }
+.u-achlist { display: flex; flex-direction: column; gap: 8px; margin: 2px 2px 12px; }
+.u-ach { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; }
+.u-ach[hidden] { display: none; }
+.u-achico {
+  flex: 0 0 auto; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  font-size: 22px; line-height: 1; background: #fff; box-shadow: 0 0 0 2px var(--ink), inset 0 -4px 0 0 rgba(0, 0, 0, 0.14);
+}
+.u-ach.u-locked .u-achico { filter: grayscale(1); opacity: 0.55; background: #e4dcc8; }
+.u-ach.u-locked .u-achname { color: var(--muted); }
+.u-ach.u-masked .u-achico { opacity: 0.8; }
+.u-achmain { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.u-achhead { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.u-achname { font-size: 14px; }
+.u-achdesc { line-height: 1.45; }
+.u-achprog { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+.u-achprog[hidden], .u-achwhen[hidden], .u-achbtns .btn[hidden] { display: none; }
+.u-achprog .bar { flex: 1 1 auto; height: 9px; min-width: 40px; }
+.u-achptxt { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.u-achbtns { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+.u-achbtns:empty { display: none; }
+.u-achbtns .btn { white-space: nowrap; }
+.u-achbtns .btn.u-dim { opacity: 0.55; }
+.tag.u-tier1 { background: #efd3b4; color: #6b3f16; box-shadow: 0 0 0 2px #8a5a2b; }
+.tag.u-tier2 { background: #e6eaee; color: #3d4852; box-shadow: 0 0 0 2px #7d8892; }
+.tag.u-tier3 { background: #ffe9a6; color: #6b4f00; box-shadow: 0 0 0 2px #c79a1a; }
+.tag.u-titlechip { background: #e8e0f7; color: #4b3a7a; box-shadow: 0 0 0 2px #7a66b0; }
+.tag.u-titlechip[hidden] { display: none; }
+@media (max-height: 600px) {
+  .u-ach { padding: 6px 8px; gap: 8px; }
+  .u-achico { width: 32px; height: 32px; font-size: 18px; }
+}
+@media (max-width: 520px) {
+  .u-ach { flex-wrap: wrap; }
+  .u-achbtns { flex-direction: row; width: 100%; }
+}
+.u-curtitle { margin: 0 0 6px; }
+.u-curtitle + .bar { height: 10px; }
+.u-achsum { margin-top: 8px; }
+.tb-item.tb-title { min-width: 0; flex: 0 1 auto; }
+.tb-item.tb-title .tb-val { max-width: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-height: 600px) {
+  .u-curtitle { font-size: 16px; margin-bottom: 4px; }
+  .u-repdet { display: none; }
+  .u-achsum { margin: 4px 0 6px; gap: 2px; }
+}

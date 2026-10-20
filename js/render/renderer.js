@@ -5,6 +5,8 @@ import { MAP_W, MAP_H, TILE_W, TILE_H } from '../core/constants.js';
 import { BUILDABLES } from '../data/buildables.js';
 import * as SYN from '../data/synergies.js';
 import { sizeOf } from '../core/grid.js';
+import { bus } from '../core/bus.js';
+import { badgeIcons } from '../sim/achievements.js';
 import { isoX, isoY, placementOrigin, hooks } from './iso.js';
 import {
   getObjectSprite, getFloorSprite, getGroundSprite, getPersonSprite, getIconSprite, getShadowSprite,
@@ -75,11 +77,58 @@ function drawAt(g, spr, gx, gy) {
   g.drawImage(spr, Math.round(LX + isoX(gx, gy) - spr.ax), Math.round(LY + isoY(gx, gy) - spr.ay));
 }
 
+function signBadges(state) {
+  try { return (badgeIcons(state) || []).slice(0, 4); } catch (e) { return []; }
+}
+
 function layerSignature(state) {
   const l = state.lot, d = state.door;
-  let s = l.x0 + ',' + l.y0 + ',' + l.w + ',' + l.h + '|' + d.x + ',' + d.y + '|' + state.clinicName;
+  let s = l.x0 + ',' + l.y0 + ',' + l.w + ',' + l.h + '|' + d.x + ',' + d.y + '|' + state.clinicName + '|' + signBadges(state).join(',');
   return s;
 }
+
+// Signboard badge emoji: drawn tiny on an offscreen canvas and scaled up with smoothing off -> chunky pixel look.
+const BADGE_CV = 10, BADGE_SCALE = 2, badgeSprites = new Map();   // 10x10 sprite -> 20x20 on the sign
+function firstGrapheme(str) {
+  str = String(str || '');
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    for (const seg of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(str)) return seg.segment;
+    return '';
+  }
+  return Array.from(str)[0] || '';
+}
+function getBadgeSprite(icon) {
+  const ch = firstGrapheme(icon);
+  let c = badgeSprites.get(ch);
+  if (c) return c;
+  // 1) render the emoji big, 2) average it down to a tiny sprite, 3) hard-threshold alpha -> chunky pixel art
+  const big = document.createElement('canvas');
+  big.width = big.height = 32;
+  const bg = big.getContext('2d');
+  bg.font = '23px "Noto Color Emoji","Apple Color Emoji","Segoe UI Emoji",' + FONT;
+  bg.textAlign = 'center'; bg.textBaseline = 'middle';
+  bg.fillText(ch, 16, 18);
+  c = document.createElement('canvas');
+  c.width = c.height = BADGE_CV;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  g.drawImage(big, 0, 0, 32, 32, 0, 0, BADGE_CV, BADGE_CV);
+  const im = g.getImageData(0, 0, BADGE_CV, BADGE_CV), d = im.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const a = d[i + 3];
+    if (a < 90) { d[i + 3] = 0; continue; }
+    const k = 255 / a;                                  // un-premultiply bleed from the averaging
+    d[i] = Math.min(255, d[i] * k); d[i + 1] = Math.min(255, d[i + 1] * k); d[i + 2] = Math.min(255, d[i + 2] * k); d[i + 3] = 255;
+  }
+  g.putImageData(im, 0, 0);
+  badgeSprites.set(ch, c);
+  return c;
+}
+
+// signboard geometry shared by the static draw and the unlock sparkle (layer px; set by buildLayer)
+const sign = { x: 0, y: 0, w: 128, h: 17 };
+let sparkleAt = -1e9;
+bus.on('achievement:unlocked', () => { sparkleAt = performance.now(); });
 
 function buildLayer(state) {
   const g = layerCtx;
@@ -144,17 +193,32 @@ function buildLayer(state) {
   items.sort((a, b) => a.key - b.key);
   for (const it of items) drawAt(g, getGroundSprite(it.kind), it.gx, it.gy);
 
-  // clinic signboard on the back-right wall (plane y = y0)
+  // clinic signboard on the back-right wall (plane y = y0); unlocked-achievement badges sit right of the name
   const cx = x0 + lot.w / 2 - 0.5;
-  const sx = LX + isoX(cx - 2, y0), sy = LY + isoY(cx - 2, y0) - 44;
+  const name = String(state.clinicName || '復健科診所').slice(0, 12);
+  const badges = signBadges(state);
+  const FS = 14, BS = BADGE_CV * BADGE_SCALE, BGAP = 2;       // badge cell size on the sign
+  g.font = '700 ' + FS + 'px ' + FONT;
+  const nameW = Math.ceil(g.measureText(name).width);
+  const badgesW = badges.length ? badges.length * (BS + BGAP) - BGAP + 8 : 0;      // incl. left margin
+  const pw = Math.max(4 * HW, nameW + badgesW + 14), ph = badges.length ? BS + 2 : 17;
+  const sx = LX + isoX(cx - pw / (2 * TILE_W), y0), sy = LY + isoY(cx - pw / (2 * TILE_W), y0) - 44 - (ph - 17);
+  sign.x = sx - LX; sign.y = sy - LY; sign.w = pw; sign.h = ph;
   g.save();
   g.setTransform(1, 0.5, 0, 1, sx, sy);
-  const pw = 4 * HW, ph = 17;
   g.fillStyle = '#1d6f6a'; g.fillRect(-2, -2, pw + 4, ph + 4);
   g.fillStyle = '#2fa39b'; g.fillRect(0, 0, pw, ph);
   g.fillStyle = '#e8f7f5'; g.fillRect(0, ph - 3, pw, 3);
-  g.fillStyle = '#ffffff'; g.font = '700 14px ' + FONT; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(String(state.clinicName || '復健科診所').slice(0, 12), pw / 2, ph / 2 - 1);
+  g.fillStyle = '#ffffff'; g.font = '700 ' + FS + 'px ' + FONT; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const tx = (pw - badgesW) / 2;
+  g.fillText(name, tx, 17 / 2 - 1 + (ph - 17) / 2);
+  if (badges.length) {
+    const bx0 = Math.round(tx + nameW / 2 + 6), by = 1;
+    g.fillStyle = 'rgba(12, 51, 49, 0.45)';
+    g.fillRect(bx0 - 2, by - 1, badges.length * (BS + BGAP) - BGAP + 4, BS + 2);
+    g.imageSmoothingEnabled = false;
+    badges.forEach((ic, i) => g.drawImage(getBadgeSprite(ic), bx0 + i * (BS + BGAP), by, BS, BS));
+  }
   g.restore();
 }
 
@@ -511,6 +575,24 @@ export function render(state, ui, now) {
   const tool = ui.tool || { mode: 'none' };
   const hov = ui.hover || { x: -1, y: -1 };
   const tNow = now / 1000;
+
+  // 1-second sparkle over the signboard when an achievement unlocks (optional flourish, §5.5)
+  {
+    const sp = (now - sparkleAt) / 1000;
+    if (sp >= 0 && sp < 1) {
+      ctx.save();
+      for (let i = 0; i < 9; i++) {
+        const ph = (sp * 1.6 + i * 0.37) % 1, a = Math.sin(ph * Math.PI);
+        if (a < 0.15) continue;
+        const u = ((i * 0.6180339) % 1) * sign.w, v = ((i * 0.4142 + 0.13) % 1) * sign.h;
+        const X = Math.round(sign.x + u), Y = Math.round(sign.y + u * 0.5 + v), r = a > 0.7 ? 3 : 2;
+        ctx.fillStyle = 'rgba(255,244,170,' + (a * (1 - sp * 0.6)).toFixed(2) + ')';
+        ctx.fillRect(X - r, Y, r * 2 + 1, 1); ctx.fillRect(X, Y - r, 1, r * 2 + 1);
+        ctx.fillStyle = 'rgba(255,255,255,' + (a * (1 - sp * 0.6)).toFixed(2) + ')'; ctx.fillRect(X, Y, 1, 1);
+      }
+      ctx.restore();
+    }
+  }
 
   // grid
   if (ui.showGrid) {

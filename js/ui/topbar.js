@@ -7,6 +7,7 @@ import { getPointValue } from '../sim/economy.js';
 import { WEATHER } from '../data/events.js';
 import { TITLES } from '../data/texts.js';
 import { LOTS } from '../data/lots.js';
+import { displayTitle } from '../sim/achievements.js';
 
 const els = {};
 let last = {};
@@ -33,13 +34,15 @@ export function initTopbar() {
   const left = h('div', { class: 'tb-left' },
     item('clinic', '🏥', 'tb-clinic'),
     item('date', '📅', 'tb-date'),
-    item('weather', '☀️', 'tb-weather'));
+    item('weather', '☀️', 'tb-weather'),
+    item('title', '🎖', 'tb-title'));
   const right = h('div', { class: 'tb-right' },
     item('money', '💰', 'tb-money', '資金'),
     POINT_KEYS.map(k => item('p_' + k, POINT_ICONS[k], 'tb-pt', `${POINT_LABELS[k]}點\n研發用的點數。治療完成時獲得，研發與訓練會消耗。`)),
     item('rep', '🏆', 'tb-rep'),
     item('pv', '🧾', 'tb-pv'));
   root.append(left, right);
+  els.title.el.hidden = true;                  // only shown while a special title is equipped
   els.money.lbl.textContent = '';
   els.date.lbl.textContent = '';
   els.rep.lbl.textContent = '聲譽 ';
@@ -81,7 +84,9 @@ export function updateTopbar(state) {
   const rep = Math.round(state.reputation);
   setText(els.rep.val, fmt(rep));
   const { cur, next } = titleFor(rep);
-  els.rep.el.dataset.tip = `聲譽 ${rep} / 1000\n稱號：${cur.title}` + (next ? `\n再 ${next.minRep - rep} 點升級為「${next.title}」` : '\n已達最高稱號') + '\n聲譽越高，每週來客越多。';
+  let dt = cur.title;                         // 〔特殊稱號〕聲譽稱號 (docs/ACHIEVEMENTS.md §2)
+  try { dt = displayTitle(state) || cur.title; } catch (e) { /* achievements module not ready */ }
+  els.rep.el.dataset.tip = `聲譽 ${rep} / 1000\n稱號：${dt}` + (next ? `\n再 ${next.minRep - rep} 點升級為「${next.title}」` : '\n已達最高稱號') + '\n聲譽越高，每週來客越多。';
 
   let pv = state.nhi.pointValue;
   try { pv = getPointValue(state); } catch (e) { /* keep last settled */ }
@@ -91,5 +96,8 @@ export function updateTopbar(state) {
   const cap = lot ? Math.round(lot.nhiCap * (1 + ((state.mods && state.mods.nhiCapBonus) || 0))) : 0;
   const lastPv = state.nhi.lastSettlement && state.nhi.lastSettlement.pointValue != null ? state.nhi.lastSettlement.pointValue : state.nhi.pointValue;
   els.pv.el.dataset.tip = `健保點值（本月預估）\n本月已申報 ${fmt(state.nhi.monthPoints)} 點 / 上限 ${fmt(cap)} 點\n超過上限會稀釋所有點數的點值（最低 0.6）。\n上次結算點值：${Number(lastPv).toFixed(2)}`;
-  els.clinic.el.dataset.tip = `${state.clinicName}\n${lot ? lot.name : ''}　稱號：${cur.title}`;
+  const special = !!(state.achv && state.achv.title) && dt !== cur.title;
+  els.title.el.hidden = !special;
+  if (special) { setText(els.title.val, dt); els.title.el.dataset.tip = `院長稱號\n${dt}\n可在「診所 → 稱號與徽章」更換。`; }
+  els.clinic.el.dataset.tip = `${state.clinicName}\n${lot ? lot.name : ''}　稱號：${dt}`;
 }

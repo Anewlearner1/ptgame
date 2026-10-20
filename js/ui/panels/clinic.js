@@ -1,10 +1,13 @@
-// 診所 panel: 經營方針 / 衛教看板 / 擴建 / 院長稱號
+// 診所 panel: 經營方針 / 衛教看板 / 擴建 / 稱號與徽章
 import { bus } from '../../core/bus.js';
 import { FOCUS, PATIENT_TYPES } from '../../data/patients.js';
 import { POLICY_TEXT } from '../../data/events.js';
 import { LOTS } from '../../data/lots.js';
 import { BUILDABLES } from '../../data/buildables.js';
 import { TITLES } from '../../data/texts.js';
+import { ACHIEVEMENT_CATS, ACHIEVEMENT_TIERS, MAX_BADGES } from '../../data/achievements.js';
+import { POINT_KEYS, POINT_LABELS } from '../../core/constants.js';
+import { listAchievements, equipTitle, setBadges, displayTitle, badgeIcons } from '../../sim/achievements.js';
 import * as EV from '../../sim/events.js';
 import * as INSP from '../../sim/inspection.js';
 import { h, setClass, setText, tabbed, bar, setBar } from '../dom.js';
@@ -121,27 +124,216 @@ function buildExpand(body, state) {
   };
 }
 
+// ---- 稱號與徽章 (docs/ACHIEVEMENTS.md §2 / §5.4)
+const CAT_FALLBACK = { milestone: '經營里程碑', taiwan: '台灣在地特色', challenge: '挑戰與隱藏' };
+const CAT_SHORT = { milestone: '里程碑', taiwan: '在地', challenge: '挑戰' };
+const TIER_NAMES = { 1: '銅', 2: '銀', 3: '金' };
+const TIER_ICONS = { 1: '🥉', 2: '🥈', 3: '🥇' };
+const achvStore = { cat: 'all' };
+let achvLive = null;          // {el, refresh} of the mounted 稱號與徽章 tab (bus listener below is registered once)
+for (const ev of ['achievement:unlocked', 'achv:changed']) bus.on(ev, () => { if (achvLive && achvLive.el.isConnected) achvLive.refresh(); });
+
+// ACHIEVEMENT_CATS may be an array of ids / {id,name} or an id -> name|{name} map; normalise to [{id,name}]
+function normCats() {
+  const raw = ACHIEVEMENT_CATS;
+  let out = [];
+  if (Array.isArray(raw)) out = raw.map(c => typeof c === 'string' ? { id: c } : { id: c.id || c.key, name: c.name || c.label, icon: c.icon });
+  else if (raw && typeof raw === 'object') out = Object.keys(raw).map(k => typeof raw[k] === 'string' ? { id: k, name: raw[k] } : { id: k, name: raw[k].name || raw[k].label, icon: raw[k].icon });
+  if (!out.length) out = Object.keys(CAT_FALLBACK).map(id => ({ id }));
+  return out.map(c => ({ id: c.id, name: CAT_SHORT[c.id] || c.name || CAT_FALLBACK[c.id] || c.id, icon: c.icon || '' }));
+}
+
+function atText(at) { return at ? `第${at.year}年${at.month}月第${at.week}週` : ''; }
+
+// reward = tier defaults (ACHIEVEMENT_TIERS) overridden by def.reward; points go to def.reward.pointKey (default 服務)
+function rewardChips(def) {
+  const T = (ACHIEVEMENT_TIERS && ACHIEVEMENT_TIERS[def.tier]) || {};
+  const o = def.reward || {};
+  const money_ = o.money != null ? o.money : T.money, rep = o.rep != null ? o.rep : T.rep;
+  const out = [];
+  if (money_) out.push(money(money_));
+  if (rep) out.push(`聲譽 +${rep}`);
+  if (o.points && typeof o.points === 'object') {
+    for (const k of POINT_KEYS) if (o.points[k]) out.push(`${POINT_LABELS[k]}點 +${o.points[k]}`);
+  } else {
+    const pts = o.points != null ? o.points : T.points;
+    if (pts) out.push(`${POINT_LABELS[o.pointKey] || POINT_LABELS.service}點 +${pts}`);
+  }
+  return out;
+}
+
 function buildTitle(body, state) {
-  const nameEl = h('div', { class: 'u-bigtitle' }), nextEl = h('div', { class: 'muted' }), b = bar();
-  const list = h('div', { class: 'u-list2' });
-  const items = TITLES.map(t => {
+  // -- current 院長稱號 (reputation ladder, unchanged) + equipped special title
+  const nameEl = h('div', { class: 'u-bigtitle u-curtitle' }), nextEl = h('div', { class: 'muted u-small' }), b = bar();
+  const repList = h('div', { class: 'u-list2 u-replist' });
+  const repItems = TITLES.map(t => {
     const el = h('div', { class: 'u-check' }, h('span'), h('span', { class: 'u-grow' }, t.title), h('span', { class: 'muted' }, `聲譽 ${t.minRep}`));
-    list.appendChild(el);
+    repList.appendChild(el);
     return { t, el };
   });
-  body.append(section('院長稱號', nameEl, b, nextEl, list));
+  const repDet = h('details', { class: 'u-repdet' }, h('summary', { class: 'u-small muted' }, '聲譽稱號一覽'), repList);
+
+  // -- 稱號與徽章
+  const cntEl = h('b', { class: 'u-achcount' }), tierEl = h('span', { class: 'u-small' });
+  const signEl = h('span', { class: 'u-signicons' }), slotEl = h('span', { class: 'muted u-small' });
+  const noteEl = h('div', { class: 'u-small u-achnote' });
+  const cats = normCats();
+  const catBtns = {};
+  const tabs = h('div', { class: 'tabs u-subtabs u-achtabs' });
+  const list = h('div', { class: 'u-achlist' });
+  const cards = new Map();    // id -> refs
+  let built = false, lastKey = '';
+
+  function toast(text, kind = 'bad') { bus.emit('toast', { text, kind }); }
+
+  function makeCard(a) {
+    const d = a.def;
+    const ico = h('div', { class: 'u-achico' }, d.badge || '🏆');
+    const nameT = h('b', { class: 'u-achname' });
+    const chip = h('span', { class: `tag u-tier u-tier${d.tier}` }, `${TIER_ICONS[d.tier] || ''}${TIER_NAMES[d.tier] || ''}`);
+    const titleChip = d.title ? h('span', { class: 'tag u-titlechip' }, `稱號「${d.title}」`) : null;
+    const desc = h('div', { class: 'u-small u-achdesc' });
+    const rew = h('div', { class: 'u-small muted u-achrew' }, '獎勵：' + (rewardChips(d).join('、') || '—'));
+    const pbar = bar(), ptxt = h('span', { class: 'u-small muted u-achptxt' });
+    const prog = h('div', { class: 'u-achprog' }, pbar, ptxt);
+    const when = h('div', { class: 'u-small good u-achwhen' });
+    const eq = d.title ? h('button', { class: 'btn small', type: 'button', onclick: () => onEquip(d.id) }, '配戴稱號') : null;
+    const sign = h('button', { class: 'btn small', type: 'button', onclick: () => onSign(d.id) }, '掛上招牌');
+    const el = h('div', { class: 'card u-ach', dataset: { ach: d.id, cat: d.cat, tier: d.tier } },
+      ico,
+      h('div', { class: 'u-achmain' },
+        h('div', { class: 'u-achhead' }, nameT, chip, titleChip),
+        desc, rew, prog, when),
+      h('div', { class: 'u-achbtns' }, eq, sign));
+    const r = { el, ico, nameT, desc, prog, pbar, ptxt, when, eq, sign, titleChip, rew };
+    cards.set(d.id, r);
+    return el;
+  }
+
+  function onEquip(id) {
+    const eqId = state.achv && state.achv.title;
+    let ok = false;
+    try { ok = equipTitle(state, eqId === id ? null : id); } catch (e) { console.error(e); }
+    if (!ok) toast('無法配戴這個稱號');
+    else toast(eqId === id ? '已取下特殊稱號' : `已配戴稱號：${displayTitle(state)}`, 'good');
+    refresh();
+  }
+  function onSign(id) {
+    const cur = (state.achv && state.achv.badges) || [];
+    const on = cur.includes(id);
+    if (!on && cur.length >= MAX_BADGES) {
+      const msg = `招牌最多只能掛 ${MAX_BADGES} 枚徽章，請先取下一枚`;
+      setText(noteEl, '⚠ ' + msg); noteEl.hidden = false;
+      toast(msg, 'info');
+      return;
+    }
+    let ok = false;
+    try { ok = setBadges(state, on ? cur.filter(x => x !== id) : [...cur, id]); } catch (e) { console.error(e); }
+    if (!ok) toast('無法變更招牌徽章');
+    else { setText(noteEl, ''); noteEl.hidden = true; }
+    refresh();
+  }
+
+  for (const c of cats) {
+    catBtns[c.id] = h('button', { class: 'tab', type: 'button', onclick: () => { achvStore.cat = c.id; refresh(); } }, c.name);
+    tabs.appendChild(catBtns[c.id]);
+  }
+  catBtns.all = h('button', { class: 'tab', type: 'button', onclick: () => { achvStore.cat = 'all'; refresh(); } }, '全部');
+  tabs.prepend(catBtns.all);
+
+  noteEl.hidden = true;
+  body.append(section('稱號與徽章', nameEl, b, nextEl, repDet,
+    h('div', { class: 'u-achsum' },
+      h('div', null, '已解鎖 ', cntEl, '　', tierEl),
+      h('div', { class: 'u-small' }, '招牌：', signEl, ' ', slotEl)),
+    noteEl, tabs, list));
+
+  function refresh() {
+    let arr = [];
+    try { arr = listAchievements(state) || []; } catch (e) { console.error(e); }
+    if (!built || arr.length !== cards.size) {
+      // (re)build once: card set only changes if the data does
+      built = true; cards.clear(); list.replaceChildren(...arr.map(makeCard));
+    }
+    const eqId = state.achv && state.achv.title;
+    const badges = (state.achv && state.achv.badges) || [];
+    const full = badges.length >= MAX_BADGES;
+    let done = 0;
+    const tierN = { 1: [0, 0], 2: [0, 0], 3: [0, 0] }, catN = {};
+    for (const a of arr) {
+      const d = a.def, r = cards.get(d.id);
+      if (!r) continue;
+      if (a.unlocked) done++;
+      if (tierN[d.tier]) { tierN[d.tier][1]++; if (a.unlocked) tierN[d.tier][0]++; }
+      const cn = catN[d.cat] || (catN[d.cat] = [0, 0]);
+      cn[1]++; if (a.unlocked) cn[0]++;
+      const masked = !!a.masked;
+      setText(r.nameT, masked ? '？？？' : d.name);
+      setText(r.desc, masked ? (d.hint || '（隱藏成就）') : (a.unlocked ? d.desc : (d.desc || d.hint || '')));
+      setText(r.ico, masked ? '❓' : (d.badge || '🏆'));
+      setClass(r.el, 'u-locked', !a.unlocked);
+      setClass(r.el, 'u-masked', masked);
+      setClass(r.el, 'selected', a.unlocked && eqId === d.id);
+      r.titleChip && (r.titleChip.hidden = masked);
+      const showProg = !a.unlocked && !masked && a.goal != null && a.goal > 0 && a.progress != null;
+      r.prog.hidden = !showProg;
+      if (showProg) {
+        setBar(r.pbar, a.progress / a.goal);
+        const pf = d.metric === 'money' ? money : fmt;
+        setText(r.ptxt, `${pf(Math.min(a.progress, a.goal))} / ${pf(a.goal)}`);
+      }
+      r.when.hidden = !a.unlocked;
+      if (a.unlocked) setText(r.when, '✔ 已於 ' + atText(a.at) + ' 解鎖');
+      if (r.eq) {
+        const on = eqId === d.id;
+        r.eq.hidden = !a.unlocked;
+        setText(r.eq, on ? '取消配戴' : '配戴稱號');
+        setClass(r.eq, 'primary', !on);
+      }
+      const hung = badges.includes(d.id);
+      r.sign.hidden = !a.unlocked;
+      setText(r.sign, hung ? '取下招牌' : '掛上招牌');
+      setClass(r.sign, 'danger', hung);
+      setClass(r.sign, 'u-dim', !hung && full);
+    }
+    setText(cntEl, `${done} / ${arr.length}`);
+    setText(tierEl, [1, 2, 3].map(t => `${TIER_ICONS[t]}${tierN[t][0]}/${tierN[t][1]}`).join('　'));
+    let icons = [];
+    try { icons = badgeIcons(state) || []; } catch (e) { /* ignore */ }
+    setText(signEl, icons.length ? icons.join(' ') : '（尚未掛上徽章）');
+    setText(slotEl, `自選徽章 ${badges.length}/${MAX_BADGES}`);
+    if (!full && !noteEl.hidden) { setText(noteEl, ''); noteEl.hidden = true; }
+    // category tabs + filter
+    if (achvStore.cat !== 'all' && !cats.some(c => c.id === achvStore.cat)) achvStore.cat = 'all';
+    for (const c of cats) {
+      const n = catN[c.id] || [0, 0];
+      setText(catBtns[c.id], `${c.name} ${n[0]}/${n[1]}`);
+    }
+    setText(catBtns.all, `全部 ${done}/${arr.length}`);
+    for (const id of Object.keys(catBtns)) setClass(catBtns[id], 'active', id === achvStore.cat);
+    const k = achvStore.cat;
+    if (k !== lastKey) {
+      lastKey = k;
+      for (const r of cards.values()) r.el.hidden = k !== 'all' && r.el.dataset.cat !== k;
+    }
+  }
+  achvLive = { el: list, refresh };
+
   return {
     update() {
       const rep = Math.round(state.reputation);
       const { cur, next } = titleFor(rep);
-      setText(nameEl, `🎖 ${cur.title}`);
+      let dt = cur.title;
+      try { dt = displayTitle(state) || cur.title; } catch (e) { /* module not ready */ }
+      setText(nameEl, `🎖 ${dt}`);
       setBar(b, next ? (rep - cur.minRep) / (next.minRep - cur.minRep) : 1);
       setText(nextEl, next ? `聲譽 ${rep}　距離「${next.title}」還差 ${next.minRep - rep}` : `聲譽 ${rep}　已達最高稱號`);
-      for (const it of items) {
+      for (const it of repItems) {
         const ok = rep >= it.t.minRep;
         it.el.className = 'u-check ' + (ok ? 'good' : 'muted');
         setText(it.el.firstChild, ok ? '★' : '☆');
       }
+      refresh();
     },
   };
 }
@@ -151,7 +343,7 @@ export function mountClinic(root, state, ui) {
     { id: 'policy', label: '🧭 經營方針', build: b => buildPolicy(b, state) },
     { id: 'boards', label: '📌 衛教看板', build: b => buildBoards(b, state) },
     { id: 'expand', label: '🏗 擴建', build: b => buildExpand(b, state) },
-    { id: 'title', label: '🎖 稱號', build: b => buildTitle(b, state) },
+    { id: 'title', label: '🎖 稱號與徽章', build: b => buildTitle(b, state) },
   ], store);
   root.appendChild(t.el);
   return { update() { t.update(); } };

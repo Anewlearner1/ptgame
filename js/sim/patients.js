@@ -1141,6 +1141,7 @@ function tickChat(c, p, dt) {
     p.patience = Math.min(p.patienceMax, p.patience + 10);
     p.chat = null; p.chatCd = TUNE.CHAT_CD; p.needSpot = true;
     releaseStaff(c.state, s); s.state = 'idle';
+    bus.emit('patient:chat', { patient: p });
   }
 }
 
