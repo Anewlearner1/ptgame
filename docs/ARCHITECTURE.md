@@ -85,8 +85,8 @@ T = {
   objects: [buildableId],         // ANY-of: patient must stand on a walkable tile adjacent to one of these (free) objects
   staffRole: null | [role],       // ANY-of staff roles needed to be adjacent too; null = self-service
   duration,                       // game minutes (30..90; visible on screen ~2-6 real sec)
-  nhiPoints,                      // for kind 'nhi' (revenue at settlement before dilution), 60..500
-  price,                          // for kind 'self' NT$ base price (policy.priceMult scales it), 800..6000
+  nhiPoints,                      // for kind 'nhi' (revenue at settlement before dilution), 60..600
+  price,                          // for kind 'self' NT$ base price (policy.priceMult scales it), 800..10000
   points: { medical, device, service },   // base points produced per session
   staminaCost,                    // staff stamina per session (manual therapy high)
   requires: null | researchNodeId,
