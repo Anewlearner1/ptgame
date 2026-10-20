@@ -62,6 +62,8 @@ export function createInitialState() {
     inspections: { lastYearResult: null },
 
     flags: { tutorialDone: false },
+
+    achv: { unlocked: {}, counters: {}, title: null, badges: [] },   // achievements, see docs/ACHIEVEMENTS.md §5.2
   };
 }
 

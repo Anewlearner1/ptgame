@@ -273,6 +273,7 @@ export function startCommunity(state, id) {
   for (const k of Object.keys(fx.points || {})) state.points[k] = Math.max(0, (state.points[k] || 0) + fx.points[k]);
   note(state, `社區活動開跑：${def.name}`, 'good');
   refreshMods(state);
+  bus.emit('community:started', { id });
   return { ok: true, reason: '' };
 }
 

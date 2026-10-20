@@ -20,7 +20,7 @@ export const TILE_H = 32;           // iso diamond height
 
 export const START_MONEY = 1200000;
 export const SAVE_KEY_PREFIX = 'ptgame.save.';
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export const POINT_KEYS = ['medical', 'device', 'service'];
 export const POINT_LABELS = { medical: '醫術', device: '儀器', service: '服務' };
