@@ -3,8 +3,16 @@
 import { ui as globalUi } from '../core/state.js';
 import { MAP_W, MAP_H, TILE_W, TILE_H } from '../core/constants.js';
 
-export const ZOOM_MIN = 0.5;
+export const ZOOM_MIN = 0.4;
 export const ZOOM_MAX = 2.5;
+
+// Auto-fit bookkeeping: while the player has not moved/zoomed the camera by hand, window resizes and panel
+// open/close re-fit the lot automatically (ui.js listens through onViewResize / camManual).
+let manual = false;
+export function camManual() { return manual; }
+export function markCamManual() { manual = true; }
+const resizeHooks = [];
+export function onViewResize(fn) { resizeHooks.push(fn); }
 
 let panned = false;     // true if the last right/middle press turned into a drag (suppresses "right-click cancels")
 export function didPan() { return panned; }
@@ -48,6 +56,7 @@ export function zoomAt(cam, sx, sy, newZoom, canvas) {
 
 export function centerOnLot(state, canvas, uiRef = globalUi) {
   const cam = uiRef.cam;
+  manual = false;
   const { w, h } = viewSize(canvas);
   const l = state.lot;
   const gx = l.x0 + l.w / 2, gy = l.y0 + l.h / 2;
@@ -102,6 +111,7 @@ export function initCamera(canvas, uiRef = globalUi) {
         const dist = Math.hypot(a.x - b.x, a.y - b.y);
         const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
         const r = rect();
+        manual = true;
         cam.x += cx - pinch.cx; cam.y += cy - pinch.cy;
         if (pinch.dist > 0) zoomAt(cam, cx - r.left, cy - r.top, cam.zoom * dist / pinch.dist, canvas);
         else clampCam(cam, canvas);
@@ -112,7 +122,7 @@ export function initCamera(canvas, uiRef = globalUi) {
     if (drag && drag.id === e.pointerId) {
       const dx = e.clientX - drag.lx, dy = e.clientY - drag.ly;
       drag.lx = e.clientX; drag.ly = e.clientY;
-      if (!panned && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) panned = true;
+      if (!panned && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) { panned = true; manual = true; }
       cam.x += dx; cam.y += dy;
       clampCam(cam, canvas);
     }
@@ -135,11 +145,15 @@ export function initCamera(canvas, uiRef = globalUi) {
   canvas.addEventListener('wheel', e => {
     if (e.altKey) return;       // Alt+wheel rotates (input.js)
     e.preventDefault();
+    manual = true;
     let dy = e.deltaY;
     if (e.deltaMode === 1) dy *= 16; else if (e.deltaMode === 2) dy *= 100;
     const r = rect();
     zoomAt(cam, e.clientX - r.left, e.clientY - r.top, cam.zoom * Math.exp(-dy * 0.0016), canvas);
   }, { passive: false });
 
-  window.addEventListener('resize', () => clampCam(cam, canvas));
+  window.addEventListener('resize', () => {
+    clampCam(cam, canvas);
+    for (const f of resizeHooks) { try { f(); } catch (e) { console.error(e); } }
+  });
 }

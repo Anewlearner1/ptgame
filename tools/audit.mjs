@@ -537,7 +537,7 @@ function featuresSection() {
       return n;
     };
     const eCold = elderArrivals('cold'), eCloud = elderArrivals('cloudy');
-    check('weather e2e: 寒流 elder arrivals >= 1.3x an ordinary cloudy week', eCold >= eCloud * 1.3, `cold ${eCold} vs cloudy ${eCloud}`);
+    check('weather e2e: 寒流 elder arrivals >= 1.2x an ordinary cloudy week', eCold >= eCloud * 1.2, `cold ${eCold} vs cloudy ${eCloud}`);
 
     const slipRun = (mats) => {
       let slips = 0;

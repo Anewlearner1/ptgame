@@ -17,7 +17,7 @@ import { mountOverview } from './panels/overview.js';
 import { mountMap, sampleHeat } from './panels/map.js';
 import { mountSystem, lsGet } from './panels/system.js';
 import { TIPS } from '../data/texts.js';
-import { zoomAt } from '../render/camera.js';
+import { zoomAt, centerOnLot, camManual, onViewResize, ZOOM_MIN } from '../render/camera.js';
 import { TILE_W, TILE_H } from '../core/constants.js';
 
 const MOUNTS = { build: mountBuild, operate: mountOperate, clinic: mountClinic, overview: mountOverview, map: mountMap, system: mountSystem };
@@ -62,6 +62,13 @@ export function initUI(state, ui) {
   bus.on('week:start', () => { dirty = true; });
   bus.on('map:changed', () => { dirty = true; });
   document.addEventListener('keydown', e => onKey(e, state, ui));
+  // window resized: while the camera is still in its automatic fit, re-fit the lot (beside the open panel, if any)
+  onViewResize(() => {
+    if (camManual()) return;
+    centerOnLot(state, document.getElementById('game'), ui);
+    shiftCur = 0; shiftTarget = 0;
+    if (shown && !panelEl.hidden) placeBesidePanel(state, ui);
+  });
   // after a mouse click, drop button focus so Space / number hotkeys go to the game, not the last-clicked button
   document.addEventListener('click', e => {
     const b = e.target.closest && e.target.closest('button, .card[role="button"]');
@@ -119,6 +126,7 @@ function remount(state, ui, force) {
   if (!shown || !MOUNTS[shown]) {
     panelEl.hidden = true; stageEl.classList.remove('panel-open');
     shiftTarget = 0;
+    if (!camManual() && !force) { centerOnLot(state, document.getElementById('game'), ui); shiftCur = 0; }   // give the lot its full view back
     return;
   }
   const close = h('button', { class: 'panel-close', type: 'button', 'aria-label': '關閉', onclick: () => { ui.panel = null; syncPanel(state, ui); } }, '✕');
@@ -130,7 +138,11 @@ function remount(state, ui, force) {
   stageEl.dataset.panel = shown;
   live = MOUNTS[shown](body, state, ui);
   if (live && live.update) live.update(state, ui);
-  // shift the view so the map's centre moves into the part of the stage the panel leaves free
+  if (!camManual() && !force) { centerOnLot(state, document.getElementById('game'), ui); shiftCur = 0; }   // re-fit from the clean full-stage view
+  placeBesidePanel(state, ui);
+}
+// shift the view so the map's centre moves into the part of the stage the panel leaves free (and zoom out to fit)
+function placeBesidePanel(state, ui) {
   const sr = stageEl.getBoundingClientRect(), pr = panelEl.getBoundingClientRect();
   shiftTarget = Math.max(0, Math.round((pr.right - sr.left) / 2));
   fitLotBesidePanel(state, ui, sr.width - (pr.right - sr.left));
@@ -139,7 +151,7 @@ function remount(state, ui, force) {
 function fitLotBesidePanel(state, ui, freeW) {
   const l = state.lot, cam = ui.cam, canvas = document.getElementById('game');
   const need = (l.w + l.h) * TILE_W / 2 + 140;
-  const zFit = Math.max(0.5, Math.floor((freeW - 24) / need * 20) / 20);
+  const zFit = Math.max(ZOOM_MIN, Math.floor((freeW - 24) / need * 20) / 20);
   if (cam.zoom <= zFit) return;
   const gx = l.x0 + l.w / 2, gy = l.y0 + l.h / 2;
   const sx = cam.x + (gx - gy) * TILE_W / 2 * cam.zoom, sy = cam.y + (gx + gy) * TILE_H / 2 * cam.zoom;

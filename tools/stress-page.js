@@ -99,7 +99,7 @@
       const s = st.g().state;
       if (s.time.paused) return;
       let guard = 0;
-      while (s.patients.length < target && guard++ < 6) { const p = st.P.spawnPatient(s, planOverride ? 'sports' : types[Math.floor(Math.random() * types.length)]); if (p && planOverride) { p.plan = planOverride.slice(); p.selfPaySteps = []; } }
+      while (s.patients.length < target && guard++ < 6) { const p = st.P.spawnPatient(s, planOverride ? 'sports' : types[Math.floor(Math.random() * types.length)]); if (p && planOverride) { p.plan = planOverride.slice(); p.selfPaySteps = []; p.stage = 'waiting'; p.needSpot = true; p.path = []; p.dest = null; p.patience = p.patienceMax = 1e6; } }
     }, 250);
   };
   st.stopFill = () => clearInterval(st._fillT);

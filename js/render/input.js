@@ -6,7 +6,7 @@ import { canPlace, placeObject, paintFloor, removeAt } from '../sim/build.js';
 import { objectAt } from '../core/grid.js';
 import { tileAt, placementOrigin, hooks } from './iso.js';
 import { pickAt } from './renderer.js';
-import { didPan, panBy } from './camera.js';
+import { didPan, panBy, markCamManual } from './camera.js';
 
 let canvas = null, S = null, UI = null;
 let lastPos = null;           // last pointer pos in canvas CSS px
@@ -122,7 +122,7 @@ function onMove(e) {
     if (touchPan && touchPan.id === e.pointerId) {
       const dx = e.clientX - touchPan.x, dy = e.clientY - touchPan.y;
       if (!touchPan.moved && Math.hypot(dx, dy) > 10) touchPan.moved = true;
-      if (touchPan.moved && !dragging) { panBy(UI.cam, dx, dy, canvas); touchPan.x = e.clientX; touchPan.y = e.clientY; }
+      if (touchPan.moved && !dragging) { markCamManual(); panBy(UI.cam, dx, dy, canvas); touchPan.x = e.clientX; touchPan.y = e.clientY; }
     }
     return;
   }

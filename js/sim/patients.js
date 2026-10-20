@@ -442,10 +442,20 @@ function runArrivals(c, meta, dt) {
   let rawSum = 0;
   for (const P of Object.values(PATIENT_TYPES)) rawSum += P.weight;
   const typeSpawn = state.mods.typeSpawn || {};
+  // weekly cap: scale every type's rate down together (instead of first-come-first-served, where the morning
+  // elders would fill the cap and starve the later groups) so the type mix keeps following weights x focus
+  const shares = {};
+  let shareSum = 0;
   for (const P of Object.values(PATIENT_TYPES)) {
     const ts = typeSpawn[P.id] == null ? 1 : typeSpawn[P.id];
-    const share = (P.weight / rawSum) * ts * availability(c, P);
-    const mu = lambda * discount * share * densityOf(P, clock) * dt;
+    shares[P.id] = (P.weight / rawSum) * ts * availability(c, P);
+    shareSum += shares[P.id];
+  }
+  const wantNew = lambda * discount * shareSum;
+  const capScale = wantNew > 0 ? clamp((cap - meta.retLoad) / wantNew, 0, 1) : 1;
+  for (const P of Object.values(PATIENT_TYPES)) {
+    const share = shares[P.id];
+    const mu = lambda * discount * capScale * share * densityOf(P, clock) * dt;
     const n = poisson(mu);
     for (let i = 0; i < n; i++) {
       if (meta.spawned >= cap || state.patients.length >= TUNE.MAX_PATIENTS) return;
