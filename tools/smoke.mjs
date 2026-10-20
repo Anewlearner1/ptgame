@@ -41,7 +41,9 @@ while (Date.now() - t0 < minutes * 60000) {
     const prev = stuck.get(a.id);
     if (!prev || Math.abs(prev.x - a.x) + Math.abs(prev.y - a.y) > 0.05) stuck.set(a.id, { x: a.x, y: a.y, since: now, st: a.st });
   }
-  for (const [id, v] of stuck) if (now - v.since > 120000 && !['working', 'treating', 'registering'].includes(v.st)) problems.push(`STUCK agent ${id} ${v.st} >2min at ${v.x.toFixed(1)},${v.y.toFixed(1)}`);
+  const present = new Set(r.agents.map(a => a.id));
+  for (const id of [...stuck.keys()]) if (!present.has(id)) stuck.delete(id);   // agent gone
+  for (const [id, v] of stuck) if (now - v.since > 120000 && !['working', 'treating', 'registering', 'idle', 'resting', 'chatting'].includes(v.st)) problems.push(`STUCK agent ${id} ${v.st} >2min at ${v.x.toFixed(1)},${v.y.toFixed(1)}`);
   console.log(`Y${r.t.year} M${r.t.month} W${r.t.week} money=${r.money} patients=${r.pat} rep=${r.rep}`);
 }
 const fps = await p.evaluate(() => new Promise(res => { let n = 0; const t = performance.now(); const f = () => { n++; performance.now() - t < 2000 ? requestAnimationFrame(f) : res(n / 2); }; requestAnimationFrame(f); }));
