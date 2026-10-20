@@ -21,11 +21,12 @@ python3 -m http.server 8000
 
 ### 線上遊玩（GitHub Pages）
 
-所有資源都使用相對路徑，可以直接部署到 GitHub Pages：
+線上試玩：<https://anewlearner1.github.io/ptgame/>
 
-1. 到 GitHub 專案頁面的 **Settings → Pages**。
-2. Source 選擇你要發布的分支與根目錄（`/`）。
-3. 儲存後，等待幾分鐘即可透過 Pages 網址遊玩。
+所有資源都使用相對路徑。本專案已附自動部署 workflow（`.github/workflows/pages.yml`），推送到 `main` 或 `claude/rehab-clinic-game` 就會自動發布。第一次使用需要：
+
+1. 到 **Settings → Pages**，Source 選 **GitHub Actions**。
+2. 到 **Settings → Environments → github-pages**，把要部署的分支加入允許清單。
 
 ## 操作方式
 
