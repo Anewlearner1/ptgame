@@ -356,7 +356,7 @@ input {
 /* ---------- 8. Toasts ----------------------------------------------------- */
 #toast-layer {
   position: absolute;
-  top: 12px;
+  bottom: 14px;             /* bottom-centre keeps the panel header (and its ×) clear */
   left: 50%;
   transform: translateX(-50%);
   width: min(520px, calc(100% - 32px));
