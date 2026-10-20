@@ -1,0 +1,944 @@
+/* ==========================================================================
+   復健科診所物語 — base stylesheet (H4)
+   Pixel-art / Kairosoft-flavoured. No external fonts or assets.
+   Chunky outlines are built from stacked box-shadows (no border, so
+   corners stay notched like pixel art).
+   ========================================================================== */
+
+/* ---------- 1. Tokens ---------------------------------------------------- */
+:root {
+  --teal: #2a9d8f;
+  --teal-dark: #1d5c57;
+  --deep: #264653;
+  --cream: #fdf6e3;
+  --paper: #fffaf0;
+  --wood: #c8a27a;
+  --accent: #e76f51;
+  --gold: #f4a261;
+  --good: #3a9d4d;
+  --bad: #d1495b;
+
+  --ink: #1f2d33;          /* outline colour */
+  --text: #1f2d33;
+  --text-light: #fdf6e3;
+  --muted: #6b7a80;
+  --line: rgba(31, 45, 51, 0.18);
+  --shade: rgba(0, 0, 0, 0.14);
+  --sky: #9fd3c7;
+
+  --px: 3px;               /* one "pixel" of chunky border */
+  --sidebar-w: 76px;
+  --topbar-h: 48px;
+  --font: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+
+  /* Shared pixel outline + depth. Reuse these in css/ui.css. */
+  --outline: 0 calc(-1 * var(--px)) 0 0 var(--ink),
+             0 var(--px) 0 0 var(--ink),
+             calc(-1 * var(--px)) 0 0 0 var(--ink),
+             var(--px) 0 0 0 var(--ink);
+  --depth: 0 calc(2 * var(--px)) 0 0 var(--ink);
+  --bevel: inset 0 var(--px) 0 0 rgba(255, 255, 255, 0.55),
+           inset 0 calc(-1 * var(--px)) 0 0 var(--shade);
+}
+
+/* Dark-teal and cream colour scheme is fixed on purpose: the canvas is the
+   only "dark" surface, and the UI keeps the same look in every OS theme. */
+:root { color-scheme: light; }
+
+/* ---------- 2. Base ------------------------------------------------------ */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  width: 100vw;
+  height: 100vh;
+  background: var(--deep);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+button,
+select,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px dashed var(--gold);
+  outline-offset: 2px;
+}
+
+::selection { background: var(--gold); color: var(--ink); }
+
+/* ---------- 3. Top bar --------------------------------------------------- */
+#topbar {
+  flex: 0 0 var(--topbar-h);
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  min-width: 0;
+  background: linear-gradient(#24706a, var(--teal-dark) 70%, #174a46);
+  color: var(--text-light);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 calc(-1 * var(--px)) 0 0 var(--ink),
+              0 calc(-1 * var(--px)) 0 0 var(--ink);
+  position: relative;
+  z-index: 10;
+  user-select: none;
+}
+
+.tb-left,
+.tb-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tb-left { overflow: hidden; }
+.tb-right { flex-shrink: 0; }
+
+.tb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  background: rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 0 2px #0c3331,
+              inset 0 calc(-1 * var(--px)) 0 0 rgba(0, 0, 0, 0.3);
+}
+
+.tb-ico {
+  font-size: 17px;
+  line-height: 1;
+  text-shadow: none;
+}
+
+.tb-money {
+  color: #ffe08a;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+/* Money / point changes flash green or red; re-add the class to replay. */
+.tb-flash-up { animation: tb-flash-up 0.9s steps(5) 1; }
+.tb-flash-down { animation: tb-flash-down 0.9s steps(5) 1; }
+
+@keyframes tb-flash-up {
+  0%, 100% { background-color: rgba(0, 0, 0, 0.2); }
+  20%, 60% { background-color: var(--good); }
+}
+
+@keyframes tb-flash-down {
+  0%, 100% { background-color: rgba(0, 0, 0, 0.2); }
+  20%, 60% { background-color: var(--bad); }
+}
+
+/* ---------- 4. Stage (game canvas + overlays) ---------------------------- */
+#stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--sky);
+}
+
+#game {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  touch-action: none;
+}
+
+/* ---------- 5. Sidebar (left edge of stage) ------------------------------ */
+#sidebar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  bottom: 10px;
+  width: var(--sidebar-w);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 5;
+  pointer-events: none;   /* only the buttons catch clicks */
+  user-select: none;
+}
+
+.sidebar-btn {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 64px;
+  margin: 0 var(--px) 0 0;
+  padding: 4px;
+  border: 0;
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: var(--outline), var(--depth), var(--bevel);
+  transition: transform 0.08s steps(2), box-shadow 0.08s steps(2), background-color 0.12s;
+}
+
+.sidebar-btn .ico {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.sidebar-btn:hover {
+  background: #fff1cf;
+  transform: translateY(-2px);
+}
+
+.sidebar-btn.active,
+.sidebar-btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--text-light);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+  transform: translateY(var(--px));
+  box-shadow: var(--outline), inset 0 calc(2 * var(--px)) 0 0 rgba(0, 0, 0, 0.22);
+}
+
+/* ---------- 6. Floating panel -------------------------------------------- */
+#panel {
+  position: absolute;
+  top: 10px;
+  left: calc(10px + var(--sidebar-w) + 12px);
+  width: min(560px, 92vw, calc(100% - var(--sidebar-w) - 40px));
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 16px 16px;
+  background: var(--cream);
+  color: var(--text);
+  z-index: 10;
+  scrollbar-width: thin;
+  scrollbar-color: var(--wood) var(--cream);
+  box-shadow: var(--outline),
+              0 calc(6 * var(--px)) 0 0 rgba(0, 0, 0, 0.28);
+  animation: panel-in 0.14s steps(3) 1;
+}
+
+#panel[hidden] { display: none; }
+
+@keyframes panel-in {
+  from { transform: translateX(-8px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+
+.panel-title {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+  margin: 0 -16px 14px;
+  padding: 10px 52px 10px 16px;
+  background: linear-gradient(#2d8a7e, var(--teal-dark));
+  color: var(--text-light);
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 calc(-1 * var(--px)) 0 0 var(--ink);
+}
+
+.panel-close {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--accent);
+  color: var(--text-light);
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 calc(-1 * var(--px)) 0 0 var(--ink),
+              0 var(--px) 0 0 var(--ink),
+              calc(-1 * var(--px)) 0 0 0 var(--ink),
+              var(--px) 0 0 0 var(--ink),
+              inset 0 calc(-1 * var(--px)) 0 0 rgba(0, 0, 0, 0.25);
+}
+
+.panel-close:hover { background: #f08467; }
+.panel-close:active { transform: translateY(2px); box-shadow: var(--outline); }
+
+/* ---------- 7. Speed bar (bottom-right of stage) ------------------------- */
+#speedbar {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  z-index: 5;
+  user-select: none;
+}
+
+.speed-btn {
+  min-width: 46px;
+  height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 900;
+  cursor: pointer;
+  margin-bottom: 6px;
+  box-shadow: var(--outline), var(--depth), var(--bevel);
+  transition: transform 0.08s steps(2), box-shadow 0.08s steps(2);
+}
+
+.speed-btn:hover { background: #fff1cf; }
+
+.speed-btn.active {
+  background: var(--teal);
+  color: var(--text-light);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+  transform: translateY(var(--px));
+  box-shadow: var(--outline), inset 0 calc(2 * var(--px)) 0 0 rgba(0, 0, 0, 0.22);
+}
+
+/* ---------- 8. Toasts ----------------------------------------------------- */
+#toast-layer {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 20;
+  pointer-events: none;
+}
+
+/* Toasts fade in, hold ~2.4s, then fade out. Remove the element after ~3s. */
+.toast {
+  max-width: 100%;
+  padding: 8px 16px;
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 14px;
+  text-align: center;
+  box-shadow: var(--outline), 0 calc(4 * var(--px)) 0 0 rgba(0, 0, 0, 0.25);
+  animation: toast-life 3s ease-out forwards;
+}
+
+@keyframes toast-life {
+  0%   { opacity: 0; transform: translateY(-8px); }
+  8%   { opacity: 1; transform: none; }
+  80%  { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-4px); }
+}
+
+.toast.good { background: var(--good); color: var(--text-light); text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3); }
+.toast.bad  { background: var(--bad);  color: var(--text-light); text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3); }
+.toast.info { background: var(--deep); color: var(--text-light); text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3); }
+
+/* ---------- 9. Tooltip ---------------------------------------------------- */
+#tooltip {
+  position: absolute;
+  z-index: 30;
+  max-width: 260px;
+  padding: 8px 10px;
+  background: rgba(20, 36, 41, 0.95);
+  color: var(--text-light);
+  font-size: 13px;
+  line-height: 1.5;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px var(--cream),
+              0 0 0 4px var(--ink),
+              0 calc(4 * var(--px)) 0 0 rgba(0, 0, 0, 0.3);
+}
+
+#tooltip[hidden] { display: none; }
+
+/* ---------- 10. Modal ------------------------------------------------------ */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(10, 25, 30, 0.6);
+  animation: fade-in 0.15s steps(3) 1;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: min(480px, 100%);
+  max-height: calc(100vh - 32px);
+  background: var(--cream);
+  color: var(--text);
+  box-shadow: var(--outline), 0 calc(6 * var(--px)) 0 0 rgba(0, 0, 0, 0.3);
+}
+
+.modal-title {
+  flex: 0 0 auto;
+  padding: 12px 16px;
+  background: linear-gradient(#e0875f, var(--accent));
+  color: var(--text-light);
+  font-size: 17px;
+  font-weight: 900;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 calc(-1 * var(--px)) 0 0 var(--ink);
+}
+
+.modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  line-height: 1.7;
+}
+
+.modal-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px 16px;
+  background: rgba(200, 162, 122, 0.22);
+  box-shadow: inset 0 var(--px) 0 0 var(--line);
+}
+
+/* ---------- 11. Buttons -------------------------------------------------- */
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  margin: 0 var(--px) 8px 0;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--outline), var(--depth), var(--bevel);
+  transition: transform 0.08s steps(2), box-shadow 0.08s steps(2), background-color 0.12s;
+}
+
+.btn:hover {
+  background: #fff1cf;
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(var(--px));
+  box-shadow: var(--outline), inset 0 calc(2 * var(--px)) 0 0 rgba(0, 0, 0, 0.18);
+}
+
+.btn.primary {
+  background: var(--teal);
+  color: var(--text-light);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+.btn.primary:hover { background: #36b3a4; }
+
+.btn.danger {
+  background: var(--bad);
+  color: var(--text-light);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+.btn.danger:hover { background: #dc5f6e; }
+
+.btn.small {
+  min-height: 26px;
+  padding: 3px 9px;
+  font-size: 12px;
+  margin-bottom: 6px;
+  box-shadow: var(--outline), 0 var(--px) 0 0 var(--ink), var(--bevel);
+}
+
+.btn:disabled,
+.btn[disabled] {
+  background: #d9cfbb;
+  color: #8e8473;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+  transform: none;
+  text-shadow: none;
+  box-shadow: var(--outline), inset 0 calc(-1 * var(--px)) 0 0 rgba(0, 0, 0, 0.1);
+}
+
+/* ---------- 12. Tabs ----------------------------------------------------- */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 0 0 0 2px;
+  border-bottom: var(--px) solid var(--ink);
+}
+
+.tab {
+  margin-bottom: calc(-1 * var(--px));
+  padding: 6px 12px 8px;
+  border: 0;
+  border-radius: 0;
+  background: #e6d9bb;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 calc(-1 * var(--px)) 0 0 var(--ink),
+              calc(-1 * var(--px)) 0 0 0 var(--ink),
+              var(--px) 0 0 0 var(--ink),
+              inset 0 calc(-1 * var(--px)) 0 0 var(--shade);
+}
+
+.tab:hover { background: #f1e6cc; }
+
+.tab.active {
+  background: var(--teal);
+  color: var(--text-light);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+  padding-bottom: 11px;
+  box-shadow: 0 calc(-1 * var(--px)) 0 0 var(--ink),
+              calc(-1 * var(--px)) 0 0 0 var(--ink),
+              var(--px) 0 0 0 var(--ink),
+              inset 0 calc(-1 * var(--px)) 0 0 rgba(0, 0, 0, 0.18);
+}
+
+/* ---------- 13. Cards & grid -------------------------------------------- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+  padding: 4px 4px 8px;
+}
+
+.card {
+  position: relative;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--paper);
+  color: var(--text);
+  box-shadow: var(--outline), inset 0 calc(-2 * var(--px)) 0 0 var(--shade);
+  transition: transform 0.08s steps(2), background-color 0.12s;
+}
+
+button.card,
+.card[role="button"],
+.card[data-id] {
+  cursor: pointer;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+  font: inherit;
+}
+
+button.card:hover,
+.card[role="button"]:hover,
+.card[data-id]:hover {
+  background: #fff1cf;
+  transform: translateY(-2px);
+}
+
+.card.selected {
+  background: #ffe9b8;
+  box-shadow: 0 calc(-1 * var(--px)) 0 0 var(--accent),
+              calc(-1 * var(--px)) 0 0 0 var(--accent),
+              var(--px) 0 0 0 var(--accent),
+              0 var(--px) 0 0 var(--accent),
+              inset 0 calc(-2 * var(--px)) 0 0 rgba(231, 111, 81, 0.25);
+}
+
+.card.locked {
+  background: #d9d0bd;
+  color: #8e8473;
+  filter: grayscale(0.85);
+  opacity: 0.8;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.card.locked:hover {
+  background: #d9d0bd;
+  transform: none;
+}
+
+/* ---------- 14. Layout helpers ------------------------------------------- */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.scroll-y {
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--wood) transparent;
+}
+
+/* ---------- 15. Stats, badges, tags, text colours ------------------------ */
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stat > :first-child {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.stat > :last-child {
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 7px;
+  background: var(--gold);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.5;
+  white-space: nowrap;
+  box-shadow: 0 2px 0 0 var(--ink), 0 0 0 2px var(--ink);
+}
+
+.tag {
+  display: inline-block;
+  padding: 0 6px;
+  background: #d6ebe5;
+  color: var(--deep);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.6;
+  white-space: nowrap;
+  box-shadow: 0 0 0 2px var(--deep);
+}
+
+.muted { color: var(--muted); }
+.good  { color: var(--good); font-weight: 700; }
+.bad   { color: var(--bad);  font-weight: 700; }
+
+/* ---------- 16. Progress bars ------------------------------------------- */
+.bar {
+  position: relative;
+  display: block;
+  height: 14px;
+  background: #efe4c9;
+  box-shadow: 0 0 0 2px var(--ink), inset 0 2px 0 0 var(--shade);
+  overflow: hidden;
+}
+
+/* Fill width comes from inline style.width or a --v custom property (0%..100%). */
+.bar > i {
+  display: block;
+  height: 100%;
+  width: var(--v, 0%);
+  max-width: 100%;
+  background: repeating-linear-gradient(90deg,
+              var(--teal) 0 8px, #36b3a4 8px 12px);
+  box-shadow: inset 0 -3px 0 0 rgba(0, 0, 0, 0.18);
+  transition: width 0.4s steps(8);
+}
+
+.bar.warn > i {
+  background: repeating-linear-gradient(90deg,
+              var(--gold) 0 8px, #f7b97f 8px 12px);
+}
+
+.bar.bad > i {
+  background: repeating-linear-gradient(90deg,
+              var(--bad) 0 8px, #e0707d 8px 12px);
+}
+
+/* ---------- 17. Form controls ------------------------------------------- */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]:focus { outline: none; }
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 10px;
+  background: #efe4c9;
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 22px;
+  margin-top: -8px;
+  border: 0;
+  border-radius: 0;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--ink), inset 0 -4px 0 0 rgba(0, 0, 0, 0.2);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 10px;
+  background: #efe4c9;
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 22px;
+  border: 0;
+  border-radius: 0;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--ink), inset 0 -4px 0 0 rgba(0, 0, 0, 0.2);
+}
+
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  outline: 3px dashed var(--gold);
+  outline-offset: 2px;
+}
+
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 34px;
+  padding: 6px 30px 6px 10px;
+  border: 0;
+  border-radius: 0;
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ink) 50%),
+    linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--ink), inset 0 -3px 0 0 var(--shade);
+}
+
+select:disabled { color: #8e8473; cursor: not-allowed; }
+
+/* ---------- 18. Tables --------------------------------------------------- */
+table.list {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  background: var(--paper);
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+table.list th,
+table.list td {
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+table.list thead th {
+  position: sticky;
+  top: 0;
+  background: var(--deep);
+  color: var(--text-light);
+  font-weight: 700;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+table.list tbody tr:nth-child(odd)  { background: #f6ecd2; }
+table.list tbody tr:nth-child(even) { background: var(--paper); }
+table.list tbody tr:hover { background: #fbe3ad; }
+
+table.list td.num,
+table.list th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 19. Keycaps -------------------------------------------------- */
+.kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 6px;
+  border: 2px solid var(--ink);
+  border-bottom-width: 4px;
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.5;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ---------- 20. Canvas-friendly scrollbars in the panel ----------------- */
+#panel::-webkit-scrollbar,
+.scroll-y::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar { width: 10px; }
+
+#panel::-webkit-scrollbar-track,
+.scroll-y::-webkit-scrollbar-track,
+.modal-body::-webkit-scrollbar-track { background: var(--cream); }
+
+#panel::-webkit-scrollbar-thumb,
+.scroll-y::-webkit-scrollbar-thumb,
+.modal-body::-webkit-scrollbar-thumb {
+  background: var(--wood);
+  box-shadow: inset 0 0 0 2px var(--cream);
+}
+
+/* ---------- 21. Responsive ----------------------------------------------- */
+
+/* Narrower landscape (down to 900px wide): tighter chrome. */
+@media (max-width: 1100px) {
+  :root { --sidebar-w: 68px; }
+
+  #topbar { gap: 8px; padding: 0 8px; }
+  .tb-left, .tb-right { gap: 6px; }
+  .tb-item { padding: 0 8px; font-size: 13px; height: 32px; }
+  .tb-lbl { display: none; }
+
+  .sidebar-btn { height: 56px; font-size: 11px; }
+  .sidebar-btn .ico { font-size: 19px; }
+
+  .modal-body { padding: 12px; }
+}
+
+/* Short landscape (down to 500px tall): squeeze vertical padding. */
+@media (max-height: 600px) {
+  :root { --topbar-h: 44px; }
+
+  #sidebar { gap: 6px; top: 6px; left: 6px; bottom: 6px; }
+  .sidebar-btn { height: 50px; gap: 2px; }
+  .sidebar-btn .ico { font-size: 17px; }
+
+  #panel { top: 6px; max-height: calc(100% - 12px); padding: 0 12px 12px; }
+  .panel-title { min-height: 40px; margin: 0 -12px 10px; padding: 8px 46px 8px 12px; font-size: 15px; }
+  .panel-close { top: 6px; right: 6px; width: 28px; height: 28px; }
+
+  .tab { padding: 4px 10px 6px; }
+  .tab.active { padding-bottom: 9px; }
+
+  .grid { gap: 8px; }
+  .card { padding: 8px 10px; }
+
+  .speed-btn { height: 34px; min-width: 40px; margin-bottom: 4px; }
+  #speedbar { right: 8px; bottom: 8px; }
+
+  .modal-title { padding: 8px 12px; font-size: 15px; }
+  .modal-body { padding: 10px 12px; }
+  .modal-actions { padding: 8px 12px 10px; }
+}
+
+/* Very small stage: let the panel take the whole width. */
+@media (max-width: 900px) {
+  #panel { width: calc(100% - var(--sidebar-w) - 24px); }
+  .tb-item { padding: 0 6px; }
+}
+
+/* ---------- 22. Portrait hint (non-blocking) ----------------------------- */
+@media (orientation: portrait) {
+  body::after {
+    content: "請橫向使用以獲得最佳體驗";
+    position: fixed;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    z-index: 1000;
+    max-width: calc(100vw - 32px);
+    padding: 8px 14px;
+    background: rgba(38, 70, 83, 0.94);
+    color: var(--text-light);
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+    pointer-events: none;   /* never blocks taps */
+    box-shadow: var(--outline);
+  }
+}
