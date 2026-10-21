@@ -14,7 +14,7 @@ import { h, setClass, setText, tabbed, bar, setBar, toneOf, reconcile } from '..
 import { money, fmt, modChips, STAGE_LABELS, STAFF_STATE_LABELS, TYPE_ICONS, ROLE_ICONS } from '../fmt.js';
 import { chipList, section } from './common.js';
 import { confirmDialog } from '../modal.js';
-import { artEl, STAFF_SPRITE, moodSprite, itemSprite } from '../artdom.js';
+import { artEl, thumbEl, STAFF_SPRITE, moodSprite, itemSprite } from '../artdom.js';
 
 const store = { tab: 'patients', filter: 'all' };
 
@@ -237,7 +237,7 @@ function buildEquip(body, state, ui) {
     const tr = h('tr', { dataset: { id: o.id }, onclick: e => { if (!e.target.closest('button')) select(ui, 'object', o.id); } },
       h('td', null, itemSprite(o.defId)
         ? h('span', { class: 'u-eqname u-eqart' }, artEl(itemSprite(o.defId), { size: 28, fallback: d.glyph || '', fbSize: 18 }), d.name || o.defId)
-        : h('span', { class: 'u-eqname' }, `${d.glyph || ''} ${d.name || o.defId}`), badges),
+        : h('span', { class: 'u-eqname' }, thumbEl(o.defId, { width: 30, height: 28, fallback: h('span', null, `${d.glyph || ''} `) }), d.name || o.defId), badges),
       h('td', { class: 'muted u-poscol' }, `${o.x},${o.y}`),
       wearCell,
       h('td', { class: 'num u-upcol' }, fmt(d.upkeep || 0)),

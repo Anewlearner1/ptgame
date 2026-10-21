@@ -14,7 +14,8 @@ import {
   getObjectSprite, getFloorSprite, getGroundSprite, getPersonSprite, getIconSprite, getShadowSprite,
   getCarSprite, CAR_VARIANTS, warmSprites, spriteHit,
 } from './sprites.js';
-import { loadArt, artReady } from './art.js';
+import { loadArt, artReady, artEnabled } from './art.js';
+import * as CS from './concept_scene.js';
 import { setArtScale, drawArtPerson, personHeight, patientSprite, staffSprite, artFlip, blit } from './artdraw.js';
 
 const HW = TILE_W / 2, HH = TILE_H / 2;
@@ -36,7 +37,7 @@ export function initRenderer(cv) {
   layerCtx = layer.getContext('2d');
   layerCtx.imageSmoothingEnabled = false;
   warmSprites();
-  bus.on('art:changed', () => { objSig = ''; layer._built = false; });   // atlas loaded / style toggled: rebuild object sprites + static layer
+  bus.on('art:changed', () => { objSig = ''; layer._built = false; bubbleCache.clear(); });   // atlas loaded / style toggled: rebuild object sprites + static layer
   loadArt();                                                            // non-blocking; the procedural art is used until (and unless) it resolves
   ensureSize();
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => ensureSize()).observe(canvas);
@@ -168,28 +169,8 @@ const sign = { x: 0, y: 0, w: 128, h: 17 };
 let sparkleAt = -1e9;
 bus.on('achievement:unlocked', () => { sparkleAt = performance.now(); });
 
-function buildLayer(state) {
-  const g = layerCtx;
+function collectItems(state) {
   const lot = state.lot, door = state.door;
-  g.clearRect(0, 0, LAYER_W, LAYER_H);
-  // island slab
-  const T = (gx, gy) => [LX + isoX(gx, gy), LY + isoY(gx, gy)];
-  const L = T(0, MAP_H), B = T(MAP_W, MAP_H), Rr = T(MAP_W, 0);
-  const SL = 26;
-  g.fillStyle = '#6b5a4a';
-  g.beginPath(); g.moveTo(L[0], L[1]); g.lineTo(B[0], B[1]); g.lineTo(B[0], B[1] + SL); g.lineTo(L[0], L[1] + SL); g.closePath(); g.fill();
-  g.fillStyle = '#54463a';
-  g.beginPath(); g.moveTo(B[0], B[1]); g.lineTo(Rr[0], Rr[1]); g.lineTo(Rr[0], Rr[1] + SL); g.lineTo(B[0], B[1] + SL); g.closePath(); g.fill();
-  g.fillStyle = '#7a8a5a';
-  g.fillRect(L[0], L[1] + 1, B[0] - L[0], 4);
-  // ground tiles
-  for (let gy = 0; gy < MAP_H; gy++) {
-    for (let gx = 0; gx < MAP_W; gx++) {
-      const k = groundKind(gx, gy, lot, door, state);
-      drawAt(g, BUILDABLES[k] && BUILDABLES[k].layer === 'floor' ? getFloorSprite(k) : getGroundSprite(k), gx, gy);
-    }
-  }
-  // scenery / walls, depth sorted
   const items = [];
   const add = (kind, gx, gy, key) => items.push({ kind, gx, gy, key: key != null ? key : gx + gy });
   // neighbouring buildings (back + sides)
@@ -229,6 +210,41 @@ function buildLayer(state) {
   for (let i = 0; i < lot.h; i++) add('lowSide', x1, y0 + i, x1 + y0 + i + 0.3);
   add('lowCorner', x1, y1, x1 + y1 + 0.5);
   items.sort((a, b) => a.key - b.key);
+  return items;
+}
+
+let layerNew = false;                    // the static layer currently shown is the concept-style one (concept_scene.js)
+function buildLayer(state) {
+  layerNew = false;
+  if (artEnabled() && CS.sceneSupported()) {
+    const lot0 = state.lot;
+    const ok = CS.buildSceneLayer({ state, groundKind: (gx, gy) => groundKind(gx, gy, lot0, state.door, state), items: collectItems(state), name: String(state.clinicName || '復健科診所').slice(0, 12), badges: signBadges(state) });
+    if (ok) { layerNew = true; return; }
+  }
+  CS.releaseSceneLayer();
+  const g = layerCtx;
+  const lot = state.lot, door = state.door;
+  g.clearRect(0, 0, LAYER_W, LAYER_H);
+  // island slab
+  const T = (gx, gy) => [LX + isoX(gx, gy), LY + isoY(gx, gy)];
+  const L = T(0, MAP_H), B = T(MAP_W, MAP_H), Rr = T(MAP_W, 0);
+  const SL = 26;
+  g.fillStyle = '#6b5a4a';
+  g.beginPath(); g.moveTo(L[0], L[1]); g.lineTo(B[0], B[1]); g.lineTo(B[0], B[1] + SL); g.lineTo(L[0], L[1] + SL); g.closePath(); g.fill();
+  g.fillStyle = '#54463a';
+  g.beginPath(); g.moveTo(B[0], B[1]); g.lineTo(Rr[0], Rr[1]); g.lineTo(Rr[0], Rr[1] + SL); g.lineTo(B[0], B[1] + SL); g.closePath(); g.fill();
+  g.fillStyle = '#7a8a5a';
+  g.fillRect(L[0], L[1] + 1, B[0] - L[0], 4);
+  // ground tiles
+  for (let gy = 0; gy < MAP_H; gy++) {
+    for (let gx = 0; gx < MAP_W; gx++) {
+      const k = groundKind(gx, gy, lot, door, state);
+      drawAt(g, BUILDABLES[k] && BUILDABLES[k].layer === 'floor' ? getFloorSprite(k) : getGroundSprite(k), gx, gy);
+    }
+  }
+  // scenery / walls, depth sorted
+  const items = collectItems(state);
+  const x0 = lot.x0, y0 = lot.y0, x1 = lot.x0 + lot.w, y1 = lot.y0 + lot.h;
   for (const it of items) drawAt(g, getGroundSprite(it.kind), it.gx, it.gy);
 
   // clinic signboard on the back-right wall (plane y = y0); unlocked-achievement badges sit right of the name
@@ -346,10 +362,16 @@ function addEnt(kind, ref, x, y) {
 // ───────────────────────── bubbles & labels (screen space, device-res canvases) ─────────────────────────
 const bubbleCache = new Map();
 function getBubble(text, kind) {
-  const key = kind + '|' + text;
+  const key = (layerNew ? 'N|' : '') + kind + '|' + text;
   let c = bubbleCache.get(key);
   if (c) return c;
   const d = view.dpr;
+  if (layerNew) {
+    c = CS.sceneBubble(text, kind, d);
+    if (bubbleCache.size > 300) bubbleCache.clear();
+    bubbleCache.set(key, c);
+    return c;
+  }
   const g0 = document.createElement('canvas').getContext('2d');
   const dark = kind === 'tag' || kind === 'bad';
   const fs = dark ? 11 : 12;
@@ -411,6 +433,7 @@ const SEAT_LIFT = 10;
 const BAR_W = 26;
 
 function drawBar(g, wx, wy, pct, col) {
+  if (layerNew) { CS.sceneBar(g, wx, wy, pct, col === '#4cc86a'); return; }
   const x = Math.round(wx - BAR_W / 2), y = Math.round(wy);
   g.fillStyle = '#2a2233'; g.fillRect(x - 1, y - 1, BAR_W + 2, 6);
   g.fillStyle = '#e8e2d0'; g.fillRect(x, y, BAR_W, 4);
@@ -434,7 +457,18 @@ function artAgent(g, name, id, x, y, dir, moving, sit, busy, now) {
   else if (busy) bob = Math.sin(now / 300 + id * 1.7) * 0.9 - 0.9;
   else if (!sit) bob = (Math.sin(now / 420 + id) > 0.7) ? -1 : 0;
   if (sit) wy += -SEAT_LIFT - 1 + 0.45 * personHeight(name);
-  return drawArtPerson(g, name, wx, wy + bob, artFlip(name, dir, id), tilt, sit);
+  return drawArtPerson(g, name, wx, wy + bob, artFlip(name, dir, id), tilt, sit, moving && (dir === 2 || dir === 3));
+}
+
+function drawShadow(g, wx, wy) {
+  if (layerNew) { const s = CS.sceneShadow(); g.drawImage(s, wx - s.ax, wy - s.ay, s.dw, s.dh); return; }
+  const sh = getShadowSprite();
+  g.drawImage(sh, Math.round(wx - sh.ax), Math.round(wy - sh.ay));
+}
+function drawIcon(g, name, wx, top, dy) {
+  if (layerNew) { const ic = CS.sceneIcon(name); g.drawImage(ic, wx - ic.ax, top - ic.dh - 1 + dy, ic.dw, ic.dh); return; }
+  const ic = getIconSprite(name);
+  g.drawImage(ic, Math.round(wx - ic.ax), Math.round(top - ic.height - 1 + dy));
 }
 
 function drawPatient(g, p, now, ui) {
@@ -466,8 +500,7 @@ function drawPatient(g, p, now, ui) {
   faceMap.set(p.id, dir);
   const wx = isoX(x, y);
   let wy = isoY(x, y) - lift;
-  const sh = getShadowSprite();
-  g.drawImage(sh, Math.round(wx - sh.ax), Math.round(isoY(x, y) - sh.ay));
+  drawShadow(g, wx, isoY(x, y));
   let top = NaN;
   if (artReady()) {
     let tdef = null;
@@ -495,7 +528,7 @@ function drawPatient(g, p, now, ui) {
     else if (p.flags && p.flags.slipped) icon = 'warn';
     else if (pat != null && pat < 22) icon = 'anger';
     else if (stage === 'waiting' && p.waitedMin > 25) icon = 'sleep';
-    if (icon) { const ic = getIconSprite(icon); g.drawImage(ic, Math.round(wx - ic.ax), Math.round(top - ic.height - 1 + Math.sin(now / 260 + p.id) * 1.5)); }
+    if (icon) drawIcon(g, icon, wx, top, Math.sin(now / 260 + p.id) * 1.5);
   }
   if (ui.selected && ui.selected.type === 'patient' && ui.selected.id === p.id) selRing(g, x, y, now);
 }
@@ -515,8 +548,7 @@ function drawStaff(g, s, now, ui) {
   }
   faceMap.set(s.id, dir);
   const wx = isoX(x, y), wy = isoY(x, y);
-  const sh = getShadowSprite();
-  g.drawImage(sh, Math.round(wx - sh.ax), Math.round(wy - sh.ay));
+  drawShadow(g, wx, wy);
   let top = NaN;
   if (artReady()) { const name = staffSprite(s.role); if (name) top = artAgent(g, name, s.id, x, y, dir, moving, false, pose === 'work', now); }
   if (top !== top) {
@@ -529,14 +561,23 @@ function drawStaff(g, s, now, ui) {
   else if (s.state === 'working' && s.task && s.task.total > 0) {
     // staff bar is shown on the patient; add a small role marker when exhausted
   } else if (s.stamina != null && s.staminaMax && s.stamina < s.staminaMax * 0.18) {
-    const ic = getIconSprite(s.state === 'resting' ? 'sleep' : 'sweat'); g.drawImage(ic, Math.round(wx - ic.ax), Math.round(top - ic.height - 1));
+    drawIcon(g, s.state === 'resting' ? 'sleep' : 'sweat', wx, top, 0);
   } else if (s.state === 'resting') {
-    const ic = getIconSprite('sleep'); g.drawImage(ic, Math.round(wx - ic.ax), Math.round(top - ic.height - 1 + Math.sin(now / 300) * 1.5));
+    drawIcon(g, 'sleep', wx, top, Math.sin(now / 300) * 1.5);
   }
   if (ui.selected && ui.selected.type === 'staff' && ui.selected.id === s.id) selRing(g, x, y, now);
 }
 
 function drawCar(g, c) {
+  if (layerNew) {            // cars fade in/out at the island edge (no car floating over the sky)
+    const al = Math.max(0, Math.min(1, (Math.min(c.x, MAP_W - c.x) + 0.5) / 3));
+    if (al <= 0) return;
+    const s = CS.sceneCar(c.v, c.dir);
+    if (al < 1) g.globalAlpha = al;
+    g.drawImage(s, isoX(c.x - 1, c.y - 0.5) - s.ax, isoY(c.x - 1, c.y - 0.5) - s.ay, s.dw, s.dh);
+    g.globalAlpha = 1;
+    return;
+  }
   const spr = getCarSprite(c.v, c.dir);
   g.drawImage(spr, Math.round(isoX(c.x - 1, c.y - 0.5) - spr.ax), Math.round(isoY(c.x - 1, c.y - 0.5) - spr.ay));
 }
@@ -544,6 +585,7 @@ function drawCar(g, c) {
 function selRing(g, x, y, now) {
   const X = isoX(x, y), Y = isoY(x, y);
   const pulse = 1 + Math.sin(now / 180) * 0.08;
+  if (layerNew) { CS.sceneSelRing(g, X, Y, pulse); return; }
   g.lineWidth = 2;
   g.strokeStyle = '#2a2233'; g.beginPath(); g.ellipse(X, Y, 17 * pulse, 8.5 * pulse, 0, 0, 6.2832); g.stroke();
   g.strokeStyle = '#ffe14d'; g.lineWidth = 1.5; g.beginPath(); g.ellipse(X, Y, 16 * pulse, 8 * pulse, 0, 0, 6.2832); g.stroke();
@@ -597,7 +639,15 @@ function getGridPath(lot) {
 // ───────────────────────── frame ─────────────────────────
 const tint = { on: false, x: 0, y: 0, w: 0, h: 0, col: '' };
 let lastNow = 0, carClock = 0, hoverTick = 0;
-const BG = '#1f2e3a';
+const BG = '#1f2e3a', BG_NEW = '#b9dcf0';
+// tool / placement colours: classic values must stay byte-identical; the concept style uses brighter green/red/blue
+const STY_OLD = { ok: 'rgba(80,230,120,0.35)', bad: 'rgba(240,70,70,0.40)', okT: 'rgba(80,230,120,0.18)', badT: 'rgba(240,70,70,0.22)', pick: 'rgba(80,160,255,0.42)', pickL: '#7cc0ff', pickT: 'rgba(80,160,255,0.22)', paintOk: 'rgba(80,230,120,0.45)', paintBad: 'rgba(240,70,70,0.45)', dem: 'rgba(240,60,60,0.45)', demT: 'rgba(240,60,60,0.30)', okL: '#5dff8a', badL: '#ff5a5a', demX: '#ff4d4d', sel: '255,225,77', selL: '#ffe14d', carry: 'rgba(255,255,255,0.10)' };
+const STY_NEW = { ok: 'rgba(90,200,40,0.32)', bad: 'rgba(226,58,58,0.34)', okT: 'rgba(90,200,40,0.16)', badT: 'rgba(226,58,58,0.18)', pick: 'rgba(42,126,246,0.30)', pickL: '#2a7ef6', pickT: 'rgba(42,126,246,0.16)', paintOk: 'rgba(90,200,40,0.40)', paintBad: 'rgba(226,58,58,0.40)', dem: 'rgba(226,58,58,0.36)', demT: 'rgba(226,58,58,0.22)', okL: '#3fb02a', badL: '#e23a3a', demX: '#e23a3a', sel: '246,198,78', selL: '#f6c64e', carry: 'rgba(30,54,90,0.14)' };
+let ST = STY_OLD;
+function strokeOut(g, col, w) {          // footprint outline; the concept style adds a white halo underneath
+  if (layerNew) { g.save(); g.lineJoin = 'round'; g.strokeStyle = 'rgba(255,255,255,0.88)'; g.lineWidth = w + 2.5; g.stroke(); g.restore(); }
+  g.strokeStyle = col; g.lineWidth = w; g.stroke();
+}
 const DAY_KEYS = [[0, 255, 232, 200], [0.1, 255, 250, 240], [0.22, 255, 255, 255], [0.62, 255, 255, 255], [0.8, 255, 214, 168], [0.92, 196, 170, 206], [1, 128, 132, 196]];
 
 export function render(state, ui, now) {
@@ -620,14 +670,16 @@ export function render(state, ui, now) {
   const cam = ui.cam, z = cam.zoom, dpr = view.dpr, S = z * dpr;
   setArtScale(S);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = BG;
+  ST = layerNew ? STY_NEW : STY_OLD;
+  ctx.fillStyle = layerNew ? BG_NEW : BG;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.imageSmoothingEnabled = false;
   ctx.setTransform(S, 0, 0, S, Math.round(cam.x * dpr), Math.round(cam.y * dpr));
   const vx0 = -cam.x / z, vy0 = -cam.y / z, vx1 = vx0 + view.w / z, vy1 = vy0 + view.h / z;
 
   // static layer (visible part only)
-  {
+  if (layerNew) CS.drawSceneLayer(ctx, vx0, vy0, vx1, vy1, S, BG_NEW);
+  else {
     let sx = Math.max(0, Math.floor(vx0 + LX)), sy = Math.max(0, Math.floor(vy0 + LY));
     let ex = Math.min(LAYER_W, Math.ceil(vx1 + LX)), ey = Math.min(LAYER_H, Math.ceil(vy1 + LY));
     if (ex > sx && ey > sy) ctx.drawImage(layer, sx, sy, ex - sx, ey - sy, sx - LX, sy - LY, ex - sx, ey - sy);
@@ -640,7 +692,7 @@ export function render(state, ui, now) {
     if (!row) continue;
     for (let x = lot.x0; x < lot.x0 + lot.w; x++) {
       const id = row[x];
-      if (id) { const fs = getFloorSprite(id); ctx.drawImage(fs, isoX(x, y) - 32, isoY(x, y)); }
+      if (id) { const fs = getFloorSprite(id); if (fs.dw) ctx.drawImage(fs, isoX(x, y) - (fs.ax != null ? fs.ax : 32), isoY(x, y) - (fs.ay || 0), fs.dw, fs.dh); else ctx.drawImage(fs, isoX(x, y) - 32, isoY(x, y)); }
     }
   }
   const tool = ui.tool || { mode: 'none' };
@@ -648,7 +700,7 @@ export function render(state, ui, now) {
   const tNow = now / 1000;
   const carryRec = tool.mode === 'move' && tool.carry ? recById.get(tool.carry) || null : null;
   if (carryRec) {          // where the carried object came from: dimmed footprint with a dashed outline
-    ctx.fillStyle = 'rgba(255,255,255,0.10)'; rectPath(ctx, carryRec.x0, carryRec.y0, carryRec.w, carryRec.h); ctx.fill();
+    ctx.fillStyle = ST.carry; rectPath(ctx, carryRec.x0, carryRec.y0, carryRec.w, carryRec.h); ctx.fill();
     ctx.setLineDash([5, 4]); ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
   }
 
@@ -660,8 +712,10 @@ export function render(state, ui, now) {
       for (let i = 0; i < 9; i++) {
         const ph = (sp * 1.6 + i * 0.37) % 1, a = Math.sin(ph * Math.PI);
         if (a < 0.15) continue;
-        const u = ((i * 0.6180339) % 1) * sign.w, v = ((i * 0.4142 + 0.13) % 1) * sign.h;
-        const X = Math.round(sign.x + u), Y = Math.round(sign.y + u * 0.5 + v), r = a > 0.7 ? 3 : 2;
+        const sg = layerNew ? CS.signBox : sign;
+        const u = ((i * 0.6180339) % 1) * sg.w, v = ((i * 0.4142 + 0.13) % 1) * sg.h;
+        const X = Math.round(sg.x + u), Y = Math.round(sg.y + u * 0.5 + v), r = a > 0.7 ? 3 : 2;
+        if (layerNew) { CS.sceneSparkle(ctx, X, Y, r * 2.2, a * (1 - sp * 0.6)); continue; }
         ctx.fillStyle = 'rgba(255,244,170,' + (a * (1 - sp * 0.6)).toFixed(2) + ')';
         ctx.fillRect(X - r, Y, r * 2 + 1, 1); ctx.fillRect(X, Y - r, 1, r * 2 + 1);
         ctx.fillStyle = 'rgba(255,255,255,' + (a * (1 - sp * 0.6)).toFixed(2) + ')'; ctx.fillRect(X, Y, 1, 1);
@@ -682,7 +736,7 @@ export function render(state, ui, now) {
     const pulse = 0.55 + 0.25 * Math.sin(tNow * 2.4);
     for (const zn of zones) {
       const e = zoneGeom(zn);
-      const col = ZONE_COL[zn.id] || '255,220,120';
+      const col = layerNew ? (CS.ZONE_COL_NEW[zn.id] || CS.ZONE_DEFAULT_NEW) : (ZONE_COL[zn.id] || '255,220,120');
       ctx.fillStyle = 'rgba(' + col + ',' + (0.10 + 0.06 * pulse) + ')'; ctx.fill(e.fillP);
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
       ctx.strokeStyle = 'rgba(' + col + ',' + (0.18 * pulse) + ')'; ctx.lineWidth = 9; ctx.stroke(e.path);
@@ -701,36 +755,36 @@ export function render(state, ui, now) {
       const o = placementOrigin(def, rot, hx, hy);
       const { w, h } = sizeOf(def, rot);
       const ok = !!hov.valid;
-      ctx.fillStyle = ok ? 'rgba(80,230,120,0.35)' : 'rgba(240,70,70,0.40)';
+      ctx.fillStyle = ok ? ST.ok : ST.bad;
       rectPath(ctx, o.x, o.y, w, h); ctx.fill();
       ghostO = { def, rot, o, ok, w, h };
-      tint.on = true; tint.x = o.x; tint.y = o.y; tint.w = w; tint.h = h; tint.col = ok ? 'rgba(80,230,120,0.18)' : 'rgba(240,70,70,0.22)';
+      tint.on = true; tint.x = o.x; tint.y = o.y; tint.w = w; tint.h = h; tint.col = ok ? ST.okT : ST.badT;
     } else if (tool.mode === 'move' && carryRec) {
       const def = carryRec.def, rot = tool.rot ? 1 : 0;
       const o = placementOrigin(def, rot, hx, hy);
       const { w, h } = sizeOf(def, rot);
       const ok = !!hov.valid;
-      ctx.fillStyle = ok ? 'rgba(80,230,120,0.35)' : 'rgba(240,70,70,0.40)';
+      ctx.fillStyle = ok ? ST.ok : ST.bad;
       rectPath(ctx, o.x, o.y, w, h); ctx.fill();
       ghostO = { def, rot, o, ok, w, h };
-      tint.on = true; tint.x = o.x; tint.y = o.y; tint.w = w; tint.h = h; tint.col = ok ? 'rgba(80,230,120,0.18)' : 'rgba(240,70,70,0.22)';
+      tint.on = true; tint.x = o.x; tint.y = o.y; tint.w = w; tint.h = h; tint.col = ok ? ST.okT : ST.badT;
     } else if (tool.mode === 'move') {
       const pr = hov.pickId != null ? recById.get(hov.pickId) : null;
       if (pr) {
-        ctx.fillStyle = 'rgba(80,160,255,0.42)'; rectPath(ctx, pr.x0, pr.y0, pr.w, pr.h); ctx.fill();
-        ctx.strokeStyle = '#7cc0ff'; ctx.lineWidth = 2; ctx.stroke();
-        if (pr.def.blocks !== false) { tint.on = true; tint.x = pr.x0; tint.y = pr.y0; tint.w = pr.w; tint.h = pr.h; tint.col = 'rgba(80,160,255,0.22)'; }
+        ctx.fillStyle = ST.pick; rectPath(ctx, pr.x0, pr.y0, pr.w, pr.h); ctx.fill();
+        strokeOut(ctx, ST.pickL, 2);
+        if (pr.def.blocks !== false) { tint.on = true; tint.x = pr.x0; tint.y = pr.y0; tint.w = pr.w; tint.h = pr.h; tint.col = ST.pickT; }
       } else fillTile(ctx, hx, hy, 'rgba(255,255,255,0.12)');
     } else if (tool.mode === 'paint' && tool.defId) {
-      fillTile(ctx, hx, hy, hov.valid ? 'rgba(80,230,120,0.45)' : 'rgba(240,70,70,0.45)');
+      fillTile(ctx, hx, hy, hov.valid ? ST.paintOk : ST.paintBad);
     } else if (tool.mode === 'demolish') {
       const ti = tileRec[hy * MAP_W + hx];
       let hit = false;
-      if (ti >= 0) { const r = recs[ti]; ctx.fillStyle = 'rgba(240,60,60,0.45)'; rectPath(ctx, r.x0, r.y0, r.w, r.h); ctx.fill(); hit = true; tint.on = true; tint.x = r.x0; tint.y = r.y0; tint.w = r.w; tint.h = r.h; tint.col = 'rgba(240,60,60,0.30)'; }
+      if (ti >= 0) { const r = recs[ti]; ctx.fillStyle = ST.dem; rectPath(ctx, r.x0, r.y0, r.w, r.h); ctx.fill(); hit = true; tint.on = true; tint.x = r.x0; tint.y = r.y0; tint.w = r.w; tint.h = r.h; tint.col = ST.demT; }
       else {
-        for (const r of flatRecs) if (hx >= r.x0 && hx < r.x1 && hy >= r.y0 && hy < r.y1) { ctx.fillStyle = 'rgba(240,60,60,0.45)'; rectPath(ctx, r.x0, r.y0, r.w, r.h); ctx.fill(); hit = true; break; }
+        for (const r of flatRecs) if (hx >= r.x0 && hx < r.x1 && hy >= r.y0 && hy < r.y1) { ctx.fillStyle = ST.dem; rectPath(ctx, r.x0, r.y0, r.w, r.h); ctx.fill(); hit = true; break; }
       }
-      if (!hit) fillTile(ctx, hx, hy, state.map.floor[hy] && state.map.floor[hy][hx] ? 'rgba(240,60,60,0.45)' : 'rgba(255,255,255,0.12)');
+      if (!hit) fillTile(ctx, hx, hy, state.map.floor[hy] && state.map.floor[hy][hx] ? ST.dem : 'rgba(255,255,255,0.12)');
     } else {
       fillTile(ctx, hx, hy, 'rgba(255,255,255,0.16)');
     }
@@ -746,8 +800,8 @@ export function render(state, ui, now) {
     const r = recById.get(sel.id);
     if (r) {
       const pulse = 0.5 + 0.5 * Math.sin(tNow * 5);
-      ctx.fillStyle = 'rgba(255,225,77,' + (0.18 + 0.12 * pulse) + ')'; rectPath(ctx, r.x0, r.y0, r.w, r.h); ctx.fill();
-      ctx.strokeStyle = '#ffe14d'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = 'rgba(' + ST.sel + ',' + (0.18 + 0.12 * pulse) + ')'; rectPath(ctx, r.x0, r.y0, r.w, r.h); ctx.fill();
+      strokeOut(ctx, ST.selL, 2);
     }
   }
 
@@ -799,17 +853,20 @@ export function render(state, ui, now) {
     ctx.globalAlpha = 0.62;
     blit(ctx, spr, Math.round(isoX(ghostO.o.x, ghostO.o.y) - spr.ax), Math.round(isoY(ghostO.o.x, ghostO.o.y) - spr.ay));
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = ghostO.ok ? '#5dff8a' : '#ff5a5a'; ctx.lineWidth = 2;
-    rectPath(ctx, ghostO.o.x, ghostO.o.y, ghostO.w, ghostO.h); ctx.stroke();
+    rectPath(ctx, ghostO.o.x, ghostO.o.y, ghostO.w, ghostO.h);
+    strokeOut(ctx, ghostO.ok ? ST.okL : ST.badL, 2);
   } else if (hasHover && tool.mode === 'place') { /* unknown def */ }
   if (hasHover && tool.mode === 'paint' && tool.defId) {
     const fs = getFloorSprite(tool.defId);
-    ctx.globalAlpha = 0.6; ctx.drawImage(fs, Math.round(isoX(hx, hy) - fs.ax), Math.round(isoY(hx, hy) - fs.ay)); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.6;
+    if (fs.dw) ctx.drawImage(fs, Math.round(isoX(hx, hy) - fs.ax), Math.round(isoY(hx, hy) - fs.ay), fs.dw, fs.dh); else ctx.drawImage(fs, Math.round(isoX(hx, hy) - fs.ax), Math.round(isoY(hx, hy) - fs.ay));
+    ctx.globalAlpha = 1;
   }
   if (hasHover && tool.mode === 'demolish') {
     const X = isoX(hx, hy), Y = isoY(hx, hy) + HH;
-    ctx.strokeStyle = '#2a2233'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(X - 7, Y - 5); ctx.lineTo(X + 7, Y + 5); ctx.moveTo(X + 7, Y - 5); ctx.lineTo(X - 7, Y + 5); ctx.stroke();
-    ctx.strokeStyle = '#ff4d4d'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.save(); if (layerNew) ctx.lineCap = 'round';
+    ctx.strokeStyle = layerNew ? '#ffffff' : '#2a2233'; ctx.lineWidth = layerNew ? 6 : 5; ctx.beginPath(); ctx.moveTo(X - 7, Y - 5); ctx.lineTo(X + 7, Y + 5); ctx.moveTo(X + 7, Y - 5); ctx.lineTo(X - 7, Y + 5); ctx.stroke();
+    ctx.strokeStyle = ST.demX; ctx.lineWidth = 3; ctx.stroke(); ctx.restore();
   }
 
   // ── screen-space overlay ──
@@ -892,13 +949,16 @@ function drawAtmosphere(state, now, dpr, lite) {
   // daylight tint
   const clock = state.time ? state.time.clock : 12 * 60;
   const t = Math.max(0, Math.min(1, (clock - 480) / 720));
+  const KEYS = layerNew ? CS.DAY_KEYS_NEW : DAY_KEYS;
   let k = 1;
-  while (k < DAY_KEYS.length - 1 && DAY_KEYS[k][0] < t) k++;
-  const a = DAY_KEYS[k - 1], b = DAY_KEYS[k];
+  while (k < KEYS.length - 1 && KEYS[k][0] < t) k++;
+  const a = KEYS[k - 1], b = KEYS[k];
   const f = (t - a[0]) / (b[0] - a[0] || 1);
   let r = a[1] + (b[1] - a[1]) * f, gg = a[2] + (b[2] - a[2]) * f, bl = a[3] + (b[3] - a[3]) * f;
   const kind = state.weather ? state.weather.kind : 'sunny';
-  if (kind === 'rain' || kind === 'meiyu') { r *= 0.82; gg *= 0.88; bl *= 0.97; }
+  const nm = layerNew ? CS.tintFor(kind) : null;
+  if (nm) { r *= nm[0]; gg *= nm[1]; bl *= nm[2]; }
+  else if (kind === 'rain' || kind === 'meiyu') { r *= 0.82; gg *= 0.88; bl *= 0.97; }
   else if (kind === 'typhoon') { r *= 0.6; gg *= 0.66; bl *= 0.78; }
   else if (kind === 'cold') { r *= 0.86; gg *= 0.93; bl *= 1; }
   else if (kind === 'cloudy') { r *= 0.92; gg *= 0.94; bl *= 0.98; }
@@ -911,6 +971,7 @@ function drawAtmosphere(state, now, dpr, lite) {
   }
   const ts = now / 1000;
   if (lite) { /* decorative weather particles skipped by the quality scaler */ }
+  else if (layerNew) { g.save(); CS.weatherNew(g, kind, W, H, ts, perfRef.level); g.restore(); }
   else if (kind === 'rain' || kind === 'meiyu' || kind === 'typhoon') {
     const heavy = kind === 'typhoon';
     const n = heavy ? 220 : 130, len = heavy ? 22 : 14, sl = heavy ? 0.55 : 0.18, sp = heavy ? 1500 : 900;
@@ -945,6 +1006,7 @@ function drawAtmosphere(state, now, dpr, lite) {
   }
   // vignette
   if (perfRef.level >= 2) return;
+  if (layerNew) { CS.vignetteNew(g, W, H); return; }
   const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.max(W, H) * 0.8);
   vg.addColorStop(0, 'rgba(10,15,30,0)'); vg.addColorStop(1, 'rgba(10,15,30,0.28)');
   g.fillStyle = vg; g.fillRect(0, 0, W, H);

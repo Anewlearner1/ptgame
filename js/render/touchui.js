@@ -5,6 +5,7 @@
 import { BUILDABLES } from '../data/buildables.js';
 import { sizeOf } from '../core/grid.js';
 import { isoX, isoY } from './iso.js';
+import { artEnabled } from './art.js';
 
 export const BTN = 44, GAP = 6;
 export const GHOST_OFFSET = 40;     // px the ghost is lifted above the finger while dragging
@@ -133,9 +134,56 @@ function rr(g, x, y, w, h, r) {
 }
 
 // Called by renderer.js with the context in CSS-px space (setTransform(dpr...)).
+// Concept-style bar (white/blue rounded buttons with navy outline + 3px "pressed edge"); vector glyphs so it is crisp at any DPR.
+const NAVY = '#1e365a', OUTL = '#14111b';
+function glyphPath(g, id, glyph, cx, cy, col, lw) {
+  g.save(); g.strokeStyle = col; g.fillStyle = col; g.lineWidth = lw; g.lineCap = 'round'; g.lineJoin = 'round';
+  if (glyph === '✔') { g.beginPath(); g.moveTo(cx - 8, cy + 0.5); g.lineTo(cx - 2.5, cy + 6); g.lineTo(cx + 8.5, cy - 6.5); g.stroke(); }
+  else if (glyph === '✖') { g.beginPath(); g.moveTo(cx - 6.5, cy - 6.5); g.lineTo(cx + 6.5, cy + 6.5); g.moveTo(cx + 6.5, cy - 6.5); g.lineTo(cx - 6.5, cy + 6.5); g.stroke(); }
+  else if (glyph === '⟳') {
+    g.beginPath(); g.arc(cx, cy + 0.5, 7.5, -Math.PI * 0.75, Math.PI * 0.8); g.stroke();
+    g.beginPath(); g.moveTo(cx - 8.2, cy - 6.5); g.lineTo(cx - 5.2, cy - 8.6); g.lineTo(cx - 4.4, cy - 4.2); g.closePath(); g.fill();
+  } else if (glyph === '📌') {
+    g.beginPath(); g.moveTo(cx - 3, cy - 8); g.lineTo(cx + 3, cy - 8); g.lineTo(cx + 2.4, cy - 1); g.lineTo(cx + 5.5, cy + 1.6); g.lineTo(cx - 5.5, cy + 1.6); g.lineTo(cx - 2.4, cy - 1); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(cx, cy + 2); g.lineTo(cx, cy + 8.5); g.stroke();
+  } else if (glyph === '🗑') {
+    g.beginPath(); g.moveTo(cx - 6.5, cy - 5); g.lineTo(cx + 6.5, cy - 5); g.moveTo(cx - 2.5, cy - 5); g.lineTo(cx - 2.5, cy - 8); g.lineTo(cx + 2.5, cy - 8); g.lineTo(cx + 2.5, cy - 5); g.stroke();
+    g.beginPath(); g.moveTo(cx - 5, cy - 2.5); g.lineTo(cx - 4, cy + 8); g.lineTo(cx + 4, cy + 8); g.lineTo(cx + 5, cy - 2.5); g.stroke();
+  } else if (glyph === '✥') {
+    g.beginPath();
+    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) { g.moveTo(cx, cy); g.lineTo(cx + dx * 8, cy + dy * 8); g.moveTo(cx + dx * 8 - (dy ? 3 : 0) - dx * 3, cy + dy * 8 - (dx ? 3 : 0) - dy * 3); g.lineTo(cx + dx * 8, cy + dy * 8); g.lineTo(cx + dx * 8 + (dy ? 3 : 0) - dx * 3, cy + dy * 8 + (dx ? 3 : 0) - dy * 3); }
+    g.stroke();
+  } else { g.font = 'bold 22px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(glyph, cx, cy + 1); }
+  g.restore();
+}
+function drawTouchOverlayNew(g, ui, bar) {
+  const A = T.dragging ? 0.35 : 1;
+  g.save();
+  g.globalAlpha = A;
+  rr(g, bar.x - 5, bar.y - 5, bar.w + 10, bar.h + 12, 15); g.fillStyle = 'rgba(20,17,27,0.22)'; g.fill();
+  rr(g, bar.x - 5, bar.y - 6, bar.w + 10, bar.h + 11, 15); g.fillStyle = 'rgba(234,246,246,0.97)'; g.fill();
+  g.lineWidth = 2; g.strokeStyle = NAVY; g.stroke();
+  for (const b of bar.btns) {
+    const kind = b.id === 'ok' ? 'primary' : (b.id === 'cancel' && b.glyph === '✔') ? 'good' : (b.id === 'cancel' || b.id === 'demo') ? 'danger' : b.on ? 'on' : 'plain';
+    const face = { primary: '#2a7ef6', good: '#5aae02', danger: '#d24e66', on: '#f6c64e', plain: '#ffffff' }[kind];
+    const edge = { primary: '#1e66ea', good: '#3f8a02', danger: '#a83048', on: '#c9942a', plain: '#c6d4e4' }[kind];
+    const ink = kind === 'plain' || kind === 'on' ? NAVY : '#ffffff';
+    const dis = !!b.dis, press = T.pressed === b.id;
+    const dy = press ? 2 : 0;
+    g.globalAlpha = A * (dis ? 0.55 : 1);
+    rr(g, b.x, b.y + 3, b.w, b.h - 1, 10); g.fillStyle = dis ? '#9cb4d4' : edge; g.fill();
+    rr(g, b.x, b.y + dy, b.w, b.h - 2, 10); g.fillStyle = dis ? '#c6d4e4' : face; g.fill();
+    g.lineWidth = 2; g.strokeStyle = dis ? '#7e8aba' : (kind === 'plain' ? NAVY : OUTL); g.stroke();
+    g.save(); rr(g, b.x + 3, b.y + dy + 2.5, b.w - 6, 6, 3); g.fillStyle = 'rgba(255,255,255,0.28)'; g.fill(); g.restore();
+    glyphPath(g, b.id, b.glyph, b.x + b.w / 2, b.y + dy + (b.h - 2) / 2, dis ? '#7e8aba' : ink, 3.2);
+  }
+  g.restore();
+}
+
 export function drawTouchOverlay(g, ui, W, H) {
   const bar = layoutBar(ui, W, H);
   if (!bar) return;
+  if (artEnabled()) { drawTouchOverlayNew(g, ui, bar); return; }
   g.save();
   g.globalAlpha = T.dragging ? 0.35 : 1;
   rr(g, bar.x - 4, bar.y - 4, bar.w + 8, bar.h + 8, 12);

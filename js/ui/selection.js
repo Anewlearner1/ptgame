@@ -9,7 +9,7 @@ import { h, clear, setText, bar, setBar, toneOf, setClass, append } from './dom.
 import { STAGE_LABELS, STAFF_STATE_LABELS, TYPE_ICONS, ROLE_ICONS, money } from './fmt.js';
 import { confirmDialog } from './modal.js';
 import { layout, setBMode } from './layout.js';
-import { artEl, STAFF_SPRITE, PATIENT_SPRITE, moodSprite, staffTaskIcon, itemSprite } from './artdom.js';
+import { artEl, thumbEl, STAFF_SPRITE, PATIENT_SPRITE, moodSprite, staffTaskIcon, itemSprite } from './artdom.js';
 
 let card = null, body = null, key = null, refs = null;
 
@@ -115,7 +115,7 @@ function buildObject(state, ui, e) {
   body.append(
     h('div', { class: 'u-shead' }, itemSprite(e.defId)
       ? artEl(itemSprite(e.defId), { size: 48, fallback: d.glyph || '📦', title: d.name })
-      : h('span', { class: 'u-sico' }, d.glyph || '📦'),
+      : thumbEl(e.defId, { width: 48, height: 48, fallback: h('span', { class: 'u-sico' }, d.glyph || '📦') }),
       h('div', { class: 'u-stitle' }, h('b', null, d.name || e.defId), h('span', { class: 'muted' }, `${e.x}, ${e.y}`)), refs.use),
     h('div', { class: 'muted u-p' }, d.desc || ''),
     row('耗損', refs.wear),

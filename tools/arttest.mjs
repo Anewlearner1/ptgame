@@ -54,9 +54,9 @@ const clearModals = page => page.evaluate(() => document.querySelectorAll('#moda
   // the renderer really draws the atlas: art object sprite + a person
   const used = await G(page, async () => {
     const S = await import('./js/render/sprites.js');
-    return { bed: !!S.getObjectSprite('bed', 0).art, bedRot: !!S.getObjectSprite('bed', 1).art, heat: !!S.getObjectSprite('heatbox', 0).art };
+    return { bed: !!S.getObjectSprite('bed', 0).art, bedRot: !!S.getObjectSprite('bed', 1).art, heat: !!S.getObjectSprite('heatbox', 0).art && !S.getObjectSprite('heatbox', 0).cobj };
   });
-  ok(used.bed && used.bedRot && !used.heat, 'bed uses atlas art (both rotations), heatbox stays procedural');
+  ok(used.bed && used.bedRot && !used.heat, 'bed uses atlas art (both rotations), heatbox is not an atlas sprite (concept-style procedural)');
   ok(problems.length === 0, 'no console problems at load' + (problems.length ? ': ' + problems.join(' | ') : ''));
   await ctx.close();
 }
@@ -104,7 +104,7 @@ const clearModals = page => page.evaluate(() => document.querySelectorAll('#moda
     const t0 = window.__game.state.time.clock;
     window.__game.bus.emit('speed:set', { speed: 3 });
     await new Promise(r => setTimeout(r, 2500));
-    return { ready: A.artReady(), load: await A.loadArt(), bedArt: !!S.getObjectSprite('bed', 0).art, adv: window.__game.state.time.clock !== t0 || window.__game.state.time.day !== undefined };
+    return { ready: A.artReady(), load: await A.loadArt(), bedArt: !!S.getObjectSprite('bed', 0).art && !S.getObjectSprite('bed', 0).cobj, adv: window.__game.state.time.clock !== t0 || window.__game.state.time.day !== undefined };
   });
   ok(!r.ready && r.load === false && !r.bedArt, 'atlas aborted -> artReady false, loadArt() resolves false, procedural sprites');
   const painted = await G(page, () => { const c = document.getElementById('game'); const g = c.getContext('2d'); return g.getImageData(c.width / 2, c.height / 2, 1, 1).data[3]; });

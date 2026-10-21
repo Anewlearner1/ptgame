@@ -11,9 +11,18 @@ import { WEATHER } from '../data/events.js';
 import { TITLES } from '../data/texts.js';
 import { LOTS } from '../data/lots.js';
 import { displayTitle } from '../sim/achievements.js';
+import { artEl } from './artdom.js';
+import { dual, icon, iconSvg, weatherIconName } from './icons.js';
 
 const els = {};
 let last = {};
+// 醫術 / 儀器 / 服務 points use the concept sheet's role icons (stethoscope / bed / clipboard) under the concept style
+const POINT_SPRITE = { medical: 'role.inquiry', device: 'role.equip', service: 'role.educate' };
+const POINT_FALLBACK = { medical: 'cross', device: 'gear', service: 'bulb' };
+
+// icon slot: the classic emoji + (concept style) an svg icon name or a ready node (atlas sprite); css shows exactly one
+function slot(emoji, concept) { return dual(emoji, concept); }
+const sprite = (name, fallbackIcon) => artEl(name, { size: 22, fallback: icon(fallbackIcon), cls: 'u-art-ico' });
 
 function item(key, ico, cls, tip, withShort) {
   const lbl = h('span', { class: 'tb-lbl' });
@@ -36,17 +45,17 @@ export function titleFor(rep) {
 export function initTopbar() {
   const root = document.getElementById('topbar');
   const left = h('div', { class: 'tb-left' },
-    item('clinic', '🏥', 'tb-clinic'),
-    item('date', '📅', 'tb-date', null, true),
-    item('weather', '☀️', 'tb-weather', null, true),
-    item('title', '🎖', 'tb-title'));
+    item('clinic', slot('🏥', 'clinic'), 'tb-clinic'),
+    item('date', slot('📅', 'calendar'), 'tb-date', null, true),
+    item('weather', slot('☀️', 'sunny'), 'tb-weather', null, true),
+    item('title', slot('🎖', 'medal'), 'tb-title'));
   const right = h('div', { class: 'tb-right' },
-    item('money', '💰', 'tb-money', '資金'),
-    POINT_KEYS.map(k => item('p_' + k, POINT_ICONS[k], 'tb-pt', `${POINT_LABELS[k]}點\n研發用的點數。治療完成時獲得，研發與訓練會消耗。`)),
-    item('rep', '🏆', 'tb-rep'),
-    item('pv', '🧾', 'tb-pv'));
+    item('money', slot('💰', 'coin'), 'tb-money', '資金'),
+    POINT_KEYS.map(k => item('p_' + k, slot(POINT_ICONS[k], sprite(POINT_SPRITE[k], POINT_FALLBACK[k])), 'tb-pt', `${POINT_LABELS[k]}點\n研發用的點數。治療完成時獲得，研發與訓練會消耗。`)),
+    item('rep', slot('🏆', 'trophy'), 'tb-rep'),
+    item('pv', slot('🧾', sprite('role.record', 'bill')), 'tb-pv'));
   // short landscape: the NHI value and the rest live in a tap-to-expand stats popover
-  const statsBtn = h('button', { class: 'tb-stats', type: 'button', 'aria-label': '更多數據', 'aria-expanded': 'false', onclick: e => { e.stopPropagation(); togglePop(); } }, '📊');
+  const statsBtn = h('button', { class: 'tb-stats', type: 'button', 'aria-label': '更多數據', 'aria-expanded': 'false', onclick: e => { e.stopPropagation(); togglePop(); } }, slot('📊', 'stats'));
   right.appendChild(statsBtn);
   root.append(left, right, h('span', { class: 'tb-break', 'aria-hidden': 'true' }), buildPop());
   document.addEventListener('pointerdown', e => { if (popEl && !popEl.hidden && !e.target.closest('.tb-pop, .tb-stats')) hidePop(); }, true);
@@ -66,12 +75,12 @@ function buildPop() {
   const row = (k, ico, label) => {
     const v = h('b', { class: 'tb-pop-v' });
     pop[k] = v;
-    return h('div', { class: 'tb-pop-row' }, h('span', null, ico + ' ' + label), v);
+    return h('div', { class: 'tb-pop-row' }, h('span', null, dual(ico[0], ico[1]), ' ' + label), v);
   };
   pop.note = h('div', { class: 'tb-pop-note muted' });
   pop.fs = h('button', { class: 'btn small', type: 'button', onclick: () => toggleFullscreen() }, '⛶ 全螢幕');
   popEl = h('div', { class: 'tb-pop', hidden: true, role: 'dialog' },
-    row('pv', '🧾', '健保點值'), pop.note, row('clinic', '🏥', '診所'), row('title', '🎖', '稱號'), row('weather', '☀️', '天氣'), pop.fs);
+    row('pv', ['🧾', 'bill'], '健保點值'), pop.note, row('clinic', ['🏥', 'clinic'], '診所'), row('title', ['🎖', 'medal'], '稱號'), row('weather', ['☀️', 'sunny'], '天氣'), pop.fs);
   return popEl;
 }
 function togglePop() { if (popEl.hidden) showPop(); else hidePop(); }
@@ -94,6 +103,14 @@ function flash(el, up) {
   el.classList.add(c1);
 }
 
+// weather icon: emoji for classic, hand-drawn svg (by weather kind) for the concept style
+function setWeatherIcon(w) {
+  const d = els.weather.ico.firstChild;
+  const emoji = w ? w.icon : '☀️', name = weatherIconName(w ? w.kind : 'sunny');
+  if (d._e !== emoji) { d._e = emoji; d._c.textContent = emoji; }
+  if (d._n.dataset.ico !== name) { d._n.dataset.ico = name; d._n.innerHTML = iconSvg(name); }
+}
+
 export function updateTopbar(state) {
   setText(els.clinic.val, state.clinicName || '');
   const dtxt = formatDate(state), ctxt = formatClock(state);
@@ -104,7 +121,7 @@ export function updateTopbar(state) {
   // weather
   const wk = state.weather && state.weather.kind;
   const w = (state.weather && state.weather.id && WEATHER.find(x => x.id === state.weather.id)) || WEATHER.find(x => x.kind === wk);
-  setText(els.weather.ico, w ? w.icon : '☀️');
+  setWeatherIcon(w);
   const wtxt = `${w ? w.name : ''} ${state.weather ? Math.round(state.weather.temp) : ''}°C`;
   setText(els.weather.val, wtxt);
   setText(els.weather.short, `${state.weather ? Math.round(state.weather.temp) : ''}°`);

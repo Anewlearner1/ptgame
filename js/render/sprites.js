@@ -9,6 +9,8 @@ import { BUILDABLES } from '../data/buildables.js';
 import * as PAT from '../data/patients.js';
 import * as STF from '../data/staffdefs.js';
 import { artObjectSprite } from './artdraw.js';
+import { artEnabled } from './art.js';
+import { conceptObjectSprite, conceptFloorSprite } from './concept_objects.js';
 
 const PX = 2;
 
@@ -506,6 +508,7 @@ export function getGroundSprite(kind) {
 
 const _floors = new Map();
 export function getFloorSprite(floorId) {
+  if (artEnabled()) { const cf = conceptFloorSprite(floorId); if (cf) return cf; }   // concept style (art.js 'new'); classic falls through untouched
   let s = _floors.get(floorId);
   if (!s) {
     if (GROUND[floorId]) s = GROUND[floorId]();
@@ -873,6 +876,7 @@ const _objs = new Map();
 export function getObjectSprite(defId, rot) {
   const adef = BUILDABLES[defId];
   if (adef) { const as = artObjectSprite(adef, rot ? 1 : 0); if (as) return as; }   // atlas art (null unless loaded + enabled + matched)
+  if (artEnabled()) { const cs = conceptObjectSprite(defId, rot ? 1 : 0); if (cs) return cs; }   // concept-style procedural redraw (concept_objects.js)
   const key = defId + (rot ? ':1' : ':0');
   let s = _objs.get(key);
   if (s) return s;

@@ -46,7 +46,7 @@ export function loadArt() {
       const im = await decode(PNG_URL);
       if (!im.naturalWidth) throw new Error('empty atlas');
       manifest = m; image = im;
-      cuts.clear(); rects.clear();
+      cuts.clear(); rects.clear(); urls.clear();
       bus.emit('art:changed', { enabled, ready: artReady() });
       return true;
     } catch (e) {
@@ -70,17 +70,21 @@ export function setArtEnabled(on) {
 
 export function artReady() { return !!(manifest && image && enabled); }
 
+// Virtual sprites derived from atlas ones by a palette swap (the sheet has no speech-therapist): 'staff.st' = staff.pharmacist with a
+// lavender coat + purple scrubs (#5a5aa2 family). artRect/artCanvas treat them like any atlas sprite.
+const DERIVED = { 'staff.st': 'staff.pharmacist' };
+
 export function artRect(name) {
   if (!artReady()) return null;
   let r = rects.get(name);
   if (r) return r;
-  const s = manifest.sprites[name];
+  const s = manifest.sprites[DERIVED[name] || name];
   if (!s) return null;
   const meta = manifest.meta || {};
   r = {
     x: s.x, y: s.y, w: s.w, h: s.h, ax: s.ax, ay: s.ay,
-    facing: (meta.facing && meta.facing[name]) || 'front',
-    heightPx: (meta.heightPx && meta.heightPx[name]) || s.h,
+    facing: (meta.facing && meta.facing[DERIVED[name] || name]) || 'front',
+    heightPx: (meta.heightPx && meta.heightPx[DERIVED[name] || name]) || s.h,
   };
   rects.set(name, r);
   return r;
@@ -93,10 +97,51 @@ export function artCanvas(name) {
   if (c) return c;
   c = document.createElement('canvas');
   c.width = r.w; c.height = r.h;
-  c.getContext('2d').drawImage(image, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+  const g = c.getContext('2d', DERIVED[name] ? { willReadFrequently: true } : undefined);
+  g.drawImage(image, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+  if (DERIVED[name]) swapPurple(g, r.w, r.h);
   c.ax = r.ax; c.ay = r.ay;
   cuts.set(name, c);
   return c;
+}
+
+// grey/white coat -> lavender, saturated blue (scrubs shirt) -> violet; skin, hair, outline and tablet untouched
+function swapPurple(g, w, h) {
+  const im = g.getImageData(0, 0, w, h), d = im.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 128) continue;
+    const r = d[i], gg = d[i + 1], b = d[i + 2];
+    const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), df = mx - mn;
+    if (df < 38 && mx > 150) {                       // white coat (lit + shaded)
+      const l = mx / 255, k = 0.55 + 0.45 * l;
+      d[i] = 204 * k; d[i + 1] = 199 * k; d[i + 2] = 247 * k;
+    } else if (df > 0 && mx > 0 && df / mx > 0.28) {   // saturated blue -> violet (hue +38 deg, a little less saturated)
+      let hh;
+      if (mx === r) hh = ((gg - b) / df + 6) % 6; else if (mx === gg) hh = (b - r) / df + 2; else hh = (r - gg) / df + 4;
+      hh *= 60;
+      if (hh > 185 && hh < 260) {
+        hh = (hh + 38) % 360;
+        const s = Math.min(1, (df / mx) * 0.8), v = mx / 255, c2 = v * s, x2 = c2 * (1 - Math.abs(((hh / 60) % 2) - 1)), m2 = v - c2;
+        let rr = 0, g2 = 0, bb = 0;
+        if (hh < 60) { rr = c2; g2 = x2; } else if (hh < 120) { rr = x2; g2 = c2; } else if (hh < 180) { g2 = c2; bb = x2; } else if (hh < 240) { g2 = x2; bb = c2; } else if (hh < 300) { rr = x2; bb = c2; } else { rr = c2; bb = x2; }
+        d[i] = (rr + m2) * 255; d[i + 1] = (g2 + m2) * 255; d[i + 2] = (bb + m2) * 255;
+      }
+    }
+  }
+  g.putImageData(im, 0, 0);
+}
+
+// Staff portrait/sprite canvas for a role (native size, cached). 'st' is the palette-swapped one. null unless artReady().
+const STAFF_NAME = { doctor: 'staff.doctor', nurse: 'staff.nurse', pt: 'staff.pt', ot: 'staff.ot', st: 'staff.st', tech: 'staff.tech' };
+export function artStaffCanvas(role) { const n = STAFF_NAME[role]; return n ? artCanvas(n) : null; }
+const urls = new Map();
+// same sprite as a data: URL (for DOM <img>/CSS backgrounds); null unless artReady()
+export function artStaffUrl(role) {
+  const c = artStaffCanvas(role);
+  if (!c) return null;
+  let u = urls.get(role);
+  if (!u) { u = c.toDataURL('image/png'); urls.set(role, u); }
+  return u;
 }
 
 export function artUrl() { return PNG_URL; }

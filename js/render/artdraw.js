@@ -62,9 +62,20 @@ function resize(src, tw, th) {
   return out;
 }
 
+// walking away from the camera (-x / -y): the front-facing sprite is slightly darkened + desaturated to hint 'facing away'
+function shadeBack(c) {
+  const g = c.getContext('2d', { willReadFrequently: true });
+  const im = g.getImageData(0, 0, c.width, c.height), d = im.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (!d[i + 3]) continue;
+    const l = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
+    d[i] = (d[i] + (l - d[i]) * 0.12) * 0.9; d[i + 1] = (d[i + 1] + (l - d[i + 1]) * 0.12) * 0.9; d[i + 2] = (d[i + 2] + (l - d[i + 2]) * 0.12) * 0.92;
+  }
+  g.putImageData(im, 0, 0);
+}
 const SIT_FADE = 0.34;     // share of the sprite height (from the feet up) that fades out when seated (legs vanish into the sofa)
-function entryFor(name, sit) {
-  const key = sit ? name + '#sit' : name;
+function entryFor(name, sit, back) {
+  const key = (sit ? name + '#sit' : name) + (back ? '#back' : '');
   let m = _lv.get(key);
   if (!m) { m = new Map(); _lv.set(key, m); }
   let e = m.get(lvl_cur);
@@ -74,6 +85,7 @@ function entryFor(name, sit) {
   const k = scaleOf(name), r = artRect(name);
   const tw = Math.max(2, Math.round(src.width * k * Sq_cur)), th = Math.max(2, Math.round(src.height * k * Sq_cur));
   const c = resize(src, tw, th);
+  if (back) shadeBack(c);
   if (sit) {
     const g = c.getContext('2d');
     const y0 = Math.round(th * (1 - SIT_FADE));
@@ -97,8 +109,8 @@ function mirror(c) {
 
 // Draw a person with its feet at world (x, y). flip = mirror about the feet; tilt in radians (about the feet).
 // Returns the world y of the sprite's top edge (for bubbles / bars), or NaN when the sprite is missing.
-export function drawArtPerson(g, name, x, y, flip, tilt, sit) {
-  const e = entryFor(name, sit);
+export function drawArtPerson(g, name, x, y, flip, tilt, sit, back) {
+  const e = entryFor(name, sit, back);
   if (!e) return NaN;
   const c = flip ? (e.fc || (e.fc = mirror(e.c))) : e.c;
   const ax = flip ? e.dw - e.ax : e.ax;
@@ -119,7 +131,7 @@ export function drawArtPerson(g, name, x, y, flip, tilt, sit) {
 export function personHeight(name) { const e = entryFor(name, false); return e ? e.dh : 0; }
 
 // ───────────────────────── sprite choice ─────────────────────────
-const STAFF_SPRITE = { doctor: 'staff.doctor', nurse: 'staff.nurse', pt: 'staff.pt', ot: 'staff.ot', st: 'staff.pharmacist' };
+const STAFF_SPRITE = { doctor: 'staff.doctor', nurse: 'staff.nurse', pt: 'staff.pt', ot: 'staff.ot', st: 'staff.st' };
 export function staffSprite(role) { return STAFF_SPRITE[role] || null; }
 
 // st = { moving, sit, wait (standing without a seat), targetDef }
@@ -199,6 +211,12 @@ export function artObjectSprite(def, rot) {
 
 // draw any object sprite (procedural canvases have no dw/dh)
 export function blit(g, spr, x, y) {
+  if (spr.lod) {            // concept_objects.js: master drawn at 2x, pre-scaled to the current zoom x DPR (same levels as the people)
+    const c = spr.lod(S_cur, lvl_cur, exact_cur);
+    if (c.ex) g.drawImage(c, Math.round(x * S_cur) / S_cur, Math.round(y * S_cur) / S_cur, c.width / S_cur, c.height / S_cur);
+    else { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'medium'; g.drawImage(c, x, y, spr.dw, spr.dh); g.imageSmoothingEnabled = false; }
+    return;
+  }
   if (spr.art) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'medium'; g.drawImage(spr, x, y, spr.dw, spr.dh); g.imageSmoothingEnabled = false; }
   else g.drawImage(spr, x, y);
 }

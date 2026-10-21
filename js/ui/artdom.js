@@ -4,6 +4,7 @@
 // (fixed box, sprite fitted inside) so nothing shifts when the atlas finishes loading.
 import { bus } from '../core/bus.js';
 import { loadArt, artReady, artRect, artUrl, artEnabled } from '../render/art.js';
+import { conceptThumb } from '../render/concept_objects.js';
 
 let loadState = 'pending';     // 'pending' | 'ok' | 'fail'  (fail => the atlas could not be fetched: stop reserving space)
 let atlasW = 1024, atlasH = 1024;
@@ -93,6 +94,47 @@ function paint(el) {
   a.state = state;
   el.dataset.art = state;
   el.hidden = state === 'none';
+}
+
+// ---- concept-style object thumbnail (render/concept_objects.js conceptThumb) --------------------------------------
+// thumbEl(defId, {width, height, fallback})  -> <span class="u-thumb"> wrapping `fallback` (the old glyph node).
+//  - classic style / no concept drawing for this id (floors): the wrapper is display:contents, so the DOM looks exactly as before.
+//  - concept style: a <canvas> with the concept-style object replaces the glyph (css: html.style-concept .u-thumb[data-ct="1"]).
+//  - el.setDef(id) swaps the object later (build tray). Repainted on 'art:changed' like every other art element.
+export function thumbEl(defId, o = {}) {
+  const el = document.createElement('span');
+  el.className = 'u-thumb';
+  const w = o.width || 52, h = o.height || 44;
+  el.style.setProperty('--tw', w + 'px'); el.style.setProperty('--th', h + 'px');
+  if (o.fallback instanceof Node) el.appendChild(o.fallback);
+  el._th = { id: defId, w, h, cv: null, cvId: null };
+  el.setDef = id => { if (el._th.id !== id) { el._th.id = id; paintThumb(el); } };
+  el._repaint = () => paintThumb(el);
+  live.add(new WeakRef(el));
+  paintThumb(el);
+  return el;
+}
+function paintThumb(el) {
+  const t = el._th;
+  let on = false;
+  if (artEnabled() && t.id) {
+    if (t.cvId !== t.id) {
+      t.cvId = t.id;
+      let src = null;
+      try { src = conceptThumb(t.id, t.w, t.h, Math.min(3, window.devicePixelRatio || 1)); } catch (e) { src = null; }
+      if (t.cv) { t.cv.remove(); t.cv = null; }
+      if (src && src.width) {
+        const cv = document.createElement('canvas');
+        cv.width = src.width; cv.height = src.height;
+        cv.getContext('2d').drawImage(src, 0, 0);
+        cv.setAttribute('aria-hidden', 'true');
+        el.appendChild(cv); t.cv = cv;
+      }
+    }
+    on = !!t.cv;
+  }
+  const v = on ? '1' : '0';
+  if (el.dataset.ct !== v) el.dataset.ct = v;
 }
 
 // ---- wide banner (scene.clinic): fills the width of its container, aspect from the sprite -----------------------

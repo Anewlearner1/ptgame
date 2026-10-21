@@ -384,3 +384,80 @@
 .modal .u-banner:not(.u-banner-sm) { max-width: 380px; }
 .lay-portrait .modal .u-banner:not(.u-banner-sm) { --bn-vh: 17dvh; }
 .lay-compact .modal .u-banner:not(.u-banner-sm) { --bn-vh: 30dvh; }
+
+/* ==========================================================================
+   CONCEPT STYLE — ui extras (html.style-concept only; classic rules above are untouched). See css/style.css §22.
+   ========================================================================== */
+html.style-concept .u-sec { color: var(--c-navy); border-bottom: 2px solid var(--band); font-weight: 900; }
+html.style-concept .u-sico { filter: none; }
+html.style-concept .u-input, html.style-concept .u-ta { border-radius: 8px; background: #fff; box-shadow: 0 0 0 2px var(--c-line-2), inset 0 2px 0 0 rgba(30, 54, 90, 0.08); }
+html.style-concept .u-input:focus, html.style-concept .u-ta:focus { outline: none; box-shadow: 0 0 0 2px var(--c-blue-hi), 0 0 0 5px rgba(42, 126, 246, 0.25); }
+html.style-concept .u-setting input[type="checkbox"], html.style-concept .u-check2 input { accent-color: var(--c-blue); }
+html.style-concept .u-check { border-radius: 8px; background: #fff; box-shadow: inset 0 0 0 1px var(--c-line); }
+html.style-concept .tag.u-chip.good { background: #d7f0e0; color: #14553a; box-shadow: 0 0 0 1.5px #3aa56a; }
+html.style-concept .tag.u-chip.bad { background: #fbe0e5; color: #8f2a38; box-shadow: 0 0 0 1.5px #d24e66; }
+html.style-concept .tag.u-odds, html.style-concept .tag.u-titlechip { background: #e6e4f7; color: #3d3a78; box-shadow: 0 0 0 1.5px #9a7fc6; }
+html.style-concept .tag.u-costnote { background: #e8eef5; color: var(--c-navy); box-shadow: 0 0 0 1.5px var(--c-line-2); }
+html.style-concept .tag.u-costnote.lack { background: #fbe0e5; color: #8f2a38; box-shadow: 0 0 0 1.5px #d24e66; }
+html.style-concept .tag.u-eqb.bad { background: #fbe0e5; color: #8f2a38; box-shadow: 0 0 0 1.5px #d24e66; }
+html.style-concept .tag.u-eqb.warn { background: #fff0c4; color: #6b4a00; box-shadow: 0 0 0 1.5px #d9a21a; }
+html.style-concept .tag.u-eqb.good { background: #d7f0e0; color: #14553a; box-shadow: 0 0 0 1.5px #3aa56a; }
+html.style-concept .tag.u-mood { background: #fbe0e5; color: #8f2a38; box-shadow: 0 0 0 1.5px #d24e66; }
+html.style-concept .tag.u-st-review.good { background: #d7f0e0; color: #14553a; }
+html.style-concept .tag.u-st-review.bad { background: #fbe0e5; color: #8f2a38; }
+/* achievement tiers: 銅 / 銀 / 金 as metal-coloured pills */
+html.style-concept .tag.u-tier1 { background: linear-gradient(#f0c9a0, #d99a5e); color: #4a2a0c; box-shadow: 0 0 0 1.5px #8a5a2b; }
+html.style-concept .tag.u-tier2 { background: linear-gradient(#f2f5f9, #c4ccd8); color: #2c3644; box-shadow: 0 0 0 1.5px #7e8aba; }
+html.style-concept .tag.u-tier3 { background: linear-gradient(#ffeaa0, #f6c64e); color: #5a4200; box-shadow: 0 0 0 1.5px #c98a14; }
+html.style-concept .badge.u-b-done { background: #bfe8cc; }
+html.style-concept .badge.u-b-lock { background: #dbe3ec; color: #4a5870; }
+html.style-concept .u-toolstatus, html.style-concept .u-achnote { border-radius: 10px; background: #e6f2ff; color: var(--c-navy); box-shadow: inset 0 0 0 2px var(--c-blue-hl); }
+html.style-concept .u-curres { background: #dff0f7; }
+html.style-concept .u-step { border-radius: 999px; background: #e3edf7; color: var(--muted); box-shadow: 0 0 0 1px var(--c-line); }
+html.style-concept .u-step.done { background: #d7f0e0; color: #14553a; }
+html.style-concept .u-step.cur { background: #f6c64e; color: var(--c-ink); box-shadow: 0 0 0 1.5px var(--c-navy); }
+html.style-concept .u-need { border-radius: 999px; }
+html.style-concept .u-need.have { background: #d7f0e0; color: #14553a; box-shadow: 0 0 0 1.5px #3aa56a; }
+html.style-concept .u-need.lack { background: #e8eef5; color: var(--muted); box-shadow: 0 0 0 1.5px var(--c-line-2); }
+html.style-concept .u-note { border-radius: 10px; background: #e1f1f7; box-shadow: inset 0 0 0 2px var(--c-teal); }
+html.style-concept .u-note.bad-note { background: #fbe6ea; box-shadow: inset 0 0 0 2px var(--c-red); }
+html.style-concept .u-stats3 { border-radius: 10px; background: #fff; box-shadow: inset 0 0 0 2px var(--c-line); }
+html.style-concept .u-kvrow.u-total { border-top-color: var(--c-navy); }
+html.style-concept .u-dots i { border-radius: 50%; background: var(--c-line); box-shadow: 0 0 0 2px var(--c-navy); }
+html.style-concept .u-dots i.on { background: var(--c-blue-hi); }
+html.style-concept .u-intro-head { color: var(--c-teal); }
+html.style-concept .u-legend i { border-radius: 999px; box-shadow: 0 0 0 1px var(--c-navy); }
+html.style-concept .u-minimap, html.style-concept .u-chart { border-radius: 10px; box-shadow: 0 0 0 2px var(--c-navy); }
+html.style-concept .u-eq tbody tr.u-sel { background: #dcebfb !important; }
+html.style-concept .u-eq tbody tr.u-broken { background: #fbe6ea; }
+
+/* build cards / glyph tiles */
+html.style-concept .u-item .u-glyph { border-radius: 10px; box-shadow: 0 0 0 2px var(--c-navy), inset 0 -4px 0 0 rgba(20, 17, 27, 0.2); }
+html.style-concept .u-item .u-cost { color: var(--c-teal); }
+html.style-concept .u-item .u-cost.bad { color: var(--bad); }
+html.style-concept .u-tray-glyph { border-radius: 10px; box-shadow: 0 0 0 2px var(--c-navy), inset 0 -4px 0 0 rgba(20, 17, 27, 0.2); }
+html.style-concept .u-tray-btn.on { background: #f6c64e; color: var(--c-ink); box-shadow: 0 0 0 2px var(--c-navy), inset 0 3px 0 rgba(20, 17, 27, 0.18); }
+html.style-concept .u-chip-build { border-radius: 999px; background: var(--c-blue); color: #fff; text-shadow: none; box-shadow: 0 0 0 2px var(--c-navy), 0 4px 0 0 var(--c-blue-lo), 0 5px 0 1px var(--c-navy), inset 0 2px 0 rgba(255, 255, 255, 0.35); }
+
+/* achievements */
+html.style-concept .u-achico { border-radius: 10px; background: #fff; box-shadow: 0 0 0 2px var(--c-navy), inset 0 -4px 0 0 rgba(30, 54, 90, 0.12); }
+html.style-concept .u-ach.u-locked .u-achico { background: #e4eaf1; }
+
+/* sprite frames */
+html.style-concept .u-art.u-art-ring { box-shadow: 0 0 0 2px var(--c-navy); background: #dcebfb; border-radius: 10px; }
+html.style-concept .u-art.u-art-ring[data-art="off"] { background: #fff; box-shadow: none; }
+html.style-concept .u-art[data-art="off"] > .u-art-fb.u-art-glyphfb { border-radius: 10px; box-shadow: 0 0 0 2px var(--c-navy), inset 0 -4px 0 0 rgba(20, 17, 27, 0.2); }
+html.style-concept .u-banner { border-radius: 12px; box-shadow: 0 0 0 2px var(--c-navy); }
+
+/* selection card, speech bubble, hint */
+html.style-concept .u-selcard { border-radius: 14px; background: #fff; box-shadow: 0 0 0 2px var(--c-navy), 0 10px 24px rgba(20, 17, 27, 0.3); }
+html.style-concept .u-selclose { border-radius: 50%; color: var(--c-navy); }
+html.style-concept .u-selclose:hover { background: #fbe0e5; color: var(--c-red); }
+html.style-concept .u-bubble { border-radius: 10px; background: #f1f8ff; box-shadow: 0 0 0 1.5px var(--c-line-2); }
+html.style-concept .u-hint { border-radius: 10px; background: rgba(30, 54, 90, 0.9); color: #fff; }
+html.style-concept .tb-item.u-neg .tb-val, html.style-concept .tb-item.u-bad .tb-val { color: #ffb3bd; }
+
+/* modals */
+html.style-concept .btn.u-choice { text-align: left; }
+html.style-concept .u-modal-ico { filter: none; }
+html.style-concept .u-speaker > .u-art { border-radius: 12px; }

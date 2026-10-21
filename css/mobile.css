@@ -332,3 +332,62 @@ img, canvas { -webkit-user-drag: none; }
 .lay-compact .u-shead .u-art-pair .u-art-tile { --aw: 34px !important; --ah: 34px !important; }
 .lay-compact .u-shead .u-art-pair .u-art:not(.u-art-tile) { --aw: 26px !important; --ah: 40px !important; }
 .lay-compact .u-selbody > .u-shead > .u-art { --aw: 30px !important; --ah: 42px !important; }
+
+/* ==========================================================================
+   CONCEPT STYLE — phone / tablet layer (html.style-concept only). See css/style.css §22.
+   ========================================================================== */
+html.style-concept .tb-stats { border-radius: 999px; background: var(--c-chip); color: #fff; box-shadow: inset 0 0 0 1.5px rgba(156, 200, 248, 0.5); }
+html.style-concept .tb-pop { border-radius: 14px; background: #fff; color: var(--c-navy); box-shadow: 0 0 0 2px var(--c-navy), 0 10px 24px rgba(20, 17, 27, 0.35); }
+html.style-concept .u-ctx { border-radius: 14px; overflow: hidden; background: #fff; box-shadow: 0 0 0 2px var(--c-navy), 0 12px 28px rgba(20, 17, 27, 0.4); }
+html.style-concept .u-ctx-title { background: var(--c-navy); color: #fff; }
+html.style-concept .u-ctx-btn { color: var(--c-navy); }
+html.style-concept .u-ctx-btn + .u-ctx-btn { border-top: 1px solid var(--c-line); }
+html.style-concept .u-ctx-btn:active, html.style-concept .u-ctx-btn:hover { background: var(--c-panel); }
+html.style-concept .u-ctx-btn.danger { color: var(--c-red); }
+
+html.style-concept.lay-mobile .tb-item { box-shadow: inset 0 0 0 1.5px rgba(156, 200, 248, 0.5), inset 0 2px 0 rgba(255, 255, 255, 0.14); }
+html.style-concept.lay-mobile .tb-ico .u-d-n .u-svg { width: 18px; height: 18px; }
+html.style-concept.lay-mobile .tb-ico .u-art { --aw: 20px !important; --ah: 20px !important; }
+
+/* ---- portrait: tab bar + bottom sheets ---------------------------------------------- */
+html.style-concept.lay-portrait #sidebar {
+  background: #fff; box-shadow: 0 -2px 0 0 var(--c-navy), 0 -10px 18px rgba(20, 17, 27, 0.16);
+}
+html.style-concept.lay-portrait .sidebar-btn {
+  height: calc(100% - 8px); margin: 4px 3px; padding: 2px 0 0; border-radius: 12px; background: transparent; color: var(--c-navy); box-shadow: none; transform: none;
+}
+html.style-concept.lay-portrait .sidebar-btn .u-d-n .u-svg { width: 24px; height: 24px; }
+html.style-concept.lay-portrait .sidebar-btn .u-art { --aw: 24px !important; --ah: 24px !important; }
+html.style-concept.lay-portrait .sidebar-btn:hover { background: var(--c-panel); transform: none; }
+html.style-concept.lay-portrait .sidebar-btn.active {
+  background: var(--band); color: #fff; box-shadow: inset 0 -3px 0 rgba(20, 17, 27, 0.28), 0 0 0 2px var(--c-navy);
+}
+html.style-concept.lay-portrait #speedbar {
+  padding: 4px 6px; border-radius: 16px; background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 0 0 2px var(--c-navy), 0 6px 14px rgba(20, 17, 27, 0.28);
+}
+html.style-concept.lay-portrait .speed-btn { box-shadow: 0 0 0 2px var(--c-navy), inset 0 2px 0 rgba(255, 255, 255, 0.85); }
+html.style-concept.lay-portrait .speed-btn.active { box-shadow: 0 0 0 2px var(--c-navy), inset 0 3px 0 rgba(20, 17, 27, 0.25); transform: none; }
+html.style-concept.lay-portrait #stage #panel {
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 0 0 2px var(--c-navy), 0 -10px 22px rgba(20, 17, 27, 0.25);
+  animation: panel-fade 0.16s ease 1;
+}
+html.style-concept.lay-portrait .sheet-handle { background: var(--band); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+html.style-concept.lay-portrait .sheet-handle i { height: 5px; border-radius: 999px; background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1px rgba(20, 17, 27, 0.45); }
+html.style-concept.lay-portrait .panel-title { box-shadow: inset 0 -3px 0 rgba(20, 17, 27, 0.3); }
+html.style-concept.lay-portrait #stage[data-bmode="tray"] #panel { background: var(--c-panel); border-radius: 16px 16px 0 0; box-shadow: 0 0 0 2px var(--c-navy), 0 -10px 22px rgba(20, 17, 27, 0.25); }
+
+/* ---- compact landscape: rail + drawer ------------------------------------------------- */
+html.style-concept.lay-compact .sidebar-btn .u-d-n .u-svg { width: 26px; height: 26px; }
+html.style-concept.lay-compact .sidebar-btn .u-art { --aw: 26px !important; --ah: 26px !important; }
+html.style-concept.lay-compact #stage #panel {
+  border-radius: 16px 0 0 16px; box-shadow: 0 0 0 2px var(--c-navy), -10px 0 22px rgba(20, 17, 27, 0.28);
+  animation: panel-fade 0.16s ease 1;
+}
+html.style-concept.lay-compact #stage[data-bmode="strip"] #panel { border-radius: 14px; box-shadow: 0 0 0 2px var(--c-navy), 0 6px 16px rgba(20, 17, 27, 0.3); }
+html.style-concept.lay-compact .tb-stats[aria-expanded="true"] { background: var(--c-blue); }
+@media (max-height: 600px) {
+  html.style-concept .sidebar-btn .u-d-n .u-svg { width: 24px; height: 24px; }
+  html.style-concept .sidebar-btn .u-art { --aw: 24px !important; --ah: 24px !important; }
+}

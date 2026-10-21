@@ -7,7 +7,8 @@ import { initToast } from './toast.js';
 import { initModal, isModalOpen, modalClosedRecently } from './modal.js';
 import { initModals, showTutorial, showHelp, showPending, snapshotLedger, resetPendingKey } from './modals.js';
 import { initTopbar, updateTopbar } from './topbar.js';
-import { initSidebar, updateSidebar, PANELS } from './sidebar.js';
+import { initSidebar, updateSidebar, PANELS, panelIcon } from './sidebar.js';
+import { initTheme } from './theme.js';
 import { initSpeedbar, updateSpeedbar } from './speedbar.js';
 import { initSelection, updateSelection } from './selection.js';
 import { mountBuild } from './panels/build.js';
@@ -28,7 +29,11 @@ import { initCtxMenu } from './ctxmenu.js';
 import { initArtDom } from './artdom.js';
 
 const MOUNTS = { build: mountBuild, operate: mountOperate, clinic: mountClinic, overview: mountOverview, map: mountMap, system: mountSystem };
-const TITLES = { build: '🔨 建造', operate: '🔬 運作', clinic: '🏥 診所', overview: '📋 一覽', map: '🗺 地圖', system: '⚙ 系統' };
+// panel title = [emoji | concept icon] + label (one inline wrapper, so it lays out exactly like the old single text node)
+function panelTitle(id, close) {
+  const p = PANELS.find(x => x.id === id);
+  return h('h2', { class: 'panel-title' }, h('span', { class: 'pt-lab' }, panelIcon(p, 26), ' ' + p.label), close);
+}
 
 let panelEl, stageEl, hintEl;
 let shown = null;        // panel id currently mounted
@@ -45,6 +50,7 @@ export function initUI(state, ui) {
   panelEl = document.getElementById('panel');
   stageEl = document.getElementById('stage');
 
+  initTheme();
   initLayout();
   initArtDom();
   initPwa();
@@ -173,7 +179,7 @@ function remount(state, ui, force) {
   }
   const close = h('button', { class: 'panel-close', type: 'button', 'aria-label': '關閉', onclick: () => { ui.panel = null; syncPanel(state, ui); } }, '✕');
   const body = h('div', { class: 'u-panelbody' });
-  panelEl.append(h('div', { class: 'sheet-handle', 'aria-hidden': 'true' }, h('i')), h('h2', { class: 'panel-title' }, TITLES[shown], close), body);
+  panelEl.append(h('div', { class: 'sheet-handle', 'aria-hidden': 'true' }, h('i')), panelTitle(shown, close), body);
   panelEl.hidden = false;
   panelEl.scrollTop = 0;
   stageEl.classList.add('panel-open');
