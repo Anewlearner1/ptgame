@@ -461,3 +461,19 @@ html.style-concept .tb-item.u-neg .tb-val, html.style-concept .tb-item.u-bad .tb
 html.style-concept .btn.u-choice { text-align: left; }
 html.style-concept .u-modal-ico { filter: none; }
 html.style-concept .u-speaker > .u-art { border-radius: 12px; }
+
+/* ---------- concept-style object thumbnails (js/ui/artdom.js thumbEl) ------------------------------------------------------ */
+/* classic / no concept drawing: the wrapper is transparent to layout (display: contents) and the canvas never shows */
+.u-thumb { display: contents; }
+.u-thumb > canvas { display: none; }
+html.style-concept .u-thumb[data-ct="1"] { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: var(--tw, 52px); height: var(--th, 44px); }
+html.style-concept .u-thumb[data-ct="1"] > :not(canvas) { display: none; }
+html.style-concept .u-thumb[data-ct="1"] > canvas { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: auto; filter: drop-shadow(0 1px 0 rgba(20, 17, 27, 0.18)); }
+html.style-concept .u-item .u-thumb[data-ct="1"] { margin-bottom: 4px; }
+html.style-concept .u-eqname:has(> .u-thumb[data-ct="1"]) { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
+@media (max-height: 600px) {
+  html.style-concept .u-item .u-thumb[data-ct="1"] { --tw: 44px !important; --th: 38px !important; margin-bottom: 2px; }
+}
+html.style-concept.lay-compact #stage[data-bmode="strip"] .u-tray-item .u-thumb[data-ct="1"] { --tw: 34px !important; --th: 32px !important; }
+html.style-concept.lay-compact #stage[data-bmode="strip"] .u-item .u-thumb[data-ct="1"] { --tw: 30px !important; --th: 28px !important; margin-bottom: 0; }
+html.style-concept.lay-compact .u-shead .u-thumb[data-ct="1"] { --tw: 34px !important; --th: 34px !important; }
