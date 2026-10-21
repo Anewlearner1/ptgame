@@ -48,7 +48,7 @@ const lotVisibleBesidePanel = (g) => (drawerRight(g) ? g.r <= g.panelLeft + 2 &&
   await page.keyboard.press('b'); await page.waitForTimeout(700);
   g = await geo(page);
   ok(lotVisibleBesidePanel(g), `800x450 build panel open: lot visible beside panel (${Math.round(g.l)}..${Math.round(g.r)} vs panel ${Math.round(g.panelRight)})`);
-  for (const k of ['o', 'c', 'v', 'm', 'y']) { await page.keyboard.press(k); await page.waitForTimeout(450); g = await geo(page); ok((drawerRight(g) ? g.panelLeft > g.W * 0.4 && g.l < g.panelLeft - 40 : g.panelRight < g.W * 0.75 && g.r > g.panelRight - 40), `800x450 panel ${k}: map still partly visible (panel right ${Math.round(g.panelRight)}/${g.W})`); }
+  for (const k of ['o', 'c', 'v', 'p', 'y']) { await page.keyboard.press(k); await page.waitForTimeout(450); g = await geo(page); ok((drawerRight(g) ? g.panelLeft > g.W * 0.4 && g.l < g.panelLeft - 40 : g.panelRight < g.W * 0.75 && g.r > g.panelRight - 40), `800x450 panel ${k}: map still partly visible (panel right ${Math.round(g.panelRight)}/${g.W})`); }
   // manual camera is NOT re-fitted by a resize
   await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
   await page.evaluate(() => { __game.ui.cam.zoom = 2; });
@@ -83,7 +83,7 @@ for (const [w, h, dpr] of [[1280, 720, 2], [800, 450, 2], [800, 450, 1]]) {
   const { page, problems } = await open(1280, 720);
   const S = () => page.evaluate(() => ({ panel: __game.ui.panel, paused: __game.state.time.paused, speed: __game.state.time.speed, grid: __game.ui.showGrid, tool: __game.ui.tool.mode, rot: __game.ui.tool.rot, modal: !!document.querySelector('#modal-root .modal') }));
   const press = async (k) => { await page.keyboard.press(k); await page.waitForTimeout(120); };
-  const map = { b: 'build', o: 'operate', c: 'clinic', v: 'overview', m: 'map', y: 'system' };
+  const map = { b: 'build', o: 'operate', c: 'clinic', v: 'overview', p: 'map', y: 'system' };
   for (const [k, id] of Object.entries(map)) {
     await press(k); ok((await S()).panel === id, `key ${k.toUpperCase()} opens ${id}`);
     await press(k); ok((await S()).panel === null, `key ${k.toUpperCase()} again closes it`);

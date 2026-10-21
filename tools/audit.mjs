@@ -724,6 +724,83 @@ function edgeSection() {
   check('build: a full-width wall cannot seal an existing room off from the door', blocked >= 1, 'refused=' + blocked);
   check('sign (non-blocking) may not sit on the entry tile', !B.canPlace(state, 'sign', e.x, e.y, 0).ok);
 
+  // ---- moving / rotating placed objects ----
+  {
+    fresh(); clearObjects(); state.money = 1e7;
+    const tens = put('tens', 12, 12), room = put('exam_room', 15, 12), plant = put('plant', 12, 15);
+    const fee = B.relocationCost('tens');
+    check('move: relocationCost = max(500, 10% of build cost)', fee === Math.max(500, Math.round(BUILDABLES.tens.cost * 0.1)) && B.relocationCost('plant') === Math.max(500, Math.round(BUILDABLES.plant.cost * 0.1)) && B.relocationCost('plant') >= 500 && B.relocationCost('floor_mat') === 0, `${fee}`);
+    const snap = () => JSON.stringify([state.objects, state.money, state.ledger.expense.build]);
+    const s0 = snap();
+    check('move: onto another object refused (reason, nothing changes)', !B.canMove(state, tens.id, 15, 12, 0).ok && B.moveObject(state, tens.id, 16, 13, 0) === false && snap() === s0);
+    check('move: overlapping its OWN old footprint is fine (shift by one)', B.canMove(state, room.id, 16, 12, 0).ok);
+    check('move: outside the lot refused', !B.canMove(state, tens.id, state.lot.x0 - 1, 12, 0).ok && !B.canMove(state, room.id, state.lot.x0 + state.lot.w - 1, 12, 0).ok && !B.canMove(state, tens.id, 5, 5, 0).ok && B.moveObject(state, tens.id, 99, 99, 0) === false);
+    const e = entryTile(state);
+    check('move: entry tile refused', !B.canMove(state, tens.id, e.x, e.y, 0).ok && !B.canMove(state, room.id, e.x - 1, e.y - 1, 0).ok);
+    check('move: same spot + same rotation = no-op refused', !B.canMove(state, tens.id, 12, 12, 0).ok && B.moveObject(state, tens.id, 12, 12, 0) === false);
+    check('move: unknown id / non-object refused', !B.canMove(state, 99999, 12, 12, 0).ok && B.moveObject(state, 99999, 12, 12, 0) === false);
+    state.money = fee - 1;
+    check('move: unaffordable fee refused, nothing changes', !B.canMove(state, tens.id, 12, 14, 0).ok && B.moveObject(state, tens.id, 12, 14, 0) === false && state.money === fee - 1 && tens.x === 12 && tens.y === 12);
+    state.money = 1e7; tens.wear = 37;
+    const ev = []; const un1 = bus.on('object:moved', p => ev.push(p.id)); let mc = 0; const un2 = bus.on('map:changed', () => mc++);
+    const m0 = state.money, b0 = state.ledger.expense.build; ui.dirtyOcc = false;
+    check('move: valid move succeeds', B.moveObject(state, tens.id, 12, 14, 0) === true);
+    check('move: keeps id + wear, new position, fee charged once as build expense', tens.id === state.objects.find(o => o.defId === 'tens').id && tens.wear === 37 && tens.x === 12 && tens.y === 14 && state.money === m0 - fee && state.ledger.expense.build === b0 + fee);
+    check('move: dirtyOcc, map:changed and object:moved emitted; occupancy follows', ui.dirtyOcc === true && mc >= 1 && ev.length === 1 && ev[0] === tens.id && (refresh(), state.map.occ[14][12] === tens.id && state.map.occ[12][12] === 0));
+    if (typeof un1 === 'function') { un1(); un2(); }
+    check('move: result is a valid layout (invariants)', invariants().length === 0, invariants().join(';'));
+    // pure rotation: free but must be valid
+    const mr = state.money;
+    check('rotate in place: free, valid, rot flips', B.canMove(state, room.id, 15, 12, 1).ok && B.canMove(state, room.id, 15, 12, 1).fee === 0 && B.moveObject(state, room.id, 15, 12, 1) === true && room.rot === 1 && state.money === mr);
+    check('rotate in place: refused when the rotated footprint does not fit', (() => { const t = put('traction', state.lot.x0 + state.lot.w - 1, state.lot.y0 + 2, 0); return !!t && !B.canMove(state, t.id, t.x, t.y, 1).ok; })());
+    check('rotateObject helper rotates back for free', (() => { const m = state.money; return B.rotateObject(state, room.id).ok && room.rot === 0 && state.money === m; })());
+    // zone activation by moving
+    fresh(); clearObjects(); state.money = 5e6;
+    put('heatbox', 11, 11); const t2 = put('tens', 16, 14); put('traction', 13, 11, 0);
+    check('move: golden3 inactive while tens is far away', !Syn.isZoneActive(state, 'golden3') && state.mods.nhiTurnover === 1);
+    check('move: tens next to heatbox+traction forms golden3 (zones + mods recomputed)', B.moveObject(state, t2.id, 12, 11, 0) && Syn.isZoneActive(state, 'golden3') && near(state.mods.nhiTurnover, 1.2));
+    check('move: moving a member away dissolves the zone again', B.moveObject(state, t2.id, 17, 15, 0) && !Syn.isZoneActive(state, 'golden3') && state.mods.nhiTurnover === 1);
+
+    // moving objects that are in use: patient released gracefully, no deadlock, no double charge
+    fresh(); state.money = 5e6;
+    let victim = null, usedObj = null;
+    for (let i = 0, N = 4 * MIN_PER_WEEK; i < N && !victim; i++) {
+      step(1);
+      for (const p of state.patients) if (p.stage === 'treating' && p.targetObj) { const ob = state.objects.find(o => o.id === p.targetObj); if (ob && ob.usedBy === p.id) { victim = p; usedObj = ob; break; } }
+    }
+    if (check('move-in-use: found a patient treating at a station', !!victim)) {
+      const tgt = (() => { const l = state.lot; for (let y = l.y0 + 1; y < l.y0 + l.h - 1; y++) for (let x = l.x0 + 1; x < l.x0 + l.w - 1; x++) if (B.canMove(state, usedObj.id, x, y, usedObj.rot).ok && (x !== usedObj.x || y !== usedObj.y)) return { x, y }; return null; })();
+      const pid = victim.id, sid = victim.staffId, ox = usedObj.id, mm = state.money, pay = JSON.stringify(victim.paid);
+      check('move-in-use: moveObject on a busy station succeeds', !!tgt && B.moveObject(state, usedObj.id, tgt.x, tgt.y, usedObj.rot) === true);
+      const st = state.staff.find(x => x.id === sid);
+      check('move-in-use: treatment cancelled, patient back to waiting, links cleared', victim.stage === 'waiting' && victim.targetObj === null && victim.staffId === null && !usedObj.busy && usedObj.usedBy === null && (!st || !st.task || st.task.patientId !== pid), `${victim.stage}`);
+      check('move-in-use: fee only (no double charge / payment)', state.money === mm - B.relocationCost(usedObj.defId) && JSON.stringify(victim.paid) === pay);
+      runWeeks(2);
+      check('move-in-use: sim continues (no pointers to the old spot, invariants hold)', invariants().length === 0 && state.objects.every(o => !o.usedBy || state.patients.some(p => p.id === o.usedBy)), invariants().join(';'));
+      check('move-in-use: the moved station is usable again / patient not stuck', state.stats.patientsTotal > 0 && (victim.stage !== 'waiting' || victim.age - victim.waitStart < 600 || victim.stage === 'gone'));
+    }
+    // seated on a moved sofa: seat released
+    fresh(); state.money = 5e6;
+    let seated = null;
+    for (let i = 0, N = 3 * MIN_PER_WEEK; i < N && !seated; i++) { step(1); seated = state.patients.find(p => p.seat && p.stage === 'waiting'); }
+    if (check('move-seat: found a seated patient', !!seated)) {
+      const sofa = state.objects.find(o => o.id === seated.seat.objId);
+      const l = state.lot; let spot = null;
+      for (let y = l.y0 + 1; y < l.y0 + l.h - 1 && !spot; y++) for (let x = l.x0 + 1; x < l.x0 + l.w - 1 && !spot; x++) if ((x !== sofa.x || y !== sofa.y) && B.canMove(state, sofa.id, x, y, sofa.rot).ok) spot = { x, y };
+      check('move-seat: sofa moves, seat cleared (no stale seat coordinates)', B.moveObject(state, sofa.id, spot.x, spot.y, sofa.rot) && (!seated.seat || seated.seat.objId !== sofa.id || (seated.seat.x >= spot.x && seated.seat.y >= spot.y)));
+      runWeeks(1);
+      check('move-seat: invariants after a week', invariants().length === 0, invariants().join(';'));
+    }
+    // save / load round trip after a move
+    fresh(); clearObjects(); state.money = 5e6;
+    const mo = put('tens', 12, 12); B.moveObject(state, mo.id, 14, 14, 0); const room2 = put('exam_room', 17, 12); B.moveObject(state, room2.id, 17, 12, 1);
+    const sig = JSON.stringify(state.objects.map(o => [o.id, o.defId, o.x, o.y, o.rot]));
+    Sav.saveGame(state, 'mv'); state.objects = []; Sav.loadGame(state, 'mv'); refresh();
+    check('move: save/load round-trip keeps moved + rotated objects', JSON.stringify(state.objects.map(o => [o.id, o.defId, o.x, o.y, o.rot])) === sig && state.map.occ[14][14] === mo.id && invariants().length === 0);
+    runWeeks(1);
+    check('move: week simulated after load without issues', invariants().length === 0, invariants().join(';'));
+  }
+
   // ---- staff ----
   fresh(); state.money = 1e7;
   const doc = state.staff.find(s => s.role === 'doctor');

@@ -163,7 +163,7 @@ export function mountBuild(root, state, ui) {
       trayGlyph.style.background = m === 'move' ? (carried ? carried.top || '#ccc' : '#bcd9f5') : m !== 'demolish' && td ? td.top || '#ccc' : '#e8d9b8';
       setText(trayName, m === 'demolish' ? '拆除模式' : m === 'move' ? (carried ? `移動「${carried.name}」` : '移動模式') : td ? td.name : '建造');
       setText(trayCost, m === 'demolish' ? '點擊物件或地板'
-        : m === 'move' ? (carried ? `搬移費 ${money(relocationCost(ui.tool.carryDef))}（只轉向免費）` : '點選要搬移的設備')
+        : m === 'move' ? (carried ? `搬移費 ${money(relocationCost(ui.tool.carryDef))}` : '點選要搬移的設備')
           : td ? money(td.cost) + (td.layer === 'floor' ? ' /格' : '') + (armed ? '' : '　已放置') : '');
       bAgain.hidden = armed || !lastDef;
       bPin.hidden = !(m === 'place' || m === 'paint' || m === 'move');

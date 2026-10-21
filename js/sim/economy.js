@@ -20,6 +20,21 @@ export const HISTORY_MAX = 240;             // months of history kept
 export const LEDGER_INCOME_KEYS = ['nhi', 'self', 'other'];
 export const LEDGER_EXPENSE_KEYS = ['salary', 'rent', 'build', 'maintain', 'other'];
 
+// M3 (健保審查風險, state.nhi.risk 0..100) and M7 (網路評價, state.reviewScore 1..5): docs/EVENTS_EXT.md §6.
+export const RISK_TUNE = {
+  MAX: 100, WEEK_DECAY: 1,          // natural decay per week
+  OVER_START: 0.9, OVER_K: 40,      // month points / cap above this ratio: +OVER_K per 1.0 of ratio
+  GROWTH_FREE: 0.25, GROWTH_K: 12,  // month-on-month growth above 25%: +K per 1.0
+  COMPLEX_PTS: 250, COMPLEX_FREE: 0.4, COMPLEX_K: 10,   // share of complex (>= COMPLEX_PTS) NHI treatments above 40%
+  MONTH_CAP: 15,                    // max risk added by one settlement
+  HIGH: 60,                         // above this nhi-category audit events weigh x2 (events.js)
+};
+export const REVIEW_TUNE = {
+  START: 4.0, MIN: 1.0, MAX: 5.0,
+  UP_SAT: 70, UP: 0.05, DOWN_SAT: 45, DOWN: 0.1,   // monthly drift by average satisfaction
+  ARRIVAL_K: 0.1,                   // arrivals x (1 + (score - 4) * K)  ->  every 0.1 of score = 1%
+};
+
 let unsub = [];
 
 export function lotDef(state) { return LOTS[state.lotLevel || 0] || LOTS[0]; }
@@ -97,10 +112,35 @@ export function selfPayPrice(state, treatmentId) {
   return Math.round((t.price || 0) * (typeof pm === 'number' ? pm : 1) * (typeof mods.selfPayPrice === 'number' ? mods.selfPayPrice : 1));
 }
 
+// ---- M3 / M7 accessors (fields are created lazily; save.js sanitises them) ----
+const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
+export function riskOf(state) { const r = state.nhi && state.nhi.risk; return typeof r === 'number' && Number.isFinite(r) ? clampN(r, 0, RISK_TUNE.MAX) : 0; }
+export function addRisk(state, d) { state.nhi.risk = clampN(riskOf(state) + (Number(d) || 0), 0, RISK_TUNE.MAX); return state.nhi.risk; }
+export function reviewOf(state) { const r = state.reviewScore; return typeof r === 'number' && Number.isFinite(r) ? clampN(r, REVIEW_TUNE.MIN, REVIEW_TUNE.MAX) : REVIEW_TUNE.START; }
+export function addReview(state, d) { state.reviewScore = Math.round(clampN(reviewOf(state) + (Number(d) || 0), REVIEW_TUNE.MIN, REVIEW_TUNE.MAX) * 100) / 100; return state.reviewScore; }
+// arrivals multiplier from the online review score (patients.js)
+export function reviewFactor(state) { return 1 + (reviewOf(state) - 4) * REVIEW_TUNE.ARRIVAL_K; }
+
+// Monthly risk input from this month's NHI behaviour (called by settleMonth before the counters reset).
+export function monthlyRiskDelta(state, points) {
+  const T = RISK_TUNE, cap = nhiCap(state) || 1;
+  const over = Math.max(0, points / cap - T.OVER_START);
+  const prev = state.history && state.history.length ? (state.history[state.history.length - 1].nhiPoints || 0) : 0;
+  const growth = prev > 200 ? points / prev - 1 : 0;
+  const n = (state.nhi && state.nhi.nhiN) || 0;
+  const cx = n > 20 ? ((state.nhi.complexN || 0) / n) : 0;
+  const d = over * T.OVER_K + Math.max(0, growth - T.GROWTH_FREE) * T.GROWTH_K + Math.max(0, cx - T.COMPLEX_FREE) * T.COMPLEX_K;
+  return clampN(d, 0, T.MONTH_CAP);
+}
+
 function onTreatmentDone(state, e) {
   if (!e) return;
   const pts = Number(e.nhiPoints) || 0;
-  if (pts > 0) state.nhi.weekPoints += pts, state.nhi.monthPoints += pts;
+  if (pts > 0) {
+    state.nhi.weekPoints += pts, state.nhi.monthPoints += pts;
+    state.nhi.nhiN = (state.nhi.nhiN || 0) + 1;
+    if (pts >= RISK_TUNE.COMPLEX_PTS) state.nhi.complexN = (state.nhi.complexN || 0) + 1;
+  }
   let pay = 0;
   if (typeof e.selfPay === 'number') pay = e.selfPay;
   else if (e.selfPay) pay = selfPayPrice(state, e.treatmentId);   // boolean flag: price it ourselves
@@ -110,6 +150,7 @@ function onTreatmentDone(state, e) {
 function onWeekEnd(state) {
   state.nhi.lastWeekPoints = state.nhi.weekPoints;
   state.nhi.weekPoints = 0;
+  if (riskOf(state) > 0) addRisk(state, -RISK_TUNE.WEEK_DECAY);
   if (state.stats) state.stats.patientsToday = 0;
 }
 
@@ -151,6 +192,12 @@ export function settleMonth(state) {
   const net = income - expense;
   const st = state.stats || {};
   const satisfaction = st.satN > 0 ? st.satSum / st.satN : 0;
+  // M3 / M7 monthly updates (before the counters reset)
+  addRisk(state, monthlyRiskDelta(state, points));
+  if (st.satN > 0) {
+    if (satisfaction > REVIEW_TUNE.UP_SAT) addReview(state, REVIEW_TUNE.UP);
+    else if (satisfaction < REVIEW_TUNE.DOWN_SAT) addReview(state, -REVIEW_TUNE.DOWN);
+  }
 
   const record = {
     points, pointValue: pv, income, expense, net, nhiIncome, revenueScale: REVENUE_SCALE,
@@ -158,6 +205,7 @@ export function settleMonth(state) {
     salary: l.expense.salary, rent: l.expense.rent, maintain: l.expense.maintain, build: l.expense.build, otherExpense: l.expense.other,
     cap: nhiCap(state), diluted: pv < PV_MAX,
     year: state.time.year, month: state.time.month, money: state.money,
+    risk: Math.round(riskOf(state) * 10) / 10, reviewScore: reviewOf(state),
   };
 
   state.nhi.pointValue = pv;
@@ -166,6 +214,7 @@ export function settleMonth(state) {
     year: state.time.year, month: state.time.month, income, expense, net, money: state.money,
     patients: st.patientsMonth || 0, satisfaction: Math.round(satisfaction * 10) / 10,
     reputation: Math.round(state.reputation), nhiPoints: points, pointValue: pv,
+    risk: record.risk, review: record.reviewScore,
   });
   if (state.history.length > HISTORY_MAX) state.history.splice(0, state.history.length - HISTORY_MAX);
 
@@ -174,6 +223,7 @@ export function settleMonth(state) {
   for (const k of LEDGER_EXPENSE_KEYS) l.expense[k] = 0;
   state.nhi.monthPoints = 0;
   state.nhi.weekPoints = 0;
+  state.nhi.nhiN = 0; state.nhi.complexN = 0;
   if (state.stats) { st.patientsMonth = 0; st.satSum = 0; st.satN = 0; }
 
   bus.emit('nhi:settled', record);

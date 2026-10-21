@@ -3,7 +3,7 @@
 // Covers: build panel placement / rotate / floor drag-paint / demolish, golden3 zone, research via UI, pricing,
 // community, focus, hire/train/fire, save/load/export/import, month-end + inspection + event/dilemma modals,
 // sim-freeze while a decision is pending, expansion, game over. Exit code 1 on failed assertion or console problem.
-import { launch, clickTile, dragTiles } from './lib.mjs';
+import { launch, clickTile, dragTiles, tileXY } from './lib.mjs';
 
 const shotDir = process.argv.includes('--shots') ? process.argv[process.argv.indexOf('--shots') + 1] : null;
 const { browser, page, problems } = await launch({ w: 1400, h: 800 });
@@ -39,6 +39,62 @@ await clickTile(page, 11, 18);
 ok(await nObj() === o0 - 1 && await money() > m0, 'demolish refunds');
 await page.keyboard.press('Escape');
 await shot('play_build');
+
+// --- move tool: pick up + drop an object (fee), Esc / right-click cancel, M hotkey, rotate while carrying
+{
+  await G(() => { __game.state.money = 2e6; });
+  const hb = await G(() => { const o = __game.state.objects.find(o => o.defId === 'tens'); return { id: o.id, x: o.x, y: o.y }; });
+  const dest = await G(async ({ id }) => { const b = await import('/js/sim/build.js'), { state } = __game, o = state.objects.find(q => q.id === id), l = state.lot;
+    for (let y = l.y0 + 1; y < l.y0 + l.h - 1; y++) for (let x = l.x0 + 1; x < l.x0 + l.w - 1; x++) if (Math.abs(x - o.x) + Math.abs(y - o.y) >= 3 && b.canMove(state, id, x, y, 0).ok) return { x, y, fee: b.relocationCost(o.defId) };
+    return null; }, hb);
+  const pos = () => G(id => { const o = __game.state.objects.find(q => q.id === id); return { x: o.x, y: o.y, rot: o.rot }; }, hb.id);
+  if (await G(() => __game.ui.panel !== 'build')) await side(1);
+  await page.click('#panel .btn:has-text("移動")'); await page.waitForTimeout(100);
+  ok(await G(() => __game.ui.tool.mode === 'move' && !__game.ui.tool.carry), '移動 button arms the move tool');
+  m0 = await money();
+  await clickTile(page, hb.x, hb.y);
+  ok(await G(id => __game.ui.tool.carry === id, hb.id), 'clicking an object picks it up');
+  { const p = await tileXY(page, dest.x, dest.y); await page.mouse.move(p.x, p.y); }
+  await page.waitForTimeout(250);
+  ok(await G(() => __game.ui.hover.valid && __game.ui.hover.fee > 0), 'ghost over a free tile is valid and shows the fee');
+  await shot('play_move_carry');
+  let q = await pos();
+  ok(q.x === hb.x && q.y === hb.y, 'object has not moved yet while carrying');
+  await clickTile(page, dest.x, dest.y);
+  q = await pos();
+  ok(q.x === dest.x && q.y === dest.y, `drop moves the object (${hb.x},${hb.y}) -> (${q.x},${q.y})`);
+  ok(await money() === m0 - dest.fee, `money decreased by the relocation fee NT$ ${dest.fee}`);
+  ok(await G(() => __game.ui.tool.mode === 'none'), 'tool returns to none after the drop');
+  // M hotkey + Esc cancel leaves it unchanged
+  m0 = await money();
+  await page.keyboard.press('m');
+  ok(await G(() => __game.ui.tool.mode === 'move'), 'M arms the move tool');
+  await clickTile(page, dest.x, dest.y);
+  await page.keyboard.press('r');
+  ok(await G(() => __game.ui.tool.rot === 1), 'R rotates while carrying');
+  await page.keyboard.press('Escape');
+  ok(await G(() => __game.ui.tool.mode === 'move' && !__game.ui.tool.carry), 'Esc puts the object back (still in move mode)');
+  q = await pos();
+  ok(q.x === dest.x && q.y === dest.y && q.rot === 0 && await money() === m0, 'Esc cancel: position, rotation and money unchanged');
+  await clickTile(page, dest.x, dest.y);
+  { const p = await tileXY(page, 12, 12); await page.mouse.move(p.x, p.y); await page.mouse.click(p.x, p.y, { button: 'right' }); }
+  ok(await G(() => !__game.ui.tool.carry) && (await pos()).x === dest.x, 'right-click (no drag) cancels the carry');
+  await page.keyboard.press('Escape');
+  ok(await G(() => __game.ui.tool.mode === 'none'), 'second Esc leaves the move tool');
+  // Shift keeps the tool: move it back
+  await page.keyboard.press('m'); await clickTile(page, dest.x, dest.y);
+  await page.keyboard.down('Shift'); await clickTile(page, hb.x, hb.y, { modifiers: ['Shift'] }); await page.keyboard.up('Shift');
+  q = await pos(); console.log('DBG', JSON.stringify(q), JSON.stringify(hb), JSON.stringify(await G(() => ({ t: __game.ui.tool, h: __game.ui.hover }))));
+  ok(q.x === hb.x && q.y === hb.y && await G(() => __game.ui.tool.mode === 'move'), 'Shift + drop keeps the move tool armed');
+  await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+  // selection card has 移動 / 旋轉
+  await G(id => { __game.ui.selected = { type: 'object', id }; __game.bus.emit('select:changed', { selected: __game.ui.selected }); }, hb.id);
+  await page.waitForTimeout(350);
+  ok(await page.locator('.u-selcard .btn:has-text("移動")').count() === 1 && await page.locator('.u-selcard .btn:has-text("旋轉")').count() === 1, 'selection card offers 移動 / 旋轉');
+  await page.click('.u-selcard .btn:has-text("移動")'); await page.waitForTimeout(150);
+  ok(await G(id => __game.ui.tool.mode === 'move' && __game.ui.tool.carry === id, hb.id), 'selection card 移動 picks the object up');
+  await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+}
 
 // --- research via UI + premium zone
 await side(2);

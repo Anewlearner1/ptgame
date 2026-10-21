@@ -1,6 +1,7 @@
 // Staff: hire pool, hire / fire / train, stamina, rest room usage, idle wandering and task plumbing.
 // Treatment progress itself is driven by patients.js (it owns the patient state machine); this module owns
 // everything about the staff member as a person (movement, stamina, resting, wandering).
+import { bus } from '../core/bus.js';
 import { newId } from '../core/state.js';
 import { WALK_TILES_PER_MIN } from '../core/constants.js';
 import { adjacentTiles, entryTile } from '../core/grid.js';
@@ -30,6 +31,20 @@ export const TUNE = {
   BUBBLE_CHANCE: 0.004,        // per game-min per idle staff
   TIRED_BUBBLE: 0.03,          // per game-min: tired staff mutter (visible 'tired' bubble) while working
   REST_RETRY: 6,               // game-min before a staff member whose rest request failed asks again
+};
+
+// M4 morale (docs/EVENTS_EXT.md §5)
+export const MORALE = {
+  START: 70, MIN: 0, MAX: 100,
+  WEEK_RECOVER: 1,             // base weekly recovery
+  TIRED_PENALTY: 3,            // weeks in which stamina stayed under TIRED_FRAC for at least TIRED_MIN game-minutes
+  TIRED_MIN: 120,
+  REST_BONUS: 1,               // a rest room (def.restRecovery) in the clinic
+  RESIGN_BELOW: 25,            // morale under this: weekly RESIGN_P chance of the resignation event
+  RESIGN_P: 0.08,
+  RESIGN_ROLES: ['doctor', 'pt', 'ot', 'st'],
+  RESIGN_FALLBACK_HIT: 15,     // morale loss instead of leaving when the role would be left empty
+  POOL_MAX: 6,
 };
 
 // role -> object defs the role likes to hang around
@@ -124,6 +139,7 @@ export function createStaff(state, role, cand, tx, ty) {
   return {
     id: newId(state), role, name: c.name, skill: c.skill, charm: c.charm,
     stamina: max, staminaMax: max, salary: c.salary, trait: c.trait || null, level: 1,
+    morale: MORALE.START, tiredAcc: 0,
     x: tx + 0.5, y: ty + 0.5, path: [], state: 'idle', task: null, wait: 2 + rnd() * 6,
     dir: 1, moving: false, bubble: null, restObj: null, wantRest: false, tired: false,
   };
@@ -143,14 +159,91 @@ export function hire(state, cid) {
   return s;
 }
 
-export function fire(state, staffId) {
+// Take a staff member out of the clinic: frees their task, rest room and station claims (patients.js reconcile() then
+// releases any patient still pointing at them). Shared by fire() and resignStaff(). Returns the removed staff or null.
+export function removeStaff(state, staffId) {
   const i = state.staff.findIndex(s => s.id === staffId);
-  if (i < 0) return false;
+  if (i < 0) return null;
   const s = state.staff[i];
   releaseStaff(state, s);
   freeRest(state, s);
+  s.path = []; s.restObj = null; s.wantRest = false;
+  for (const o of state.objects) if (o.staffId === s.id && !o.usedBy) { o.busy = false; o.staffId = null; }
   state.staff.splice(i, 1);
-  return true;
+  return s;
+}
+
+export function fire(state, staffId) {
+  return !!removeStaff(state, staffId);
+}
+
+// ---------- M4 morale ----------
+export function moraleOf(s) {
+  const m = s && s.morale;
+  return typeof m === 'number' && Number.isFinite(m) ? clamp(m, MORALE.MIN, MORALE.MAX) : MORALE.START;
+}
+export function addMorale(state, role, delta) {
+  let n = 0;
+  for (const s of state.staff) {
+    if (role && s.role !== role) continue;
+    s.morale = clamp(moraleOf(s) + delta, MORALE.MIN, MORALE.MAX);
+    n++;
+  }
+  return n;
+}
+export function addStamina(state, role, delta) {
+  let n = 0;
+  for (const s of state.staff) {
+    if (role && s.role !== role) continue;
+    s.stamina = clamp((typeof s.stamina === 'number' ? s.stamina : s.staminaMax || 100) + delta, 0, s.staminaMax || 100);
+    n++;
+  }
+  return n;
+}
+export function hasRestRoom(state) {
+  return state.objects.some(o => { const d = BUILDABLES[o.defId]; return d && d.restRecovery > 0; });
+}
+// Weekly update (events.js, week:start): +1 recovery, -3 after a week of exhaustion, +1 with a rest room.
+export function weeklyMorale(state) {
+  const rest = hasRestRoom(state);
+  for (const s of state.staff) {
+    let m = moraleOf(s) + MORALE.WEEK_RECOVER + (rest ? MORALE.REST_BONUS : 0);
+    if ((s.tiredAcc || 0) >= MORALE.TIRED_MIN) m -= MORALE.TIRED_PENALTY;
+    s.tiredAcc = 0;
+    s.morale = clamp(m, MORALE.MIN, MORALE.MAX);
+  }
+}
+// Most unhappy resign candidate: a PT/OT/ST/doctor under RESIGN_BELOW whose role would not be left empty.
+export function resignCandidate(state) {
+  let best = null;
+  for (const s of state.staff) {
+    if (!MORALE.RESIGN_ROLES.includes(s.role) || moraleOf(s) >= MORALE.RESIGN_BELOW) continue;
+    if (staffCount(state, s.role) < 2) continue;
+    if (!best || moraleOf(s) < moraleOf(best)) best = s;
+  }
+  return best;
+}
+
+// A staff member quits. Removes them (see removeStaff) and adds a replacement candidate of the same role to the hire pool.
+export function resignStaff(state, staffId) {
+  const s = removeStaff(state, staffId);
+  if (!s) return null;
+  if (!Array.isArray(state.hirePool)) state.hirePool = [];
+  const cand = makeCandidate(state, s.role);
+  if (state.hirePool.length >= MORALE.POOL_MAX) state.hirePool[state.hirePool.length - 1] = cand; else state.hirePool.push(cand);
+  bus.emit('staff:resigned', { id: s.id, role: s.role, name: s.name });
+  return s;
+}
+// Effect `resign: {role, p}`: with chance p the least happy member of the role leaves, provided at least one stays;
+// otherwise (or when the role would be empty) the role loses RESIGN_FALLBACK_HIT morale instead. Returns {left, hit}.
+export function resignRole(state, role, p = 1, rollOverride) {
+  const mates = state.staff.filter(s => s.role === role);
+  if (!mates.length) return { left: null, hit: false };
+  const roll = rollOverride !== undefined ? rollOverride : rnd();
+  if (roll >= p) return { left: null, hit: false };
+  if (mates.length < 2) { addMorale(state, role, -MORALE.RESIGN_FALLBACK_HIT); return { left: null, hit: true }; }
+  const who = mates.slice().sort((a, b) => moraleOf(a) - moraleOf(b) || a.id - b.id)[0];
+  return { left: resignStaff(state, who.id), hit: false };
 }
 
 export function train(state, staffId) {
@@ -328,6 +421,7 @@ export function updateStaff(state, dtMin) {
     const max = s.staminaMax;
     if (s.restCd > 0) s.restCd -= dtMin;
     s.tired = s.stamina < max * TUNE.TIRED_FRAC;
+    if (s.tired) s.tiredAcc = (s.tiredAcc || 0) + dtMin;
     // low stamina: ask for a rest room slot; the request only bites BETWEEN tasks (isStaffAvailable is false meanwhile),
     // so the current patient is always finished first
     if (!s.wantRest && !s.restObj && s.state !== 'resting' && s.stamina <= max * TUNE.REST_BELOW && !(s.restCd > 0) && freeRooms > flagged) {
