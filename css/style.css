@@ -985,8 +985,8 @@ html.style-concept .tb-ico { display: inline-flex; align-items: center; justify-
 html.style-concept .tb-money { color: #ffe08a; }
 html.style-concept .tb-flash-up { animation: tbc-up 0.9s ease 1; }
 html.style-concept .tb-flash-down { animation: tbc-down 0.9s ease 1; }
-@keyframes tbc-up { 0%, 100% { background-color: #2b4b80; } 25%, 60% { background-color: #1d7a42; } }
-@keyframes tbc-down { 0%, 100% { background-color: #2b4b80; } 25%, 60% { background-color: #c43e5a; } }
+@keyframes tbc-up { 0%, 100% { background-color: #2b4b80; } 25%, 60% { background-color: #176a3b; } }
+@keyframes tbc-down { 0%, 100% { background-color: #2b4b80; } 25%, 60% { background-color: #9c2c46; } }
 
 /* ---- sidebar ---------------------------------------------------------- */
 html.style-concept .sidebar-btn {

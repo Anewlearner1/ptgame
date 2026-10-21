@@ -433,7 +433,7 @@ html.style-concept .u-eq tbody tr.u-broken { background: #fbe6ea; }
 
 /* build cards / glyph tiles */
 html.style-concept .u-item .u-glyph { border-radius: 10px; box-shadow: 0 0 0 2px var(--c-navy), inset 0 -4px 0 0 rgba(20, 17, 27, 0.2); }
-html.style-concept .u-item .u-cost { color: var(--c-teal); }
+html.style-concept .u-item .u-cost { color: #176985; }
 html.style-concept .u-item .u-cost.bad { color: var(--bad); }
 html.style-concept .u-tray-glyph { border-radius: 10px; box-shadow: 0 0 0 2px var(--c-navy), inset 0 -4px 0 0 rgba(20, 17, 27, 0.2); }
 html.style-concept .u-tray-btn.on { background: #f6c64e; color: var(--c-ink); box-shadow: 0 0 0 2px var(--c-navy), inset 0 3px 0 rgba(20, 17, 27, 0.18); }

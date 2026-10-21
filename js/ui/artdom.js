@@ -3,7 +3,7 @@
 // not loaded, the player chose the classic style, or a sprite name is missing. Sizes are reserved up-front
 // (fixed box, sprite fitted inside) so nothing shifts when the atlas finishes loading.
 import { bus } from '../core/bus.js';
-import { loadArt, artReady, artRect, artUrl, artEnabled } from '../render/art.js';
+import { loadArt, artReady, artRect, artUrl, artEnabled, artStaffUrl } from '../render/art.js';
 import { conceptThumb } from '../render/concept_objects.js';
 
 let loadState = 'pending';     // 'pending' | 'ok' | 'fail'  (fail => the atlas could not be fetched: stop reserving space)
@@ -87,6 +87,10 @@ function paint(el) {
     state = 'on';
     const s = a.img.style;
     s.setProperty('--sw', r.w); s.setProperty('--sh', r.h); s.setProperty('--sx', r.x); s.setProperty('--sy', r.y);
+    // palette-swapped virtual sprite (staff.st): not in the atlas image, so paint it from its own data: URL (whole image = the sprite)
+    const own = a.name === 'staff.st' ? artStaffUrl('st') : null;
+    if (own) { s.backgroundImage = `url("${own}")`; s.setProperty('--AW', r.w); s.setProperty('--AH', r.h); s.setProperty('--sx', 0); s.setProperty('--sy', 0); }
+    else if (s.backgroundImage) { s.removeProperty('background-image'); s.removeProperty('--AW'); s.removeProperty('--AH'); }
   } else if (a.hasFb) state = 'off';
   else if (loadState === 'pending' && artEnabled() && !o.noReserve) state = 'wait';
   else state = 'none';
@@ -168,7 +172,7 @@ function paintBanner(el) {
 }
 
 // ---- sprite / mood tables used by the panels ------------------------------------------------------------------
-export const STAFF_SPRITE = { doctor: 'staff.doctor', nurse: 'staff.nurse', pt: 'staff.pt', ot: 'staff.ot', st: 'staff.pharmacist', tech: 'staff.tech' };
+export const STAFF_SPRITE = { doctor: 'staff.doctor', nurse: 'staff.nurse', pt: 'staff.pt', ot: 'staff.ot', st: 'staff.st', tech: 'staff.tech' };
 export const PATIENT_SPRITE = { elder: 'patient.elder.stand', office: 'patient.office.work', kid: 'patient.kid.school', sports: 'patient.sports.run' };
 // expr.<type>.{0..3} tile per mood tier [angry/in-pain, neutral, content, delighted] (judged from the sheet; the tiles are not
 // in the same order for every character)
