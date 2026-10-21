@@ -20,7 +20,7 @@ import { LOTS } from '../data/lots.js';
 import { findPath, findPathToAdjacent, findPathNear, moveAlongPath, pathStillValid, agentTileOk, receptionPost, rescueIfBlocked } from './pathfinding.js';
 import { comfortScoreAt, anxietyReliefAt, floorGripAt, floorWalkMultAt } from './modifiers.js';
 import { isTreatmentUnlocked } from './research.js';
-import { selfPayPrice, resolveCured, reviewFactor } from './economy.js';
+import { selfPayPrice, resolveCured, reviewFactor, nhiClaim, copayFor } from './economy.js';
 import { useWear } from './equipment.js';
 import { isStaffAvailable, assignTask, releaseStaff, staffAtStand, tiredFactor, TUNE as STAFF_TUNE } from './staff.js';
 
@@ -49,7 +49,7 @@ export const TUNE = {
   SAT_PER_PATIENCE: 0.25,    // satisfaction lost per patience point lost
   COMFORT_SAT: 0.06,         // satisfaction / min at max comfort
   SAT_PER_TREATMENT: 3,
-  SKIP_STEP_PENALTY: 4,
+  SKIP_STEP_PENALTY: 8,      // was 4: with the NHI single-claim rule a missing modality no longer costs revenue, so it costs satisfaction instead
   SLIP_BASE: 0.0022,         // slip chance per tile on grip 0 (scaled by (1-grip), slipProne, mods.slipRisk)
   SLIP_SAT: 25, SLIP_STUN: 8,
   CHAT_RATE: 0.012,          // per min * type.chatty
@@ -833,7 +833,8 @@ function maybeUpsell(c, p, staff) {
     isTreatmentUnlocked(st, id) && feasible(c, id));
   if (!opts.length) return;
   const charm = staff ? staff.charm : 5;
-  let chance = (P.selfPay || 0) + 0.04 * (charm - 5) + (st.mods.selfPayConv || 0);
+  // willingness (data/patients.js selfPay, ~10-30% of patients) scaled RELATIVELY by the selfPayConv mods ("+15%" = x1.15) and the staff's charm
+  let chance = (P.selfPay || 0) * Math.max(0.2, 1 + (st.mods.selfPayConv || 0) + 0.08 * (charm - 5));
   chance *= 0.5 + 0.8 * clamp(p.satisfaction, 0, 100) / 100;
   const picks = [];
   let pool = opts.slice();
@@ -842,7 +843,8 @@ function maybeUpsell(c, p, staff) {
     const pm = (st.policy.priceMult && st.policy.priceMult[id]) || 1;
     const pf = clamp(1 - (pm - 1) * 0.8, 0.12, 1.4);
     debug.upsellOffers++;
-    if (rnd() < clamp(chance * pf * (n === 0 ? 1 : TUNE.UPSELL_SECOND), 0, 0.95)) picks.push(id);
+    const up = (TREATMENTS[id] && typeof TREATMENTS[id].uptake === 'number') ? TREATMENTS[id].uptake : 1;   // big-ticket items convert less often
+    if (rnd() < clamp(chance * pf * up * (n === 0 ? 1 : TUNE.UPSELL_SECOND), 0, 0.95)) picks.push(id);
     else break;
   }
   if (picks.length) {
@@ -859,7 +861,10 @@ function completeTreatment(c, p) {
   const staff = p.staffId && c.staffById.get(p.staffId);
   const self = T.kind === 'self';
   const price = self ? selfPayPrice(st, T.id) : 0;
-  const nhiPts = self ? 0 : T.nhiPoints;
+  // NHI: single-claim rule per patient per visit + daily exam-fee tiers (economy.nhiClaim). `listed` is the price-list value, `paid` what is claimed.
+  if (!p.claims || typeof p.claims !== 'object') p.claims = {};
+  const claim = self ? { listed: 0, paid: 0, group: null } : nhiClaim(st, p.claims, T.id);
+  const nhiPts = claim.paid;
   const skill = staff ? staff.skill : 5;
   const skillF = 0.7 + 0.06 * skill;
   const gain = st.mods.researchGain || 1;
@@ -883,7 +888,12 @@ function completeTreatment(c, p) {
   if (p.targetObj) freeObj(c, p.targetObj);
   p.targetObj = null; p.staffId = null; p.stand = null; p.dest = null; p.path = []; p.remaining = 0; p.needStaff = null;
   p.planIdx++;
-  bus.emit('treatment:done', { patient: p, treatmentId: T.id, nhiPoints: nhiPts, selfPay: price, staffId: sid });
+  // copay: flat NT$ per RETURNING visit, collected with the first treatment of the visit (real NT$; economy applies PATIENT_WEIGHT)
+  const copay = p.treated === 1 ? copayFor(p.visit) : 0;
+  bus.emit('treatment:done', {
+    patient: p, treatmentId: T.id, nhiPoints: nhiPts, nhiListed: claim.listed, nhiGroup: claim.group, singleClaim: claim.listed > 0 && nhiPts < claim.listed,
+    selfPay: price, copay, staffId: sid,
+  });
 
   if (T.id === 'exam' || p.planIdx === 1) maybeUpsell(c, p, staff);
   if (T.id === 'exam' && !p.flags.askedPain && rnd() < TUNE.PAINKILLER_P * (p.type === 'elder' ? 1.5 : 1)) {

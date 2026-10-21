@@ -6,7 +6,7 @@ import { toggleFullscreen } from './pwa.js';
 import { fmt, money, POINT_ICONS } from './fmt.js';
 import { POINT_KEYS, POINT_LABELS } from '../core/constants.js';
 import { formatDate, formatClock } from '../sim/calendar.js';
-import { getPointValue } from '../sim/economy.js';
+import { getPointValue, PV_BASE } from '../sim/economy.js';
 import { WEATHER } from '../data/events.js';
 import { TITLES } from '../data/texts.js';
 import { LOTS } from '../data/lots.js';
@@ -150,17 +150,17 @@ export function updateTopbar(state) {
   let pv = state.nhi.pointValue;
   try { pv = getPointValue(state); } catch (e) { /* keep last settled */ }
   setText(els.pv.val, pv.toFixed(2));
-  els.pv.el.classList.toggle('u-bad', pv < 0.995);
+  els.pv.el.classList.toggle('u-bad', pv < PV_BASE - 0.005);
   const lot = LOTS[state.lotLevel || 0];
   const cap = lot ? Math.round(lot.nhiCap * (1 + ((state.mods && state.mods.nhiCapBonus) || 0))) : 0;
   const lastPv = state.nhi.lastSettlement && state.nhi.lastSettlement.pointValue != null ? state.nhi.lastSettlement.pointValue : state.nhi.pointValue;
-  els.pv.el.dataset.tip = `健保點值（本月預估）\n本月已申報 ${fmt(state.nhi.monthPoints)} 點 / 上限 ${fmt(cap)} 點\n超過上限會稀釋所有點數的點值（最低 0.6）。\n上次結算點值：${Number(lastPv).toFixed(2)}`;
+  els.pv.el.dataset.tip = `健保點值（本月預估）\n本月已申報 ${fmt(state.nhi.monthPoints)} 點 / 上限 ${fmt(cap)} 點\n正常點值 ${PV_BASE.toFixed(2)}（真實行情）；超過上限會稀釋所有點數的點值（最低 0.6）。\n上次結算點值：${Number(lastPv).toFixed(2)}`;
   const special = !!(state.achv && state.achv.title) && dt !== cur.title;
   els.title.el.hidden = !special;
   if (special) { setText(els.title.val, dt); els.title.el.dataset.tip = `院長稱號\n${dt}\n可在「診所 → 稱號與徽章」更換。`; }
   els.clinic.el.dataset.tip = `${state.clinicName}\n${lot ? lot.name : ''}　稱號：${dt}`;
   if (popEl && !popEl.hidden) {
-    setText(pop.pv, pv.toFixed(2) + (pv < 0.995 ? ' ⚠' : ''));
+    setText(pop.pv, pv.toFixed(2) + (pv < PV_BASE - 0.005 ? ' ⚠' : ''));
     setText(pop.note, `本月已申報 ${fmt(state.nhi.monthPoints)} / 上限 ${fmt(cap)} 點`);
     setText(pop.clinic, `${state.clinicName || ''}${lot ? '（' + lot.name + '）' : ''}`);
     setText(pop.title, dt);

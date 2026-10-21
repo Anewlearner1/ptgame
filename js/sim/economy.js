@@ -4,20 +4,21 @@ import { state as singleton } from '../core/state.js';
 import { LOTS } from '../data/lots.js';
 import { BUILDABLES } from '../data/buildables.js';
 import { TREATMENTS } from '../data/treatments.js';
+import { NHI_POINT_VALUE, TREATMENT_FEES, COPAY_NTD, examFeePoints } from '../data/fees.js';
 
 // ---- tuning constants ----
-export const PV_MIN = 0.6;                  // floor of the diluted point value
-export const PV_MAX = 1.0;
-export const NHI_NTD_PER_POINT = 1.0;       // NT$ per NHI point at pointValue 1.0 (before REVENUE_SCALE)
-// NHI REVENUE KNOB. Each on-screen patient stands for many real patients, so NHI income is multiplied by this:
-// NHI income = points * pointValue * NHI_NTD_PER_POINT * REVENUE_SCALE.
-// Self-pay is NOT scaled: a treatment credits exactly selfPayPrice() = price * priceMult * mods.selfPayPrice
-// (the self-pay list prices in data/treatments.js are already tuned as per-visit NT$). Salaries / rent / build costs are not scaled either.
-export const REVENUE_SCALE = 20;
+// REAL NUMBERS live in data/fees.js (point value, exam tiers, PT tiers, self-pay prices, copay). The knobs below are ABSTRACTION only.
+export const PV_MIN = NHI_POINT_VALUE.min;          // floor of the diluted point value (game rule, 0.6)
+export const PV_BASE = NHI_POINT_VALUE.typical;     // undiluted NT$ per NHI point (real: ~0.95)
+export const PV_MAX = PV_BASE;                      // legacy alias
+// PATIENT_WEIGHT: each simulated patient stands for PATIENT_WEIGHT real patients. It multiplies ALL patient-generated revenue the same way:
+//   NHI income = points * pointValue * PATIENT_WEIGHT, self-pay = real price * priceMult * mods * PATIENT_WEIGHT, copay = 50 * PATIENT_WEIGHT.
+// Salaries / rent / build costs / event money / inspection rewards are plain NT$ (never multiplied). Balance knob (docs/ARCHITECTURE.md §2).
+export const PATIENT_WEIGHT = 15;
 export const BANKRUPT_LIMIT = -300000;      // money below this at month end -> game over
 export const DEFAULT_UPKEEP = 0;            // object upkeep when def.upkeep is missing
 export const HISTORY_MAX = 240;             // months of history kept
-export const LEDGER_INCOME_KEYS = ['nhi', 'self', 'other'];
+export const LEDGER_INCOME_KEYS = ['nhi', 'self', 'copay', 'other'];
 export const LEDGER_EXPENSE_KEYS = ['salary', 'rent', 'build', 'maintain', 'other'];
 
 // M3 (健保審查風險, state.nhi.risk 0..100) and M7 (網路評價, state.reviewScore 1..5): docs/EVENTS_EXT.md §6.
@@ -25,7 +26,7 @@ export const RISK_TUNE = {
   MAX: 100, WEEK_DECAY: 1,          // natural decay per week
   OVER_START: 0.9, OVER_K: 40,      // month points / cap above this ratio: +OVER_K per 1.0 of ratio
   GROWTH_FREE: 0.25, GROWTH_K: 12,  // month-on-month growth above 25%: +K per 1.0
-  COMPLEX_PTS: 250, COMPLEX_FREE: 0.4, COMPLEX_K: 10,   // share of complex (>= COMPLEX_PTS) NHI treatments above 40%
+  COMPLEX_PTS: 300, COMPLEX_FREE: 0.4, COMPLEX_K: 10,   // share of complex (>= COMPLEX_PTS) NHI treatments above 40%
   MONTH_CAP: 15,                    // max risk added by one settlement
   HIGH: 60,                         // above this nhi-category audit events weigh x2 (events.js)
 };
@@ -90,20 +91,47 @@ export function nhiCap(state) {
   return (lotDef(state).nhiCap || 0) * (1 + (mods.nhiCapBonus || 0));
 }
 
-// NT$/point for the current month so far: 1.0 under the cap, diluted above (cap / points, clamped 0.6..1).
+// NT$/point for the current month so far: PV_BASE (real ~0.95) under the cap, diluted above: clamp(cap / points, PV_MIN, PV_BASE).
 export function getPointValue(state) {
   const pts = (state.nhi && state.nhi.monthPoints) || 0;
   const cap = nhiCap(state);
-  if (pts <= cap || pts <= 0) return PV_MAX;
-  return Math.max(PV_MIN, Math.min(PV_MAX, cap / pts));
+  if (pts <= cap || pts <= 0) return PV_BASE;
+  return Math.max(PV_MIN, Math.min(PV_BASE, cap / pts));
 }
 
-// NT$ the NHI points banked so far this month are worth at the current (diluted) point value. UI may show this.
+// NT$ the NHI points banked so far this month are worth at the current (diluted) point value, weighted. UI may show this.
 export function projectedNhiIncome(state) {
-  return Math.round(((state.nhi && state.nhi.monthPoints) || 0) * getPointValue(state) * NHI_NTD_PER_POINT * REVENUE_SCALE);
+  return Math.round(((state.nhi && state.nhi.monthPoints) || 0) * getPointValue(state) * PATIENT_WEIGHT);
 }
 
-// Self-pay price after the player's slider and synergy bonus.
+// ---- NHI claim rules (real, docs/FEE_RESEARCH.md) ----
+// Daily exam fee (診察費) by how many patients the clinic served that day: the patient being examined is number patientsToday + 1.
+export function examFeeNow(state) {
+  return examFeePoints((((state && state.stats && state.stats.patientsToday) || 0) + 1));
+}
+// Listed NHI points of a treatment right now (exam depends on the day's volume).
+export function listedPoints(state, treatmentId) {
+  const f = TREATMENT_FEES[treatmentId];
+  if (!f || f.kind !== 'nhi') return 0;
+  return treatmentId === 'exam' ? examFeeNow(state) : f.nhiPoints;
+}
+// Single-claim rule: per patient per visit each claim group ('exam' | 'pt' | 'ot' | 'st' | 'us') is paid once, at its HIGHEST listed value.
+// `claims` is the patient's running {group: pointsPaidSoFar} for this visit (mutated). Treatments run in sequence, so a later, higher
+// item pays only the difference: the visit's total for a group is always its highest listed item. Returns {listed, paid, group}.
+export function nhiClaim(state, claims, treatmentId) {
+  const f = TREATMENT_FEES[treatmentId];
+  const listed = listedPoints(state, treatmentId);
+  if (!f || f.kind !== 'nhi' || !(listed > 0)) return { listed: 0, paid: 0, group: null };
+  const g = f.claim || treatmentId;
+  const had = Number(claims && claims[g]) || 0;
+  const paid = Math.max(0, listed - had);
+  if (claims) claims[g] = Math.max(had, listed);
+  return { listed, paid, group: g };
+}
+// Copay for a visit: flat COPAY_NTD for a returning visit (visit >= 1), 0 for the first. Real NT$, before PATIENT_WEIGHT.
+export function copayFor(visit) { return (Number(visit) || 0) >= 1 ? COPAY_NTD : 0; }
+
+// Self-pay price (REAL NT$ per session, not weighted) after the player's slider and synergy bonus.
 export function selfPayPrice(state, treatmentId) {
   const t = TREATMENTS[treatmentId];
   if (!t) return 0;
@@ -135,16 +163,19 @@ export function monthlyRiskDelta(state, points) {
 
 function onTreatmentDone(state, e) {
   if (!e) return;
-  const pts = Number(e.nhiPoints) || 0;
-  if (pts > 0) {
-    state.nhi.weekPoints += pts, state.nhi.monthPoints += pts;
+  const pts = Number(e.nhiPoints) || 0;                 // points actually paid (after the single-claim rule)
+  const listed = e.nhiListed != null ? Number(e.nhiListed) || 0 : pts;   // listed value, for the share-of-complex-claims risk input
+  if (pts > 0) state.nhi.weekPoints += pts, state.nhi.monthPoints += pts;
+  if (listed > 0) {
     state.nhi.nhiN = (state.nhi.nhiN || 0) + 1;
-    if (pts >= RISK_TUNE.COMPLEX_PTS) state.nhi.complexN = (state.nhi.complexN || 0) + 1;
+    if (e.treatmentId !== 'exam' && listed >= RISK_TUNE.COMPLEX_PTS) state.nhi.complexN = (state.nhi.complexN || 0) + 1;
   }
   let pay = 0;
   if (typeof e.selfPay === 'number') pay = e.selfPay;
   else if (e.selfPay) pay = selfPayPrice(state, e.treatmentId);   // boolean flag: price it ourselves
-  if (pay > 0) earn(state, pay, 'self');
+  if (pay > 0) earn(state, pay * PATIENT_WEIGHT, 'self');
+  const cp = Number(e.copay) || 0;
+  if (cp > 0) earn(state, cp * PATIENT_WEIGHT, 'copay');
 }
 
 function onWeekEnd(state) {
@@ -179,7 +210,7 @@ export function settleMonth(state) {
   const l = ensureLedger(state);
   const points = state.nhi.monthPoints || 0;
   const pv = getPointValue(state);
-  const nhiIncome = Math.round(points * pv * NHI_NTD_PER_POINT * REVENUE_SCALE);
+  const nhiIncome = Math.round(points * pv * PATIENT_WEIGHT);
   earn(state, nhiIncome, 'nhi');
 
   const c = monthlyCosts(state);
@@ -200,10 +231,10 @@ export function settleMonth(state) {
   }
 
   const record = {
-    points, pointValue: pv, income, expense, net, nhiIncome, revenueScale: REVENUE_SCALE,
-    selfIncome: l.income.self, otherIncome: l.income.other,
+    points, pointValue: pv, income, expense, net, nhiIncome, patientWeight: PATIENT_WEIGHT, basePointValue: PV_BASE,
+    selfIncome: l.income.self, copayIncome: l.income.copay, otherIncome: l.income.other,
     salary: l.expense.salary, rent: l.expense.rent, maintain: l.expense.maintain, build: l.expense.build, otherExpense: l.expense.other,
-    cap: nhiCap(state), diluted: pv < PV_MAX,
+    cap: nhiCap(state), diluted: pv < PV_BASE - 1e-9,
     year: state.time.year, month: state.time.month, money: state.money,
     risk: Math.round(riskOf(state) * 10) / 10, reviewScore: reviewOf(state),
   };

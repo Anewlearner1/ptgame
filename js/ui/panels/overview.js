@@ -2,6 +2,7 @@
 import { bus } from '../../core/bus.js';
 import { PATIENT_TYPES } from '../../data/patients.js';
 import { TREATMENTS } from '../../data/treatments.js';
+import { TREATMENT_FEES, SINGLE_CLAIM_NOTE } from '../../data/fees.js';
 import { STAFF_ROLES, TRAITS } from '../../data/staffdefs.js';
 import { BUILDABLES } from '../../data/buildables.js';
 import { SYNERGIES } from '../../data/synergies.js';
@@ -38,6 +39,13 @@ function buildPatients(body, state, ui) {
     if (!list._rows) return;
     for (const r of list._rows.values()) r.hidden = store.filter !== 'all' && r._type !== store.filter;
   }
+  // tooltip of a plan step: the NHI list price, and the single-claim rule for physical-therapy items
+  function stepTip(t) {
+    const F = TREATMENT_FEES[t];
+    if (!F || F.kind !== 'nhi') return '';
+    if (F.claim === 'pt') return `${SINGLE_CLAIM_NOTE}（此項列價 ${F.nhiPoints} 點${F.estimate ? '，估計' : ''}）`;
+    return t === 'exam' ? '診察費依當日看診人數遞減（364 → 160 點）' : `健保列價 ${F.nhiPoints} 點${F.estimate ? '（估計）' : ''}；職能／語言／超音波各自申報`;
+  }
   function create(p) {
     const P = PATIENT_TYPES[p.type] || {};
     const r = {
@@ -68,7 +76,7 @@ function buildPatients(body, state, ui) {
     const sig = (p.plan || []).join(',') + '|' + p.planIdx;
     if (r.plan._sig !== sig) {
       r.plan._sig = sig;
-      r.plan.replaceChildren(...(p.plan || []).map((t, i) => h('span', { class: 'u-step' + (i < p.planIdx ? ' done' : i === p.planIdx ? ' cur' : '') },
+      r.plan.replaceChildren(...(p.plan || []).map((t, i) => h('span', { class: 'u-step' + (i < p.planIdx ? ' done' : i === p.planIdx ? ' cur' : ''), tip: stepTip(t) || null },
         (i < p.planIdx ? '✓' : '') + ((TREATMENTS[t] || {}).name || t))));
     }
     setClass(el, 'selected', !!(ui.selected && ui.selected.type === 'patient' && ui.selected.id === p.id));

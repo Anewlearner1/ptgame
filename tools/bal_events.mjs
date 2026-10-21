@@ -39,7 +39,7 @@ Math.random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 
 if (args.evchance !== undefined) Ev.EVENT_TUNE.CHANCE = +args.evchance;
 if (args.evgap !== undefined) Ev.EVENT_TUNE.MIN_GAP = +args.evgap;
 if (args.tune) for (const kv of args.tune.split(',')) { const [k, v] = kv.split(':'); if (k in P.TUNE) P.TUNE[k] = +v; else if (k in S.TUNE) S.TUNE[k] = +v; else if (k.startsWith('data.')) {} else console.log('unknown tune', k); }
-const NTD_PER_PT = Eco.NHI_NTD_PER_POINT * (Eco.REVENUE_SCALE || 1);
+const NTD_PER_PT = Eco.PATIENT_WEIGHT;
 
 function refresh() { rebuildOccupancy(state); recomputeZones(state); recomputeMods(state); ui.dirtyOcc = false; }
 Eco.initEconomy(); Ev.initEvents(); Res.initResearch(); Ins.initInspection();
@@ -178,7 +178,7 @@ const monthRows = [];
 let mTreat = {};
 bus.on('treatment:done', (e) => {
   const pv = Eco.getPointValue(state);
-  const rev = (e.nhiPoints || 0) * pv * NTD_PER_PT + (e.selfPay || 0);
+  const rev = (e.nhiPoints || 0) * pv * NTD_PER_PT + ((e.selfPay || 0) + (e.copay || 0)) * Eco.PATIENT_WEIGHT;
   mTreat[e.treatmentId] = mTreat[e.treatmentId] || { n: 0, rev: 0 };
   mTreat[e.treatmentId].n++; mTreat[e.treatmentId].rev += rev;
 });

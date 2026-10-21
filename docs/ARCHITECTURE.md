@@ -35,9 +35,15 @@ PRD summary: 2.5D isometric pixel-art management sim (Kairosoft style) of a Taiw
 * `state.time = {year, month, week, clock, speed, paused}`. **One in-game week = one operating day**: `clock` runs `OPEN_MIN (08:00)` → `CLOSE_MIN (20:00)`; that takes `WEEK_REAL_SEC = 45` real sec at speed ×1 (`MIN_PER_REAL_SEC = 16` game-min per real sec). 4 weeks = 1 month, 12 months = 1 year. Speeds 0/1/2/3. `main.js` calls everything with `dtMin` (game minutes, ≤ 1.0 per call; it sub-steps).
 * Start: NT$ 1,200,000, small lot (12×10), 3 starter staff (1 doctor, 1 nurse, 1 PT) pre-hired, a reception + exam_room + 2 heatboxes + 1 sofa pre-placed so the player sees activity immediately (S-B `build.js` exports `seedStarterClinic(state)`).
 * Walking speed: `WALK_TILES_PER_MIN` tiles per game-minute × per-agent multiplier.
-* **NHI (健保) settlement**, month end (`economy.settleMonth`): income = `state.nhi.monthPoints × pointValue`. `pointValue` (NT$/pt) = 1.0 when `monthPoints ≤ cap`; above cap it dilutes: `pv = clamp(cap / monthPoints, 0.6, 1.0)` (so selling more cheap 電熱療 visits stops paying — self-pay research is the escape). `cap = lotDef.nhiCap × (1 + mods.nhiCapBonus?)` from `data/lots.js`. NHI treatments pay *points* (revenue at month end, discounted); self-pay treatments pay NT$ immediately at weekly time of treatment.
+* **NHI (健保) and real fee data.** Every real-world number (point value 0.95, exam-fee tiers, PT tiers, NHI points per treatment, self-pay quotes, copay) lives in ONE module, `js/data/fees.js` (`FEES_AS_OF = '2026-10'`; each entry carries a confidence marker and sources, see `docs/FEE_RESEARCH.md` / `docs/fee_data.json`; low-confidence values await verification against the official 健保署 支付標準). `data/treatments.js` imports `nhiPoints` / `price` from it. The sim never hard-codes a fee.
+  * **Claims (per patient per visit).** `economy.nhiClaim(state, claims, treatmentId)` implements the *single-claim rule*: NHI treatments belong to a claim group (`exam | pt | ot | st | us`); within a group only the HIGHEST listed value is paid (a later, higher item pays the difference). `pt` = ir 95, taping ≈150 (estimate), heat / tens / traction / manual_nhi 200; OT = si / fine 320; ST = speech 320; us 500. All treatments still run, cure and give research points; only the points are zeroed. The `treatment:done` payload carries `nhiPoints` (paid), `nhiListed`, `nhiGroup`, `singleClaim`, `selfPay` (real NT$), `copay` (real NT$). The visit's claim state is `patient.claims` (created lazily; old saves need no migration).
+  * **Exam fee tiers.** The exam is paid by the doctor's patients that day, `examFeePoints(state.stats.patientsToday + 1)`: 1–35 → 364, 36–45 → 250, 46–65 → 200 (estimate), 66+ → 160. One in-game week IS one operating day, so this is "patients per day".
+  * **Copay.** NT$ 50 on every RETURNING visit (`patient.visit >= 1`), collected with the first treatment of the visit, ledger key `copay`.
+  * **PATIENT_WEIGHT** (`economy.js`, currently 15): each simulated patient stands for that many real patients. It multiplies ALL patient-generated revenue consistently — NHI income = `monthPoints × pointValue × PATIENT_WEIGHT` (at settlement), self-pay = `selfPayPrice × PATIENT_WEIGHT` (at treatment time), copay = `50 × PATIENT_WEIGHT` — and never salaries, rent, build costs, event money or inspection rewards (plain NT$). `selfPayPrice(state, id)` is the REAL per-session price (`fees typical × priceMult 0.5–2.0 × mods.selfPayPrice`). The UI explains the weight once in the 自費定價 tab and in the month-report footnote.
+  * **Settlement** (`economy.settleMonth`): `pointValue` = `PV_BASE (0.95)` when `monthPoints ≤ cap`; above the cap it dilutes: `pv = clamp(cap / monthPoints, PV_MIN 0.6, PV_BASE)`, applied to ALL points (so spamming cheap 電熱療 stops paying — self-pay research is the escape). `cap = lotDef.nhiCap × (1 + mods.nhiCapBonus?)` (points per month; L0 28,000 / L1 38,000 / L2 56,000 / L3 82,000). The `nhi:settled` record has `nhiIncome, selfIncome, copayIncome, otherIncome, patientWeight, basePointValue, pointValue, diluted`.
+  * **Balance knobs (abstraction, not real data):** `PATIENT_WEIGHT`, `data/patients.js selfPay` (willingness: elder 0.07, office 0.18, sports 0.16, kid 0.07; scaled relatively by `mods.selfPayConv` and staff charm), per-treatment `uptake` in `data/treatments.js` (prp 0.25, insole 0.5, redcord 0.8), plan `selfPaySteps`, `nhiCap` in `data/lots.js`, `patients.TUNE` arrival constants and `SKIP_STEP_PENALTY` (8: with the single-claim rule a missing modality no longer costs revenue, so it costs satisfaction).
 * Month end also: pay salaries (`Σ staff.salary × mods.wageMult`), rent (`lotDef.rent × mods.rentMult`), maintenance (small per object), push `state.history`, reset `ledger`/`nhi.monthPoints`, autosave. Bankruptcy: `money < -300000` at a month end → `bus.emit('game:over', {reason})`.
-* **Balance target** (QA will verify with a headless sim): the starter clinic with a sensible layout should be roughly break-even-to-+25% in month 1; a bad layout (no waiting seats, long walks) should lose money. A good mid-game clinic (after ~1 game year) should net NT$ 300k–900k/month. Year-1 reputation should reach ~100–250 with competent play.
+* **Balance target** (verified with the headless sim, `tools/bal_events.mjs` and the QA balance harness): starter clinic month 1 ≈ break-even (−100k…+50k), months 3–4 margin +5…15%; a good layout (seats, near reception, 1 PT) +25…40%; a bad layout (no waiting seats, far reception) clearly negative (−15…−30%); an expert path (research + self-pay rooms + expansion) nets NT$ 300–500k/month in year-1 months 10–12; a crowded L2 clinic ≈ 0.6–1.2M/month; events stay within ±10% of income. A good mid-game clinic (after ~1 game year) should net NT$ 300k–900k/month. Year-1 reputation should reach ~100–250 with competent play.
 * Reputation `state.reputation` 0..1000: scales patient arrival: `arrivalsPerWeek ≈ (12 + reputation × 0.12) × mods.spawnMult × focus/type weights`, capped by lot size (`lotDef.maxPatientsPerWeek`).
 
 ## 3. Data shapes
@@ -85,8 +91,8 @@ T = {
   objects: [buildableId],         // ANY-of: patient must stand on a walkable tile adjacent to one of these (free) objects
   staffRole: null | [role],       // ANY-of staff roles needed to be adjacent too; null = self-service
   duration,                       // game minutes (30..90; visible on screen ~2-6 real sec)
-  nhiPoints,                      // for kind 'nhi' (revenue at settlement before dilution), 60..600
-  price,                          // for kind 'self' NT$ base price (policy.priceMult scales it), 800..10000
+  nhiPoints,                      // for kind 'nhi': LISTED NHI points per claim (from data/fees.js; what is paid follows the single-claim rule + exam tiers), 95..500
+  price,                          // for kind 'self': REAL NT$ per session (fees.js typical; policy.priceMult scales it 0.5..2.0; x PATIENT_WEIGHT when banked), 1700..17000
   points: { medical, device, service },   // base points produced per session
   staminaCost,                    // staff stamina per session (manual therapy high)
   requires: null | researchNodeId,
@@ -194,7 +200,7 @@ Reputation/stat updates on leaving: `state.reputation += ...`, `state.stats.*`.
 
 ### sim/economy.js (S-B)
 `initEconomy()` (bus subscriptions: `treatment:done`, `week:end`, `month:end`), `spend(state, amount, category) -> bool` (refuses if money < amount; category in ledger.expense keys), `earn(state, amount, category)`, `settleMonth(state)` (see §2; returns the settlement record, emits `nhi:settled`), `getPointValue(state) -> number` (projected current month), `monthlyCosts(state) -> {salary, rent, maintain}`.
-Economy also handles `treatment:done`: NHI → `state.nhi.weekPoints/monthPoints += nhiPoints`; self-pay → `earn(…, 'self')`.
+Economy also handles `treatment:done`: NHI → `state.nhi.weekPoints/monthPoints += nhiPoints` (points actually paid); self-pay → `earn(selfPay × PATIENT_WEIGHT, 'self')`; copay → `earn(copay × PATIENT_WEIGHT, 'copay')`.
 
 ### sim/build.js (S-B)
 `isUnlocked(state, defId) -> bool` · `canPlace(state, defId, x, y, rot) -> {ok, reason}` (inside lot, free cells, not the entry tile, unlocked, affordable; floors: just inside lot & affordable) · `placeObject(state, defId, x, y, rot) -> obj|null` · `paintFloor(state, floorId, x, y) -> bool` · `removeAt(state, x, y) -> bool` (object topmost first, else floor; refund 50%; also frees any agent using it) · `moveObject?` not required · `seedStarterClinic(state)` · `placementCost(defId)`.
@@ -256,12 +262,12 @@ Tile diamond 64×32 (`TILE_W`,`TILE_H`); object `height` px extruded upward; wor
 | `map:changed` | `{}` | build, inspection |
 | `mods:dirty` | `{}` | research, events, policy changes → main recomputes mods |
 | `patient:spawn` | `{patient}` | patients |
-| `treatment:done` | `{patient, treatmentId, nhiPoints, selfPay, staffId}` | patients |
+| `treatment:done` | `{patient, treatmentId, nhiPoints (paid), nhiListed, nhiGroup, singleClaim, selfPay (real NT$), copay (real NT$), staffId}` | patients |
 | `patient:left` | `{patient, satisfaction, cured, reason}` | patients |
 | `patient:slip` | `{patient}` | patients |
 | `dilemma:request` | `{patientId, trigger}` | patients (trigger: `painkiller`/`skip_doctor`/`overtreat`/`complain`) |
 | `dilemma:show` / `event:show` | `{dilemma|event}` (state.events.pendingDilemma) | events |
-| `nhi:settled` | `{points, pointValue, income, expense, net}` | economy |
+| `nhi:settled` | `{points, pointValue, basePointValue, patientWeight, income, expense, net, nhiIncome, selfIncome, copayIncome, otherIncome, diluted, …}` | economy |
 | `research:done` | `{id}` | research |
 | `inspection:result` | `{pass, score, notes[], rewardOrFine}` | inspection |
 | `lot:expanded` | `{level}` | inspection |

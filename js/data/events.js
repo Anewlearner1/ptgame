@@ -6,7 +6,8 @@
 // - `slip` multiplies slip-and-fall probability while the weather is active (on top of mods.slipRisk).
 // - Event/dilemma `effects`: money (NT$, + gain / - cost), reputation, points {medical,device,service},
 // NOTE (balance): money / cost / upkeep values below were scaled x4 (events, dilemmas) and x3 (community, boards) when
-// income was rescaled (economy.REVENUE_SCALE), so events still sting relative to monthly revenue.
+// income was rescaled (now economy.PATIENT_WEIGHT; event money stays plain NT$, never weighted), so events still sting relative to monthly revenue.
+// Verified after the real-fee rework: net event money stays within +-10% of yearly income (tools/bal_events.mjs).
 //   sat (satisfaction delta for the involved patient), nhiPenalty (NHI points removed from state.nhi.monthPoints).
 // - Community `effects.spawn` is an additive delta on that patient type's spawn multiplier (0.3 -> x1.3).
 

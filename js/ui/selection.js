@@ -3,6 +3,7 @@ import { bus } from '../core/bus.js';
 import { BUILDABLES } from '../data/buildables.js';
 import { PATIENT_TYPES } from '../data/patients.js';
 import { TREATMENTS } from '../data/treatments.js';
+import { TREATMENT_FEES, SINGLE_CLAIM_NOTE } from '../data/fees.js';
 import { STAFF_ROLES, TRAITS } from '../data/staffdefs.js';
 import { removeAt, rotateObject, relocationCost } from '../sim/build.js';
 import { h, clear, setText, bar, setBar, toneOf, setClass, append } from './dom.js';
@@ -60,7 +61,8 @@ function updPatient(state, e) {
     clear(refs.plan);
     (e.plan || []).forEach((t, i) => {
       const T = TREATMENTS[t];
-      refs.plan.appendChild(h('span', { class: 'tag u-step' + (i < e.planIdx ? ' done' : i === e.planIdx ? ' cur' : '') },
+      const F = TREATMENT_FEES[t];
+      refs.plan.appendChild(h('span', { class: 'tag u-step' + (i < e.planIdx ? ' done' : i === e.planIdx ? ' cur' : ''), tip: F && F.claim === 'pt' ? SINGLE_CLAIM_NOTE : null },
         (i < e.planIdx ? '✓ ' : '') + (T ? T.name : t)));
     });
   }

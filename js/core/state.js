@@ -51,7 +51,7 @@ export function createInitialState() {
     },
 
     ledger: {                        // this month, reset at month end
-      income: { nhi: 0, self: 0, other: 0 },
+      income: { nhi: 0, self: 0, copay: 0, other: 0 },
       expense: { salary: 0, rent: 0, build: 0, maintain: 0, other: 0 },
     },
     history: [],                     // per-month snapshots [{year,month,income,expense,money,patients,satisfaction,reputation}]

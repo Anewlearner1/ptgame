@@ -50,6 +50,7 @@ const { LOTS } = await imp('data/lots.js');
 const { PATIENT_TYPES } = await imp('data/patients.js');
 const EVD = await imp('data/events.js');
 const { SYNERGIES } = await imp('data/synergies.js');
+const FEES = await imp('data/fees.js');
 
 // ---- cli ----
 const argv = process.argv.slice(2);
@@ -238,7 +239,9 @@ function featuresSection() {
     const cap = Eco.nhiCap(state);
     check('economy: cap from lot data', cap === LOTS[0].nhiCap, String(cap));
     state.nhi.monthPoints = cap - 1;
-    check('economy: pv=1 under cap', Eco.getPointValue(state) === 1);
+    check('economy: pv = undiluted real value (0.95) under cap', Eco.getPointValue(state) === FEES.NHI_POINT_VALUE.typical && Eco.PV_BASE === 0.95, String(Eco.getPointValue(state)));
+    state.nhi.monthPoints = cap * 1.02;
+    check('economy: just over the cap pv stays at the undiluted value (cap/pts > 0.95)', Eco.getPointValue(state) === Eco.PV_BASE, String(Eco.getPointValue(state)));
     state.nhi.monthPoints = cap * 1.25;
     check('economy: pv=cap/points above cap', near(Eco.getPointValue(state), 0.8, 1e-9), String(Eco.getPointValue(state)));
     state.nhi.monthPoints = cap * 10;
@@ -248,11 +251,14 @@ function featuresSection() {
     const m0 = state.money;
     state.ledger.income.self = 123;
     const rec = Eco.settleMonth(state);
-    const expectNhi = Math.round(cap * 2 * 0.6 * Eco.NHI_NTD_PER_POINT * Eco.REVENUE_SCALE);
-    check('economy: settle nhi income = points*pv*scale', rec.nhiIncome === expectNhi, `${rec.nhiIncome} vs ${expectNhi}`);
+    const expectNhi = Math.round(cap * 2 * 0.6 * Eco.PATIENT_WEIGHT);
+    check('economy: settle nhi income = points*pv*PATIENT_WEIGHT', rec.nhiIncome === expectNhi, `${rec.nhiIncome} vs ${expectNhi}`);
+    check('economy: settle record carries weight + base point value + copay + self income', rec.patientWeight === Eco.PATIENT_WEIGHT && rec.basePointValue === 0.95 && rec.copayIncome === 0 && rec.selfIncome === 123, JSON.stringify([rec.patientWeight, rec.basePointValue, rec.copayIncome, rec.selfIncome]));
     check('economy: salaries+rent+maintain charged', near(m0 + expectNhi - costs.salary - costs.rent - costs.maintain, state.money, 1), `${state.money}`);
-    check('economy: ledger reset + history pushed + monthPoints reset', state.history.length === 1 && state.nhi.monthPoints === 0 && state.ledger.income.nhi === 0 && state.ledger.expense.salary === 0);
+    check('economy: ledger reset (incl. copay) + history pushed + monthPoints reset', state.ledger.income.copay === 0 && state.history.length === 1 && state.nhi.monthPoints === 0 && state.ledger.income.nhi === 0 && state.ledger.expense.salary === 0);
     check('economy: record has diluted flag', rec.diluted === true && rec.pointValue === 0.6);
+    state.nhi.monthPoints = cap * 0.5; const rec2 = Eco.settleMonth(state);
+    check('economy: undiluted record: pointValue 0.95, diluted=false (nhi:settled shows the real value)', rec2.pointValue === 0.95 && rec2.diluted === false && state.nhi.lastSettlement.pointValue === 0.95, JSON.stringify([rec2.pointValue, rec2.diluted]));
     state.mods.wageMult = 0.5; state.mods.rentMult = 2;
     const c2 = Eco.monthlyCosts(state);
     check('economy: wageMult/rentMult applied', c2.salary === Math.round(costs.salary * 0.5) && c2.rent === costs.rent * 2, JSON.stringify(c2));
@@ -269,7 +275,143 @@ function featuresSection() {
     check('economy: history capped at HISTORY_MAX months', state.history.length === Eco.HISTORY_MAX, String(state.history.length));
     for (let i = 0; i < 100; i++) Ins.runInspection(state);
     check('inspection: log capped', state.inspections.log.length <= 40, String(state.inspections.log.length));
-    feature('月底健保結算 + 浮動點值打折 + 薪水/租金/維護', 'works', 'pv=cap/pts clamp 0.6..1; salaries/rent/maintain charged; bankrupt < -300k');
+    feature('月底健保結算 + 浮動點值打折 + 薪水/租金/維護', 'works', 'pv=cap/pts clamp 0.6..0.95; salaries/rent/maintain charged; bankrupt < -300k');
+  }
+
+  // ---- 真實費率 (data/fees.js) + 單一申報 + 診察費分段 + 部分負擔 + 代表人數 ----
+  {
+    fresh();
+    // fees.js integrity: every treatment has an entry, finite numbers, low <= typical <= high, treatments.js is fed from it
+    const ids = Object.keys(TREATMENTS);
+    check('fees: 17 treatments, all with a TREATMENT_FEES entry (and nothing extra)', ids.length === 17 && ids.every(id => FEES.TREATMENT_FEES[id]) && Object.keys(FEES.TREATMENT_FEES).length === 17, ids.length + ' vs ' + Object.keys(FEES.TREATMENT_FEES).length);
+    const badFee = [];
+    for (const id of ids) {
+      const F = FEES.TREATMENT_FEES[id], T = TREATMENTS[id];
+      if (!['high', 'medium', 'low'].includes(F.confidence) || !Array.isArray(F.sources) || typeof F.note !== 'string' || !F.note) badFee.push(id + ':meta');
+      if (F.kind !== T.kind) badFee.push(id + ':kind');
+      if (F.kind === 'nhi') {
+        if (!(Number.isFinite(F.nhiPoints) && F.nhiPoints > 0) || T.nhiPoints !== F.nhiPoints || T.price !== 0 || !['exam', 'pt', 'ot', 'st', 'us'].includes(F.claim)) badFee.push(id + ':nhi');
+      } else {
+        const sp = F.selfPrice;
+        if (!sp || ![sp.low, sp.typical, sp.high].every(Number.isFinite) || !(sp.low > 0 && sp.low <= sp.typical && sp.typical <= sp.high) || T.price !== sp.typical || T.nhiPoints !== 0) badFee.push(id + ':self');
+      }
+      if (F.selfPrice && F.kind === 'nhi' && !(F.selfPrice.low <= F.selfPrice.typical && F.selfPrice.typical <= F.selfPrice.high)) badFee.push(id + ':ref');
+    }
+    check('fees: integrity (confidence+sources+note, finite, low <= typical <= high, treatments.js matches fees.js)', badFee.length === 0, badFee.join(' '));
+    check('fees: real self-pay typical prices (shockwave 2500, laser 2000, manual 2000, redcord 1700, prp 17000, insole 5000)',
+      [['shockwave', 2500], ['laser', 2000], ['manual_self', 2000], ['redcord', 1700], ['prp', 17000], ['insole', 5000]].every(([id, v]) => TREATMENTS[id].price === v));
+    check('fees: PT tiers 95/200/330/400, copay 50, point value 0.95/floor 0.6, asOf 2026-10',
+      FEES.PT_TIERS.simple === 95 && FEES.PT_TIERS.moderate === 200 && FEES.PT_TIERS.moderateComplex === 330 && FEES.PT_TIERS.complex === 400 && FEES.COPAY_NTD === 50 &&
+      FEES.NHI_POINT_VALUE.typical === 0.95 && FEES.NHI_POINT_VALUE.min === 0.6 && Eco.PV_MIN === 0.6 && FEES.FEES_AS_OF === '2026-10');
+    check('fees: PT tiers ascending, exam tiers ascending upTo and non-increasing points', FEES.PT_TIERS.simple < FEES.PT_TIERS.moderate && FEES.PT_TIERS.moderate < FEES.PT_TIERS.moderateComplex && FEES.PT_TIERS.moderateComplex < FEES.PT_TIERS.complex &&
+      FEES.EXAM_FEE_TIERS.every((t, i, a) => i === 0 || (t.upTo > a[i - 1].upTo && t.points <= a[i - 1].points)));
+
+    // exam fee tiers by patients per day (boundaries 35/36, 45/46, 65/66, 85/86)
+    const ef = FEES.examFeePoints;
+    check('exam fee tiers: 1..35 -> 364, 36..45 -> 250, 46..65 -> 200, 66..85 -> 160, 86+ -> 160',
+      [1, 35].every(n => ef(n) === 364) && [36, 45].every(n => ef(n) === 250) && [46, 65].every(n => ef(n) === 200) && [66, 85, 86, 200].every(n => ef(n) === 160), JSON.stringify([1, 35, 36, 45, 46, 65, 66, 85, 86].map(ef)));
+    check('exam fee tiers: low-confidence 46-65 tier is flagged as an estimate', FEES.EXAM_FEE_TIERS[2].confidence === 'low' && FEES.EXAM_FEE_TIERS[2].estimate === true);
+    const exAt = (done) => { state.stats.patientsToday = done; return Eco.listedPoints(state, 'exam'); };
+    check('exam fee uses state.stats.patientsToday (the patient being examined is #patientsToday+1)', exAt(0) === 364 && exAt(34) === 364 && exAt(35) === 250 && exAt(44) === 250 && exAt(45) === 200 && exAt(64) === 200 && exAt(65) === 160 && exAt(84) === 160 && exAt(85) === 160);
+    state.stats.patientsToday = 0;
+
+    // single-claim rule (economy.nhiClaim): per patient per visit only the highest PT item is paid
+    const run = (ids2) => { const claims = {}; return ids2.map(id => Eco.nhiClaim(state, claims, id)); };
+    const sum = (r) => r.reduce((a, x) => a + x.paid, 0);
+    let r = run(['heat', 'tens', 'traction']);
+    check('single claim: heat+tens+traction (3 moderate PT items) -> only 200 paid in total, the others pay 0', sum(r) === 200 && r[0].paid === 200 && r[1].paid === 0 && r[2].paid === 0 && r[1].listed === 200, JSON.stringify(r));
+    r = run(['ir', 'heat']);
+    check('single claim: infrared (95) then heat (200) -> 95 + 105 = the highest tier (200)', sum(r) === 200 && r[0].paid === 95 && r[1].paid === 105);
+    r = run(['heat', 'ir', 'taping']);
+    check('single claim: order does not matter (heat first, then ir / taping pay 0)', sum(r) === 200 && r[1].paid === 0 && r[2].paid === 0 && r[2].listed === 150);
+    r = run(['taping', 'ir']);
+    check('single claim: taping 150 > ir 95 -> 150', sum(r) === 150);
+    r = run(['exam', 'us', 'heat', 'si', 'fine', 'speech']);
+    check('separate claims: exam, us, PT, OT (si+fine = one claim), ST are each paid; fine pays 0 after si',
+      r[0].paid === 364 && r[1].paid === 500 && r[2].paid === 200 && r[3].paid === 320 && r[4].paid === 0 && r[4].listed === 320 && r[5].paid === 320 && sum(r) === 364 + 500 + 200 + 320 + 320, JSON.stringify(r.map(x => x.paid)));
+    check('single claim: self-pay treatments never claim NHI', Eco.nhiClaim(state, {}, 'shockwave').paid === 0 && Eco.nhiClaim(state, {}, 'prp').listed === 0);
+
+    // treatment:done payload (e2e): per patient visit the PT claims sum to the highest listed PT value; paid <= listed; flagged when reduced
+    {
+      fresh(4); clearObjects();
+      put('reception', 16, 17); put('sofa', 12, 18); put('exam_room', 11, 14); put('heatbox', 11, 11); put('tens', 13, 11); put('traction', 15, 11); put('bed', 18, 13);
+      state.staff.push(S.createStaff(state, 'pt', null, 17, 15)); state.reputation = 120;
+      const visits = new Map(); let reduced = 0, over = 0, sample = null;
+      const off = bus.on('treatment:done', (e) => {
+        const F = FEES.TREATMENT_FEES[e.treatmentId];
+        if (e.nhiListed < e.nhiPoints) over++;
+        if (e.singleClaim) { reduced++; sample = sample || { id: e.treatmentId, paid: e.nhiPoints, listed: e.nhiListed }; }
+        if (F.claim !== 'pt') return;
+        const k = e.patient.id + '/' + e.patient.visit;
+        const v = visits.get(k) || { paid: 0, max: 0 }; v.paid += e.nhiPoints; v.max = Math.max(v.max, e.nhiListed); visits.set(k, v);
+      });
+      runWeeks(6); off();
+      const wrong = [...visits.values()].filter(v => v.paid !== v.max);
+      check('treatment:done e2e: per patient visit the paid PT points equal the highest listed PT item (6 weeks)', visits.size > 20 && wrong.length === 0, `visits=${visits.size} wrong=${JSON.stringify(wrong.slice(0, 3))}`);
+      check('treatment:done e2e: some treatments are flagged singleClaim (paid < listed), paid never exceeds listed', reduced > 0 && over === 0, `reduced=${reduced} over=${over} ${JSON.stringify(sample)}`);
+    }
+
+    // exam fee e2e: crowded days pay less per exam than quiet days
+    {
+      fresh(4); clearObjects();
+      put('reception', 16, 17); put('sofa', 12, 18); put('exam_room', 11, 14); put('heatbox', 11, 11);
+      const seen = []; const off = bus.on('treatment:done', (e) => { if (e.treatmentId === 'exam') seen.push(e.nhiPoints); });
+      runWeeks(1); off();
+      check('exam fee e2e: exam claims on a quiet day are the first-tier 364 points', seen.length > 0 && seen.every(x => x === 364), JSON.stringify(seen));
+      const crowded = []; const offC = bus.on('treatment:done', (e) => { if (e.treatmentId === 'exam') crowded.push([e.nhiPoints, e.nhiListed]); });
+      state.stats.patientsToday = 36; runWeeks(1); offC();
+      check('exam fee e2e: a crowded day (36 patients already served) pays 250 (200 once past 45) per exam instead of 364', crowded.length > 0 && crowded[0][0] === 250 && crowded.every(([paid, listed]) => (paid === 250 || paid === 200) && paid === listed), JSON.stringify(crowded));
+      state.stats.patientsToday = 40;
+      check('exam fee: with 40 patients already served the next exam lists 250 points', Eco.listedPoints(state, 'exam') === 250);
+    }
+
+    // weight applied consistently: NHI points x pv x W, self-pay price x W, copay x W; salaries/rent/events are NOT weighted
+    {
+      fresh(); state.money = 1000000; state.ledger = { income: { nhi: 0, self: 0, copay: 0, other: 0 }, expense: { salary: 0, rent: 0, build: 0, maintain: 0, other: 0 } };
+      const W = Eco.PATIENT_WEIGHT;
+      check('PATIENT_WEIGHT is a positive integer constant', Number.isInteger(W) && W > 1);
+      const m0 = state.money;
+      bus.emit('treatment:done', { patient: {}, treatmentId: 'heat', nhiPoints: 200, nhiListed: 200, selfPay: 0, copay: 0, staffId: null });
+      check('weight: NHI points are only counted at treatment time (no cash yet)', state.money === m0 && state.nhi.monthPoints === 200);
+      bus.emit('treatment:done', { patient: {}, treatmentId: 'shockwave', nhiPoints: 0, selfPay: Eco.selfPayPrice(state, 'shockwave'), copay: 0, staffId: null });
+      check('weight: self-pay credits real price x PATIENT_WEIGHT immediately (2500 x W)', state.money === m0 + 2500 * W && state.ledger.income.self === 2500 * W, `${state.money - m0} vs ${2500 * W}`);
+      bus.emit('treatment:done', { patient: {}, treatmentId: 'tens', nhiPoints: 0, nhiListed: 200, selfPay: 0, copay: FEES.COPAY_NTD, staffId: null });
+      check('weight: copay credits NT$50 x PATIENT_WEIGHT into ledger.income.copay', state.ledger.income.copay === 50 * W, String(state.ledger.income.copay));
+      const mm = state.money; state.staff = []; state.objects = [];
+      state.mods.rentMult = 1; const costs = Eco.monthlyCosts(state);
+      const rec = Eco.settleMonth(state);
+      const expectNhi = Math.round(200 * 0.95 * W);
+      check('weight: settlement NHI income = points x 0.95 x W', rec.nhiIncome === expectNhi, `${rec.nhiIncome} vs ${expectNhi}`);
+      check('weight: rent is plain NT$ (not weighted) and net = income - expense', costs.rent === LOTS[0].rent && rec.income === expectNhi + 2500 * W + 50 * W && state.money === mm + expectNhi - costs.rent - costs.maintain - costs.salary, `${rec.income} money ${state.money - mm}`);
+      check('month report breakdown: 健保 / 自費 / 部分負擔 are separate weighted incomes in the record', rec.nhiIncome === expectNhi && rec.selfIncome === 2500 * W && rec.copayIncome === 50 * W && rec.otherIncome === 0, JSON.stringify([rec.nhiIncome, rec.selfIncome, rec.copayIncome]));
+      Eco.earn(state, 7777, 'other');
+      check('events/other money stays plain NT$ (earn other = 7777 -> 7777)', state.ledger.income.other === 7777);
+      state.ledger.income.other = 0;
+    }
+
+    // copay: flat NT$50 per RETURNING visit (visit >= 1), first visit free, collected once per visit
+    check('copay: copayFor(visit) is 0 for the first visit and 50 afterwards', Eco.copayFor(0) === 0 && Eco.copayFor(1) === 50 && Eco.copayFor(5) === 50 && Eco.copayFor(undefined) === 0);
+    {
+      fresh(8); clearObjects();
+      put('reception', 16, 17); put('sofa', 12, 18); put('exam_room', 11, 14); put('heatbox', 11, 11); put('heatbox', 12, 11); put('tens', 14, 11);
+      state.reputation = 150; const perVisit = new Map(); let firstVisitCopay = 0, retCopay = 0, retTreat = 0, copayRec = 0;
+      const offS = bus.on('nhi:settled', (rc) => { copayRec += rc.copayIncome || 0; });
+      const off = bus.on('treatment:done', (e) => {
+        const k = e.patient.id + '/' + e.patient.visit;
+        if (e.copay > 0) { perVisit.set(k, (perVisit.get(k) || 0) + 1); if (e.patient.visit === 0) firstVisitCopay++; else retCopay++; }
+        if (e.patient.visit > 0) retTreat++;
+      });
+      runWeeks(8); off(); offS();
+      const multi = [...perVisit.values()].filter(n => n > 1).length;
+      check('copay e2e: first visits never pay, each returning visit pays exactly once', retTreat > 0 && retCopay > 0 && firstVisitCopay === 0 && multi === 0, `ret=${retCopay} first=${firstVisitCopay} multi=${multi} retTreat=${retTreat}`);
+      check('copay e2e: copay income reaches the month record (copayIncome = visits x 50 x PATIENT_WEIGHT)', state.history.length >= 1 && copayRec > 0 && copayRec % (50 * Eco.PATIENT_WEIGHT) === 0, `settled copay ${copayRec}`);
+    }
+
+    // price slider semantics: 0.5..2.0 x typical (real NT$ per session)
+    state.policy.priceMult.shockwave = 1; state.mods.selfPayPrice = 1;
+    check('selfPayPrice is the real per-session NT$ (typical x slider), never weighted', Eco.selfPayPrice(state, 'shockwave') === 2500 && (state.policy.priceMult.shockwave = 2, Eco.selfPayPrice(state, 'shockwave')) === 5000 && (state.policy.priceMult.shockwave = 0.5, Eco.selfPayPrice(state, 'shockwave')) === 1250);
+    state.policy.priceMult.shockwave = 1;
+    feature('真實費率 fees.js + 單一申報 + 診察費分段 + 部分負擔 + PATIENT_WEIGHT', 'works', 'one data module; PT highest-tier-only; exam 364/250/200/160 by patientsToday; copay 50 per returning visit; weight x' + Eco.PATIENT_WEIGHT);
   }
 
   // ---- 資金 primitives ----
@@ -557,7 +699,7 @@ function featuresSection() {
     // measured effect on arrivals: elder share on a pinned weather week
     const elderArrivals = (weatherId) => {
       let n = 0;
-      for (let rep = 0; rep < 8; rep++) {
+      for (let rep = 0; rep < 16; rep++) {
         fresh(300 + rep); state.reputation = 150; state.time.month = 1;
         const w = EVD.WEATHER.find(x => x.id === weatherId);
         const pin = () => { state.weather = { kind: w.kind, id: w.id, name: w.name, icon: w.icon, temp: 12 }; Mod.recomputeMods(state); };
@@ -996,6 +1138,7 @@ function saveSection() {
     'no inspections/flags': (s) => { delete s.inspections; delete s.flags; },
     'no policy.boards/priceMult': (s) => { delete s.policy.boards; delete s.policy.priceMult; },
     'no ledger/stats/nhi': (s) => { delete s.ledger; delete s.stats; delete s.nhi; },
+    'pre fee-rules save (ledger without copay, mid-visit patients without claims)': (s) => { delete s.ledger.income.copay; s.patients = [{ id: 9002, type: 'elder', name: 'x', x: 15.5, y: 19.5, stage: 'waiting', plan: ['heat', 'tens', 'traction'], planIdx: 0, visit: 2, treated: 0 }]; },
     'no hirePool/queue/zones/history': (s) => { delete s.hirePool; delete s.queue; delete s.zones; delete s.history; },
     'no weather': (s) => { delete s.weather; },
     'no research': (s) => { delete s.research; },

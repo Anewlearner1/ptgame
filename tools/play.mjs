@@ -104,7 +104,9 @@ await page.evaluate(async () => {
   for (let i = 0; i < 40; i++) { const b = [...document.querySelectorAll('#panel .u-node .btn')].find(x => !x.disabled && !x.hidden); if (!b) { await new Promise(r => setTimeout(r, 250)); if (![...document.querySelectorAll('#panel .u-node .btn')].some(x => !x.disabled && !x.hidden)) break; continue; } b.click(); for (let k = 0; k < 6 && __game.state.research.current; k++) RS.tickWeek(__game.state); await new Promise(r => setTimeout(r, 220)); }
 });
 ok(await G(() => __game.state.research.done.length) >= 15, 'research started via UI and completed');
-await tab('.tabs', '💲 自費定價'); await tab('.tabs', '🎪 社區衛教');
+await tab('.tabs', '💲 自費定價');
+ok(await G(() => /每位模擬病患代表 \d+ 位真實病患/.test(document.querySelector('#panel')?.textContent || '') && /市場行情/.test(document.querySelector('#panel')?.textContent || '') && /同日物理治療僅給付最高一項/.test(document.querySelector('#panel')?.textContent || '')), 'pricing tab: patient-weight note + market reference + single-claim rule');
+await tab('.tabs', '🎪 社區衛教');
 await page.click('#panel .btn.primary:text-is("舉辦")'); await page.waitForTimeout(200);
 ok(await G(() => __game.state.events.active.some(a => a.kind === 'community')), 'community outreach started');
 await side(1); await G(() => { __game.state.money = 3e6; });
@@ -146,6 +148,7 @@ await G(() => { const s = __game.state; s.time.week = 4; s.time.clock = 1185; s.
 await page.waitForTimeout(2500);
 ok(await G(() => /營運報告/.test(document.querySelector('.modal-title')?.textContent || '')), 'month-end report modal');
 ok(await G(() => /點值被稀釋/.test(document.querySelector('.modal')?.textContent || '')), 'NHI dilution explained');
+ok(await G(() => { const t = document.querySelector('.modal')?.textContent || ''; return /健保給付/.test(t) && /自費收入/.test(t) && /部分負擔/.test(t) && /每位模擬病患代表 \d+ 位真實病患/.test(t); }), 'month report: 健保 / 自費 / 部分負擔 breakdown + patient-weight footnote');
 await shot('play_month'); await closeModals();
 await G(async () => { const E = await import('/js/sim/events.js'); __game.state.events.cooldowns = {}; E.triggerEvent(__game.state, 'li_chief'); });
 await page.waitForTimeout(400);

@@ -6,6 +6,8 @@ import { TREATMENTS } from '../../data/treatments.js';
 import { PATIENT_TYPES } from '../../data/patients.js';
 import { COMMUNITY } from '../../data/events.js';
 import { LOTS } from '../../data/lots.js';
+import { TREATMENT_FEES, EXAM_FEE_TIERS, PT_TIERS, COPAY_NTD, NHI_POINT_VALUE, FEES_AS_OF, SINGLE_CLAIM_NOTE } from '../../data/fees.js';
+import { PATIENT_WEIGHT } from '../../sim/economy.js';
 import * as RS from '../../sim/research.js';
 import * as EV from '../../sim/events.js';
 import { h, setClass, setText, tabbed, bar, setBar } from '../dom.js';
@@ -111,9 +113,12 @@ function buildResearch(body, state) {
 }
 
 // ---------------------------------------------------------------- pricing
+// Rough share of patients who take a self-pay offer: the type-weighted willingness (data/patients.js selfPay), scaled by the conv mods, damped by price.
 function convOf(state, mult) {
-  const base = Math.max(0, Math.min(0.9, 0.25 + ((state.mods && state.mods.selfPayConv) || 0)));
-  return Math.max(0.03, Math.min(0.95, base * (1 - 0.8 * (mult - 1))));
+  let w = 0, tot = 0;
+  for (const P of Object.values(PATIENT_TYPES)) { w += (P.weight || 1) * (P.selfPay || 0); tot += (P.weight || 1); }
+  const base = Math.max(0.02, Math.min(0.9, (tot ? w / tot : 0.12) * (1 + ((state.mods && state.mods.selfPayConv) || 0))));
+  return Math.max(0.01, Math.min(0.95, base * Math.max(0.12, 1 - 0.8 * (mult - 1))));
 }
 function weeklyPatients(state) {
   const lot = LOTS[state.lotLevel || 0];
@@ -121,11 +126,41 @@ function weeklyPatients(state) {
   return Math.min(raw, lot ? lot.maxPatientsPerWeek : raw);
 }
 
+
+// Market reference from data/fees.js: 「市場行情 低–高」 (typical x slider is what the game charges).
+function marketText(id) {
+  const f = TREATMENT_FEES[id] && TREATMENT_FEES[id].selfPrice;
+  return f ? `市場行情 ${money(f.low)}–${money(f.high)}` : '';
+}
+function marketTip(id) {
+  const F = TREATMENT_FEES[id];
+  if (!F || !F.selfPrice) return '';
+  const conf = { high: '高', medium: '中', low: '低' }[F.confidence] || F.confidence;
+  return `真實行情（${FEES_AS_OF}）：低 ${money(F.selfPrice.low)}／典型 ${money(F.selfPrice.typical)}／高 ${money(F.selfPrice.high)}（${F.unit}）\n資料可信度：${conf}${F.estimate ? '（估計）' : ''}`;
+}
+function nhiRulesCard() {
+  const conf = { high: '', medium: '', low: '（估計）' };
+  const row = (name, v, c) => h('div', { class: 'u-kvrow' }, h('span', null, name), h('b', null, v + (conf[c] || '')));
+  const ex = EXAM_FEE_TIERS.slice(0, 4).map((t, i) => `${i ? EXAM_FEE_TIERS[i - 1].upTo + 1 : 1}–${t.upTo} 人 ${t.points} 點${t.confidence === 'low' ? '（估計）' : ''}`).join('，');
+  return h('div', { class: 'card u-nhirules' },
+    h('b', null, '🧾 健保給付速查（真實費率）'),
+    h('p', { class: 'muted u-small' }, `${SINGLE_CLAIM_NOTE}：熱敷、電療、牽引、紅外線、貼紮、健保徒手只取當日最高階申報一次（其餘照做、照樣累積研發點數，但不另計點）；職能、語言治療與超音波各自申報。`),
+    h('p', { class: 'muted u-small' }, `診察費：${ex}。人多的日子診察費會被稀釋。`),
+    row('物理治療：簡單 / 中度', `${PT_TIERS.simple} / ${PT_TIERS.moderate} 點`, 'low'),
+    row('部分負擔（回診每次）', money(COPAY_NTD), 'high'),
+    row('健保點值（未稀釋）', NHI_POINT_VALUE.typical.toFixed(2), 'high'),
+    h('p', { class: 'muted u-small' }, '標示「估計」的數字來自搜尋摘要，尚待對照健保署支付標準。'));
+}
+
 function buildPricing(body, state) {
-  body.append(h('div', { class: 'muted u-p' }, '自費項目的售價 = 基本價 × 你設定的倍率 × 專區加成。定價越高，願意升級自費的病人越少。下方「預估」為粗略推算，僅供參考。'));
+  body.append(h('div', { class: 'card u-note' },
+    h('b', null, `⚖ 每位模擬病患代表 ${PATIENT_WEIGHT} 位真實病患`),
+    h('p', { class: 'muted u-small' }, `下列售價都是真實的「每次」自費價格（市場行情資料截至 ${FEES_AS_OF}）。入帳時會乘以 ${PATIENT_WEIGHT}（健保給付、部分負擔也一樣），薪資與房租則不乘。`)));
+  body.append(h('div', { class: 'muted u-p' }, '自費項目的售價 = 市場典型價 × 你設定的倍率（0.5–2.0）× 專區加成。定價越高，願意升級自費的病人越少。下方「預估」為粗略推算，僅供參考。'));
   const rows = [];
   const plist = h('div', { class: 'u-list2' });
   body.appendChild(plist);
+  body.appendChild(nhiRulesCard());
   const self = Object.values(TREATMENTS).filter(t => t.kind === 'self');
   for (const t of self) {
     const slider = h('input', { type: 'range', min: 0.5, max: 2, step: 0.05, value: (state.policy.priceMult[t.id]) || 1 });
@@ -138,11 +173,11 @@ function buildPricing(body, state) {
     const reset = h('button', { class: 'btn small', type: 'button', onclick: () => { slider.value = 1; slider.dispatchEvent(new Event('input')); } }, '×1');
     const el = h('div', { class: 'card u-price' },
       h('div', { class: 'u-row2' }, h('div', { class: 'u-grow' }, h('b', null, t.name), h('div', { class: 'muted u-small' }, t.intro)),
-        h('div', { class: 'u-side' }, h('div', { class: 'muted u-small' }, `基本價 ${money(t.price)}`))),
+        h('div', { class: 'u-side' }, h('div', { class: 'muted u-small' }, `市場典型 ${money(t.price)}`), h('div', { class: 'muted u-small', tip: marketTip(t.id) || null }, marketText(t.id)))),
       h('div', { class: 'u-slide' }, slider, multEl, reset),
       h('div', { class: 'u-grid2' },
         h('div', { class: 'stat' }, h('span', null, '實收單價'), priceEl),
-        h('div', { class: 'stat' }, h('span', null, '預估週收入'), income),
+        h('div', { class: 'stat' }, h('span', null, `預估單日收入（×${PATIENT_WEIGHT}）`), income),
         h('div', { class: 'stat' }, h('span', null, '預估轉換率'), conv)),
       hint, warn);
     const r = { t, el, slider, multEl, priceEl, hint, income, conv, warn, unlocked: null };
@@ -151,13 +186,14 @@ function buildPricing(body, state) {
   }
   function refresh(r) {
     const mult = parseFloat(r.slider.value);
-    const price = r.t.price * mult * ((state.mods && state.mods.selfPayPrice) || 1);
+    const price = r.t.price * mult * ((state.mods && state.mods.selfPayPrice) || 1);   // real NT$ per session (not weighted)
     const cv = convOf(state, mult);
-    const vol = weeklyPatients(state) * 0.3;
+    const nSelf = Math.max(3, self.filter(x => RS.isTreatmentUnlocked(state, x.id)).length);
+    const vol = weeklyPatients(state) / nSelf;      // each patient is offered at most one or two of the unlocked items
     setText(r.multEl, '×' + mult.toFixed(2));
     setText(r.priceEl, money(price));
     setBar(r.conv, cv, cv < 0.15 ? 'bad' : cv < 0.3 ? 'warn' : '');
-    setText(r.income, money(price * cv * vol));
+    setText(r.income, money(price * cv * vol * PATIENT_WEIGHT));   // banked NT$ = price x PATIENT_WEIGHT per sale
     setText(r.hint, cv >= 0.4 ? '💬 價格親民，多數病人願意嘗試。' : cv >= 0.25 ? '💬 約三、四成的病人會升級。' : cv >= 0.12 ? '💬 只有少數人買單，高價走精緻路線。' : '💬 定價偏高，幾乎沒人願意自費。');
     const built = state.objects.some(o => r.t.objects.includes(o.defId));
     setText(r.warn, built ? '' : '⚠ 尚未建置對應設備，目前無法提供此療程。');

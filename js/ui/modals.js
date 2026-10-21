@@ -8,7 +8,8 @@ import { showModal, closeModal } from './modal.js';
 import { LOTS } from '../data/lots.js';
 import { DILEMMAS, RANDOM_EVENTS } from '../data/events.js';
 import { INTRO_STEPS } from '../data/texts.js';
-import { monthlyCosts } from '../sim/economy.js';
+import { monthlyCosts, PATIENT_WEIGHT, PV_BASE } from '../sim/economy.js';
+import { SINGLE_CLAIM_NOTE, COPAY_NTD } from '../data/fees.js';
 import { resolveDilemma, eventById, choiceAffordable } from '../sim/events.js';
 import { newGame, loadGame, listSaves } from '../sim/save.js';
 
@@ -35,18 +36,21 @@ export function showSettlement(p) {
   const lot = LOTS[state.lotLevel || 0] || LOTS[0];
   const cap = Math.round(p.cap != null ? p.cap : lot.nhiCap * (1 + ((state.mods && state.mods.nhiCapBonus) || 0)));
   const pts = Math.round(p.points != null ? p.points : 0);
-  const pv = p.pointValue != null ? p.pointValue : 1;
-  const nhiIncome = p.nhiIncome != null ? p.nhiIncome : pts * pv;
+  const base = p.basePointValue != null ? p.basePointValue : PV_BASE;     // undiluted point value (real ~0.95)
+  const weight = p.patientWeight != null ? p.patientWeight : PATIENT_WEIGHT;
+  const pv = p.pointValue != null ? p.pointValue : base;
+  const nhiIncome = p.nhiIncome != null ? p.nhiIncome : Math.round(pts * pv * weight);
 
   // Prefer the itemised record from economy.settleMonth; fall back to our pre-reset ledger snapshot.
   let costs = { salary: p.salary, rent: p.rent, maintain: p.maintain };
   if (costs.salary == null) { try { costs = monthlyCosts(state) || {}; } catch (e) { costs = {}; } }
   const self = p.selfIncome != null ? p.selfIncome : (snap.income.self || 0);
+  const copay = p.copayIncome != null ? p.copayIncome : (snap.income.copay || 0);
   const other = p.otherIncome != null ? p.otherIncome : (snap.income.other || 0);
   const build = p.build != null ? p.build : (snap.expense.build || 0);
   const otherExp = p.otherExpense != null ? p.otherExpense : (snap.expense.other || 0);
 
-  const inc = [['健保給付', nhiIncome], ['自費收入', self]];
+  const inc = [['健保給付', nhiIncome], ['自費收入', self], ['部分負擔', copay]];
   if (other) inc.push(['其他收入（活動、事件）', other]);
   const exp = [['員工薪資', costs.salary || 0], ['診所房租', costs.rent || 0], ['設備與看板維護', costs.maintain || 0]];
   if (build) exp.push(['建設與購置', build]);
@@ -60,24 +64,26 @@ export function showSettlement(p) {
   const net = typeof p.net === 'number' ? p.net : incTotal - expTotal;
   if (p.year) { snap.year = p.year; snap.month = p.month; }
 
-  const diluted = p.diluted != null ? !!p.diluted : pv < 0.9995;
+  const diluted = p.diluted != null ? !!p.diluted : pv < base - 0.0005;
   const usage = cap > 0 ? pts / cap : 0;
   let explain;
   if (diluted) {
-    const lost = Math.round(nhiIncome / pv - nhiIncome);
+    const lost = Math.round(nhiIncome / pv * base - nhiIncome);
     explain = h('div', { class: 'u-note bad-note' },
       h('b', null, '⚠ 點值被稀釋了'),
       h('p', null, `本月健保申報 ${fmt(pts)} 點，超過${lot.name}的上限 ${fmt(cap)} 點（${Math.round(usage * 100)}%）。` +
-        `超過上限後，點值 ＝ 上限 ÷ 申報點數 ＝ ${pv.toFixed(2)}，而且這個折扣是套用在「全部」點數上。`),
-      h('p', null, `${fmt(pts)} 點 × ${pv.toFixed(2)} ＝ ${money(nhiIncome)}，比點值 1.0 時少收 ${money(lost)}。` +
+        `超過上限後，點值 ＝ 上限 ÷ 申報點數 ＝ ${pv.toFixed(2)}（正常為 ${base.toFixed(2)}），而且這個折扣是套用在「全部」點數上。`),
+      h('p', null, `${fmt(pts)} 點 × ${pv.toFixed(2)} × ${weight} ＝ ${money(nhiIncome)}，比點值 ${base.toFixed(2)} 時少收 ${money(lost)}。` +
         `多做的熱敷、電療不但不賺，還拖累原本的收入。`),
       h('p', { class: 'muted' }, '出路：發展自費項目（不受點值影響）、擴建提高上限，或調整接診結構。'));
   } else {
     explain = h('div', { class: 'u-note' },
       h('b', null, '點值正常'),
-      h('p', null, `本月健保申報 ${fmt(pts)} 點，上限為 ${fmt(cap)} 點（使用率 ${Math.round(usage * 100)}%），點值維持 1.00。`),
-      h('p', { class: 'muted' }, `申報超過上限時，點值會降到「上限 ÷ 申報點數」（最低 0.6），所有健保點數一起打折。`));
+      h('p', null, `本月健保申報 ${fmt(pts)} 點，上限為 ${fmt(cap)} 點（使用率 ${Math.round(usage * 100)}%），點值維持 ${pv.toFixed(2)}。`),
+      h('p', { class: 'muted' }, `申報超過上限時，點值會降到「上限 ÷ 申報點數」（最低 0.6），所有健保點數一起打折。${SINGLE_CLAIM_NOTE}，診察費也會隨當日看診人數遞減。`));
   }
+  const footnote = h('p', { class: 'muted u-small' },
+    `※ 每位模擬病患代表 ${weight} 位真實病患：上列健保給付、自費收入與部分負擔（每次回診 NT$ ${COPAY_NTD}）都已乘以 ${weight} 後入帳；薪資、房租與事件金額則為實際金額。`);
 
   const col = (title, rows, total, cls) => h('div', { class: 'u-col' },
     h('div', { class: 'u-sec' }, title),
@@ -91,7 +97,8 @@ export function showSettlement(p) {
       h('div', { class: 'stat' }, h('span', null, '本月淨利'), h('span', { class: net >= 0 ? 'good' : 'bad' }, signed(net)))),
     h('div', { class: 'u-two' }, col('收入', inc, incTotal, 'good'), col('支出', exp, expTotal, 'bad')),
     explain,
-    h('div', { class: 'u-kvrow' }, h('span', null, '目前資金'), h('b', null, money(state.money))));
+    h('div', { class: 'u-kvrow' }, h('span', null, '目前資金'), h('b', null, money(state.money))),
+    footnote);
 
   showModal({
     title: h('span', null, artEl('role.record', { size: 28, fallback: '📊', cls: 'u-art-ico u-modal-ico', title: '營運報告' }), `${snap.year ? `第${snap.year}年 ${snap.month}月` : ''}營運報告`),

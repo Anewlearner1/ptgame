@@ -16,7 +16,7 @@ export const PATIENT_TYPES = {
     patience: 70,
     needsRamp: true,
     slipProne: 1.6,
-    selfPay: 0.25,
+    selfPay: 0.07,
     chatty: 0.7,
     plans: [
       { w: 3, steps: ['exam', 'heat', 'tens'], selfPaySteps: ['insole', 'manual_self', 'shockwave'] },
@@ -44,7 +44,7 @@ export const PATIENT_TYPES = {
     patience: 40,
     needsRamp: false,
     slipProne: 0.8,
-    selfPay: 0.65,
+    selfPay: 0.18,
     chatty: 0.3,
     plans: [
       { w: 3, steps: ['exam', 'tens', 'heat'], selfPaySteps: ['manual_self', 'shockwave', 'laser'] },
@@ -72,7 +72,7 @@ export const PATIENT_TYPES = {
     patience: 55,
     needsRamp: false,
     slipProne: 0.6,
-    selfPay: 0.6,
+    selfPay: 0.16,
     chatty: 0.4,
     plans: [
       { w: 3, steps: ['exam', 'taping', 'manual_nhi'], selfPaySteps: ['redcord', 'laser', 'insole'] },
@@ -100,7 +100,7 @@ export const PATIENT_TYPES = {
     patience: 55,
     needsRamp: false,
     slipProne: 1.0,
-    selfPay: 0.25,
+    selfPay: 0.07,
     chatty: 0.4,
     plans: [
       { w: 3, steps: ['exam', 'si', 'speech'] },
