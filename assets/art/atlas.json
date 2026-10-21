@@ -1,0 +1,766 @@
+{
+ "image": "atlas.png",
+ "w": 1024,
+ "h": 1024,
+ "sprites": {
+  "staff.doctor": {
+   "x": 585,
+   "y": 2,
+   "w": 101,
+   "h": 166,
+   "ax": 45,
+   "ay": 165
+  },
+  "staff.nurse": {
+   "x": 2,
+   "y": 198,
+   "w": 91,
+   "h": 159,
+   "ax": 47,
+   "ay": 158
+  },
+  "staff.pt": {
+   "x": 688,
+   "y": 2,
+   "w": 89,
+   "h": 163,
+   "ax": 44,
+   "ay": 162
+  },
+  "staff.ot": {
+   "x": 95,
+   "y": 198,
+   "w": 94,
+   "h": 157,
+   "ax": 51,
+   "ay": 156
+  },
+  "staff.pharmacist": {
+   "x": 866,
+   "y": 2,
+   "w": 97,
+   "h": 159,
+   "ax": 46,
+   "ay": 158
+  },
+  "staff.tech": {
+   "x": 779,
+   "y": 2,
+   "w": 85,
+   "h": 160,
+   "ax": 39,
+   "ay": 159
+  },
+  "portrait.doctor": {
+   "x": 405,
+   "y": 2,
+   "w": 178,
+   "h": 170,
+   "ax": 89,
+   "ay": 170
+  },
+  "role.inquiry": {
+   "x": 868,
+   "y": 547,
+   "w": 58,
+   "h": 61,
+   "ax": 29,
+   "ay": 61
+  },
+  "role.therapy": {
+   "x": 456,
+   "y": 460,
+   "w": 54,
+   "h": 66,
+   "ax": 27,
+   "ay": 66
+  },
+  "role.assess": {
+   "x": 928,
+   "y": 547,
+   "w": 48,
+   "h": 61,
+   "ax": 24,
+   "ay": 61
+  },
+  "role.educate": {
+   "x": 717,
+   "y": 547,
+   "w": 48,
+   "h": 63,
+   "ax": 24,
+   "ay": 63
+  },
+  "role.equip": {
+   "x": 319,
+   "y": 460,
+   "w": 82,
+   "h": 71,
+   "ax": 41,
+   "ay": 71
+  },
+  "role.record": {
+   "x": 120,
+   "y": 612,
+   "w": 57,
+   "h": 59,
+   "ax": 28,
+   "ay": 59
+  },
+  "patient.elder.stand": {
+   "x": 503,
+   "y": 198,
+   "w": 59,
+   "h": 113,
+   "ax": 30,
+   "ay": 112
+  },
+  "patient.elder.walk": {
+   "x": 916,
+   "y": 198,
+   "w": 55,
+   "h": 101,
+   "ax": 30,
+   "ay": 100
+  },
+  "patient.elder.cane": {
+   "x": 443,
+   "y": 198,
+   "w": 58,
+   "h": 114,
+   "ax": 26,
+   "ay": 113
+  },
+  "patient.elder.rehab": {
+   "x": 239,
+   "y": 359,
+   "w": 62,
+   "h": 92,
+   "ax": 36,
+   "ay": 91
+  },
+  "patient.office.work": {
+   "x": 325,
+   "y": 198,
+   "w": 58,
+   "h": 116,
+   "ax": 28,
+   "ay": 115
+  },
+  "patient.office.desk": {
+   "x": 564,
+   "y": 198,
+   "w": 76,
+   "h": 109,
+   "ax": 38,
+   "ay": 108
+  },
+  "patient.office.backpain": {
+   "x": 642,
+   "y": 198,
+   "w": 58,
+   "h": 109,
+   "ax": 28,
+   "ay": 108
+  },
+  "patient.office.rehab": {
+   "x": 385,
+   "y": 198,
+   "w": 56,
+   "h": 115,
+   "ax": 27,
+   "ay": 114
+  },
+  "patient.kid.school": {
+   "x": 854,
+   "y": 198,
+   "w": 60,
+   "h": 108,
+   "ax": 30,
+   "ay": 107
+  },
+  "patient.kid.play": {
+   "x": 250,
+   "y": 460,
+   "w": 67,
+   "h": 82,
+   "ax": 32,
+   "ay": 81
+  },
+  "patient.kid.rehab": {
+   "x": 183,
+   "y": 359,
+   "w": 54,
+   "h": 93,
+   "ax": 28,
+   "ay": 92
+  },
+  "patient.kid.withparent": {
+   "x": 191,
+   "y": 198,
+   "w": 73,
+   "h": 121,
+   "ax": 37,
+   "ay": 120
+  },
+  "patient.sports.run": {
+   "x": 266,
+   "y": 198,
+   "w": 57,
+   "h": 117,
+   "ax": 22,
+   "ay": 116
+  },
+  "patient.sports.train": {
+   "x": 785,
+   "y": 198,
+   "w": 67,
+   "h": 108,
+   "ax": 45,
+   "ay": 107
+  },
+  "patient.sports.stretch": {
+   "x": 114,
+   "y": 359,
+   "w": 67,
+   "h": 96,
+   "ax": 33,
+   "ay": 95
+  },
+  "patient.sports.injured": {
+   "x": 702,
+   "y": 198,
+   "w": 81,
+   "h": 108,
+   "ax": 39,
+   "ay": 107
+  },
+  "generic.stand": {
+   "x": 960,
+   "y": 359,
+   "w": 46,
+   "h": 86,
+   "ax": 21,
+   "ay": 85
+  },
+  "generic.walk_r": {
+   "x": 52,
+   "y": 460,
+   "w": 47,
+   "h": 85,
+   "ax": 23,
+   "ay": 84
+  },
+  "generic.walk_l": {
+   "x": 2,
+   "y": 460,
+   "w": 48,
+   "h": 85,
+   "ax": 26,
+   "ay": 84
+  },
+  "generic.run": {
+   "x": 889,
+   "y": 359,
+   "w": 69,
+   "h": 86,
+   "ax": 28,
+   "ay": 85
+  },
+  "generic.crouch": {
+   "x": 403,
+   "y": 460,
+   "w": 51,
+   "h": 70,
+   "ax": 24,
+   "ay": 69
+  },
+  "generic.rise": {
+   "x": 662,
+   "y": 359,
+   "w": 52,
+   "h": 87,
+   "ax": 20,
+   "ay": 86
+  },
+  "generic.sit": {
+   "x": 599,
+   "y": 359,
+   "w": 61,
+   "h": 87,
+   "ax": 23,
+   "ay": 86
+  },
+  "generic.lie": {
+   "x": 2,
+   "y": 612,
+   "w": 69,
+   "h": 60,
+   "ax": 29,
+   "ay": 59
+  },
+  "generic.treat": {
+   "x": 2,
+   "y": 359,
+   "w": 110,
+   "h": 99,
+   "ax": 51,
+   "ay": 98
+  },
+  "generic.stretch": {
+   "x": 165,
+   "y": 460,
+   "w": 83,
+   "h": 82,
+   "ax": 35,
+   "ay": 81
+  },
+  "generic.joint": {
+   "x": 457,
+   "y": 359,
+   "w": 82,
+   "h": 88,
+   "ax": 41,
+   "ay": 87
+  },
+  "generic.strength": {
+   "x": 807,
+   "y": 359,
+   "w": 80,
+   "h": 86,
+   "ax": 34,
+   "ay": 85
+  },
+  "generic.balance": {
+   "x": 303,
+   "y": 359,
+   "w": 44,
+   "h": 90,
+   "ax": 20,
+   "ay": 89
+  },
+  "generic.gait": {
+   "x": 716,
+   "y": 359,
+   "w": 89,
+   "h": 86,
+   "ax": 45,
+   "ay": 85
+  },
+  "generic.pain": {
+   "x": 541,
+   "y": 359,
+   "w": 56,
+   "h": 88,
+   "ax": 21,
+   "ay": 87
+  },
+  "generic.done": {
+   "x": 101,
+   "y": 460,
+   "w": 62,
+   "h": 84,
+   "ax": 30,
+   "ay": 83
+  },
+  "generic.talk": {
+   "x": 349,
+   "y": 359,
+   "w": 106,
+   "h": 88,
+   "ax": 51,
+   "ay": 87
+  },
+  "item.bed": {
+   "x": 179,
+   "y": 612,
+   "w": 82,
+   "h": 56,
+   "ax": 41,
+   "ay": 55
+  },
+  "item.traction": {
+   "x": 581,
+   "y": 460,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 62
+  },
+  "item.ball": {
+   "x": 385,
+   "y": 612,
+   "w": 53,
+   "h": 54,
+   "ax": 26,
+   "ay": 53
+  },
+  "item.parallel": {
+   "x": 263,
+   "y": 612,
+   "w": 75,
+   "h": 56,
+   "ax": 38,
+   "ay": 55
+  },
+  "item.step": {
+   "x": 749,
+   "y": 612,
+   "w": 63,
+   "h": 45,
+   "ax": 32,
+   "ay": 44
+  },
+  "item.yoga": {
+   "x": 615,
+   "y": 612,
+   "w": 70,
+   "h": 46,
+   "ax": 35,
+   "ay": 45
+  },
+  "item.band": {
+   "x": 440,
+   "y": 612,
+   "w": 67,
+   "h": 52,
+   "ax": 34,
+   "ay": 51
+  },
+  "item.dumbbell": {
+   "x": 687,
+   "y": 612,
+   "w": 60,
+   "h": 46,
+   "ax": 30,
+   "ay": 45
+  },
+  "item.wheelchair": {
+   "x": 512,
+   "y": 460,
+   "w": 67,
+   "h": 64,
+   "ax": 34,
+   "ay": 63
+  },
+  "item.walker": {
+   "x": 767,
+   "y": 547,
+   "w": 62,
+   "h": 62,
+   "ax": 31,
+   "ay": 61
+  },
+  "item.cane": {
+   "x": 831,
+   "y": 547,
+   "w": 35,
+   "h": 62,
+   "ax": 18,
+   "ay": 61
+  },
+  "item.brace": {
+   "x": 340,
+   "y": 612,
+   "w": 43,
+   "h": 56,
+   "ax": 22,
+   "ay": 55
+  },
+  "item.icepack": {
+   "x": 814,
+   "y": 612,
+   "w": 51,
+   "h": 44,
+   "ax": 26,
+   "ay": 43
+  },
+  "item.hotpack": {
+   "x": 558,
+   "y": 612,
+   "w": 55,
+   "h": 48,
+   "ax": 28,
+   "ay": 47
+  },
+  "item.ultrasound": {
+   "x": 73,
+   "y": 612,
+   "w": 45,
+   "h": 60,
+   "ax": 22,
+   "ay": 59
+  },
+  "item.tens": {
+   "x": 509,
+   "y": 612,
+   "w": 47,
+   "h": 51,
+   "ax": 24,
+   "ay": 50
+  },
+  "scene.clinic": {
+   "x": 2,
+   "y": 2,
+   "w": 401,
+   "h": 194,
+   "ax": 200,
+   "ay": 194
+  },
+  "expr.elder.0": {
+   "x": 646,
+   "y": 460,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.elder.1": {
+   "x": 711,
+   "y": 460,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.elder.2": {
+   "x": 776,
+   "y": 460,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.elder.3": {
+   "x": 841,
+   "y": 460,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.office.0": {
+   "x": 906,
+   "y": 460,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.office.1": {
+   "x": 2,
+   "y": 547,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.office.2": {
+   "x": 67,
+   "y": 547,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.office.3": {
+   "x": 132,
+   "y": 547,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.kid.0": {
+   "x": 197,
+   "y": 547,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.kid.1": {
+   "x": 262,
+   "y": 547,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.kid.2": {
+   "x": 327,
+   "y": 547,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.kid.3": {
+   "x": 392,
+   "y": 547,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.sports.0": {
+   "x": 457,
+   "y": 547,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.sports.1": {
+   "x": 522,
+   "y": 547,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.sports.2": {
+   "x": 587,
+   "y": 547,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  },
+  "expr.sports.3": {
+   "x": 652,
+   "y": 547,
+   "w": 63,
+   "h": 63,
+   "ax": 32,
+   "ay": 63
+  }
+ },
+ "meta": {
+  "source": "user-supplied concept sheet; extracted by tools/build_atlas.py",
+  "padding": 2,
+  "facing": {
+   "staff.doctor": "front",
+   "staff.nurse": "front",
+   "staff.pt": "front",
+   "staff.ot": "front",
+   "staff.pharmacist": "front",
+   "staff.tech": "front",
+   "portrait.doctor": "front",
+   "patient.elder.stand": "right",
+   "patient.elder.walk": "right",
+   "patient.elder.cane": "right",
+   "patient.elder.rehab": "right",
+   "patient.office.work": "right",
+   "patient.office.desk": "right",
+   "patient.office.backpain": "right",
+   "patient.office.rehab": "right",
+   "patient.kid.school": "right",
+   "patient.kid.play": "right",
+   "patient.kid.rehab": "right",
+   "patient.kid.withparent": "right",
+   "patient.sports.run": "right",
+   "patient.sports.train": "right",
+   "patient.sports.stretch": "right",
+   "patient.sports.injured": "front",
+   "generic.stand": "front",
+   "generic.walk_r": "right",
+   "generic.walk_l": "left",
+   "generic.run": "right",
+   "generic.crouch": "right",
+   "generic.rise": "right",
+   "generic.sit": "right",
+   "generic.lie": "front",
+   "generic.treat": "front",
+   "generic.stretch": "right",
+   "generic.joint": "front",
+   "generic.strength": "right",
+   "generic.balance": "front",
+   "generic.gait": "front",
+   "generic.pain": "front",
+   "generic.done": "front",
+   "generic.talk": "front"
+  },
+  "heightPx": {
+   "staff.doctor": 166,
+   "staff.nurse": 159,
+   "staff.pt": 163,
+   "staff.ot": 157,
+   "staff.pharmacist": 159,
+   "staff.tech": 160,
+   "portrait.doctor": 170,
+   "role.inquiry": 61,
+   "role.therapy": 66,
+   "role.assess": 61,
+   "role.educate": 63,
+   "role.equip": 71,
+   "role.record": 59,
+   "patient.elder.stand": 113,
+   "patient.elder.walk": 101,
+   "patient.elder.cane": 114,
+   "patient.elder.rehab": 92,
+   "patient.office.work": 116,
+   "patient.office.desk": 109,
+   "patient.office.backpain": 109,
+   "patient.office.rehab": 115,
+   "patient.kid.school": 108,
+   "patient.kid.play": 82,
+   "patient.kid.rehab": 93,
+   "patient.kid.withparent": 121,
+   "patient.sports.run": 117,
+   "patient.sports.train": 108,
+   "patient.sports.stretch": 96,
+   "patient.sports.injured": 108,
+   "generic.stand": 86,
+   "generic.walk_r": 85,
+   "generic.walk_l": 85,
+   "generic.run": 86,
+   "generic.crouch": 70,
+   "generic.rise": 87,
+   "generic.sit": 87,
+   "generic.lie": 60,
+   "generic.treat": 99,
+   "generic.stretch": 82,
+   "generic.joint": 88,
+   "generic.strength": 86,
+   "generic.balance": 90,
+   "generic.gait": 86,
+   "generic.pain": 88,
+   "generic.done": 84,
+   "generic.talk": 88,
+   "item.bed": 56,
+   "item.traction": 63,
+   "item.ball": 54,
+   "item.parallel": 56,
+   "item.step": 45,
+   "item.yoga": 46,
+   "item.band": 52,
+   "item.dumbbell": 46,
+   "item.wheelchair": 64,
+   "item.walker": 62,
+   "item.cane": 62,
+   "item.brace": 56,
+   "item.icepack": 44,
+   "item.hotpack": 48,
+   "item.ultrasound": 60,
+   "item.tens": 51,
+   "scene.clinic": 194,
+   "expr.elder.0": 63,
+   "expr.elder.1": 63,
+   "expr.elder.2": 63,
+   "expr.elder.3": 63,
+   "expr.office.0": 63,
+   "expr.office.1": 63,
+   "expr.office.2": 63,
+   "expr.office.3": 63,
+   "expr.kid.0": 63,
+   "expr.kid.1": 63,
+   "expr.kid.2": 63,
+   "expr.kid.3": 63,
+   "expr.sports.0": 63,
+   "expr.sports.1": 63,
+   "expr.sports.2": 63,
+   "expr.sports.3": 63
+  }
+ }
+}
