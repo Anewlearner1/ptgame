@@ -45,7 +45,7 @@ await shot('play_build');
   await G(() => { __game.state.money = 2e6; });
   const hb = await G(() => { const o = __game.state.objects.find(o => o.defId === 'tens'); return { id: o.id, x: o.x, y: o.y }; });
   const dest = await G(async ({ id }) => { const b = await import('/js/sim/build.js'), { state } = __game, o = state.objects.find(q => q.id === id), l = state.lot;
-    for (let y = l.y0 + 1; y < l.y0 + l.h - 1; y++) for (let x = l.x0 + 1; x < l.x0 + l.w - 1; x++) if (Math.abs(x - o.x) + Math.abs(y - o.y) >= 3 && b.canMove(state, id, x, y, 0).ok) return { x, y, fee: b.relocationCost(o.defId) };
+    for (let y = l.y0 + l.h - 3; y > l.y0; y--) for (let x = l.x0 + l.w - 2; x > l.x0; x--) if (Math.abs(x - o.x) + Math.abs(y - o.y) >= 3 && b.canMove(state, id, x, y, 0).ok) return { x, y, fee: b.relocationCost(o.defId) };   // front of the lot: nothing tall in front of it
     return null; }, hb);
   const pos = () => G(id => { const o = __game.state.objects.find(q => q.id === id); return { x: o.x, y: o.y, rot: o.rot }; }, hb.id);
   if (await G(() => __game.ui.panel !== 'build')) await side(1);
@@ -84,7 +84,7 @@ await shot('play_build');
   // Shift keeps the tool: move it back
   await page.keyboard.press('m'); await clickTile(page, dest.x, dest.y);
   await page.keyboard.down('Shift'); await clickTile(page, hb.x, hb.y, { modifiers: ['Shift'] }); await page.keyboard.up('Shift');
-  q = await pos(); console.log('DBG', JSON.stringify(q), JSON.stringify(hb), JSON.stringify(await G(() => ({ t: __game.ui.tool, h: __game.ui.hover }))));
+  q = await pos();
   ok(q.x === hb.x && q.y === hb.y && await G(() => __game.ui.tool.mode === 'move'), 'Shift + drop keeps the move tool armed');
   await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
   // selection card has 移動 / 旋轉

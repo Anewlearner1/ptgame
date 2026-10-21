@@ -200,6 +200,8 @@ Economy also handles `treatment:done`: NHI → `state.nhi.weekPoints/monthPoints
 `isUnlocked(state, defId) -> bool` · `canPlace(state, defId, x, y, rot) -> {ok, reason}` (inside lot, free cells, not the entry tile, unlocked, affordable; floors: just inside lot & affordable) · `placeObject(state, defId, x, y, rot) -> obj|null` · `paintFloor(state, floorId, x, y) -> bool` · `removeAt(state, x, y) -> bool` (object topmost first, else floor; refund 50%; also frees any agent using it) · `moveObject?` not required · `seedStarterClinic(state)` · `placementCost(defId)`.
 Every successful change sets `ui.dirtyOcc = true` and emits `map:changed`.
 
+`relocationCost(defId)` (= max(500, 10% of build cost), category 'build') · `canMove(state, objId, x, y, rot) -> {ok, reason, fee}` · `moveObject(state, objId, x, y, rot) -> bool` (keeps id/wear, releases users, recomputes zones/mods, emits `map:changed` + `object:moved {id}`) · `rotateObject(state, objId) -> bool` (free). UI: 「移動」tool (`ui.tool.mode='move'`, key **M**; 地圖 panel hotkey is **P**), touch long-press menu → 移動/旋轉.
+
 ### sim/synergy.js · sim/modifiers.js (S-B)
 `recomputeZones(state)` → fills `state.zones` (see §3.1 synergies) · `recomputeMods(state)` → `state.mods = defaultMods()` then applies, in order: active synergy zones, completed research `mod` effects, current weather mods, active events/community effects, enabled health boards, policy focus, environment comfort. Also exposes `comfortScoreAt(state, x, y) -> number` and `floorGripAt(state, x, y) -> number` used by patients.js (safe to import from `sim/modifiers.js`).
 

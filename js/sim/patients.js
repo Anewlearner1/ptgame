@@ -20,7 +20,8 @@ import { LOTS } from '../data/lots.js';
 import { findPath, findPathToAdjacent, findPathNear, moveAlongPath, pathStillValid, agentTileOk, receptionPost, rescueIfBlocked } from './pathfinding.js';
 import { comfortScoreAt, anxietyReliefAt, floorGripAt, floorWalkMultAt } from './modifiers.js';
 import { isTreatmentUnlocked } from './research.js';
-import { selfPayPrice, resolveCured } from './economy.js';
+import { selfPayPrice, resolveCured, reviewFactor } from './economy.js';
+import { useWear } from './equipment.js';
 import { isStaffAvailable, assignTask, releaseStaff, staffAtStand, tiredFactor, TUNE as STAFF_TUNE } from './staff.js';
 
 // ================= tuning knobs =================
@@ -124,6 +125,7 @@ function buildCtx(state, dt) {
   };
   for (const o of state.objects) {
     c.objById.set(o.id, o);
+    if (o.broken) continue;      // M2: a broken machine is invisible to stations / feasibility (reconcile() releases its users)
     (c.byDef[o.defId] || (c.byDef[o.defId] = [])).push(o);
   }
   for (const s of state.staff) c.staffById.set(s.id, s);
@@ -334,7 +336,7 @@ export function spawnPatient(state, typeId, ret) {
     x: door.x + 0.5, y: door.y + 0.5, path: [], stage: 'arriving',
     plan: steps, planIdx: 0, upsold: false,
     patience, patienceMax: patience,
-    satisfaction: TUNE.SAT_START + (typeId === 'elder' ? (state.mods.elderSat || 0) : 0) + (rnd() * 8 - 4),
+    satisfaction: clamp(TUNE.SAT_START + (typeId === 'elder' ? (state.mods.elderSat || 0) : 0) + (state.mods.satShift || 0) + (rnd() * 8 - 4), 0, 100),
     hp: ret ? ret.hp : 0, cured: false, bubble: null, bubbleCd: 0, targetObj: null, staffId: null,
     seat: null, enteredAt: state.time.clock, waitedMin: 0, paid: { nhi: 0, self: 0 },
     flags: { slipped: false, skipDoc: false },
@@ -400,7 +402,7 @@ function poisson(mu) {
 
 export function expectedArrivalsPerWeek(state) {
   const mods = state.mods;
-  return (TUNE.BASE_ARRIVALS + state.reputation * TUNE.REP_FACTOR) * (mods.spawnMult || 1);
+  return (TUNE.BASE_ARRIVALS + state.reputation * TUNE.REP_FACTOR) * (mods.spawnMult || 1) * reviewFactor(state);
 }
 
 function newDay(state, meta, wk) {
@@ -528,6 +530,8 @@ function reconcile(c) {
     if (p.targetObj && !c.objById.has(p.targetObj)) {
       if (p.stage === 'registering' && p.selfReg) p.targetObj = null;
       else dropAssignment(c, p);
+    } else if (p.targetObj && (p.stage === 'to_station' || p.stage === 'treating') && c.objById.get(p.targetObj).broken) {
+      dropAssignment(c, p);      // M2: station broke down mid-treatment -> abort, patient keeps waiting (or picks another station)
     }
     if ((p.stage === 'to_station' || p.stage === 'treating') && !p.targetObj) dropAssignment(c, p);
     if (p.staffId && !c.staffById.has(p.staffId)) {
@@ -874,7 +878,7 @@ function completeTreatment(c, p) {
   p.patience = Math.min(p.patienceMax, p.patience + 8);
   const sid = staff ? staff.id : null;
   const obj = c.objById.get(p.targetObj);
-  if (obj) obj.wear = (obj.wear || 0) + 1;
+  if (obj) useWear(st, obj);
   if (staff) { releaseStaff(st, staff); staff.state = 'idle'; }
   if (p.targetObj) freeObj(c, p.targetObj);
   p.targetObj = null; p.staffId = null; p.stand = null; p.dest = null; p.path = []; p.remaining = 0; p.needStaff = null;

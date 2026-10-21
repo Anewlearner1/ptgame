@@ -7,6 +7,7 @@ import { BUILDABLES } from '../../data/buildables.js';
 import { SYNERGIES } from '../../data/synergies.js';
 import { LOTS } from '../../data/lots.js';
 import * as ST from '../../sim/staff.js';
+import * as EQ from '../../sim/equipment.js';
 import * as RS from '../../sim/research.js';
 import { removeAt } from '../../sim/build.js';
 import { h, setClass, setText, tabbed, bar, setBar, toneOf, reconcile } from '../dom.js';
@@ -97,19 +98,20 @@ function buildStaff(body, state, ui) {
 
   function traitOf(id) { return TRAITS.find(t => t.id === id); }
   function createStaff(s) {
-    const r = { st: h('span', { class: 'tag' }), stam: bar(), sal: h('span') };
+    const r = { st: h('span', { class: 'tag' }), stam: bar(), mor: bar(), morNum: h('em', { class: 'u-num' }), mood: h('span', { class: 'tag u-tag2 u-mood' }), sal: h('span') };
     const R = STAFF_ROLES[s.role] || {};
     const tr = traitOf(s.trait);
     const el = h('div', { class: 'card u-srow2', role: 'button', tabIndex: 0, dataset: { id: s.id }, onclick: e => { if (!e.target.closest('button')) select(ui, 'staff', s.id); } },
       h('div', { class: 'u-row2' },
         h('span', { class: 'u-sico' }, ROLE_ICONS[s.role] || '🧑‍⚕️'),
         h('div', { class: 'u-grow' }, h('b', null, s.name), ' ', h('span', { class: 'muted u-small' }, R.name || s.role),
-          tr ? h('span', { class: 'tag u-tag2', tip: tr.desc }, tr.name) : null),
+          tr ? h('span', { class: 'tag u-tag2', tip: tr.desc }, tr.name) : null, r.mood),
         r.st),
-      h('div', { class: 'u-bars3' },
+      h('div', { class: 'u-bars3 u-bars4' },
         h('span', { class: 'u-bl' }, '技術', bar(s.skill / 10), h('em', { class: 'u-num' }, s.skill)),
         h('span', { class: 'u-bl' }, '魅力', bar(s.charm / 10), h('em', { class: 'u-num' }, s.charm)),
-        h('span', { class: 'u-bl' }, '體力', r.stam)),
+        h('span', { class: 'u-bl' }, '體力', r.stam),
+        h('span', { class: 'u-bl', tip: '士氣過低（< 25）的醫師／治療師可能遞辭呈。休息室、減少過勞、加薪與好事件都能提升士氣。' }, '士氣', r.mor, r.morNum)),
       h('div', { class: 'row u-between' }, h('span', { class: 'muted u-small' }, '月薪 ', r.sal),
         h('span', { class: 'row' },
           h('button', { class: 'btn small', type: 'button', tip: trainTip(s), onclick: () => train(s) }, '訓練'),
@@ -122,6 +124,11 @@ function buildStaff(body, state, ui) {
     setText(r.st, STAFF_STATE_LABELS[s.state] || s.state);
     const q = s.stamina / (s.staminaMax || 100);
     setBar(r.stam, q, toneOf(q));
+    const mo = ST.moraleOf(s);
+    setBar(r.mor, mo / 100, toneOf(mo / 100));
+    setText(r.morNum, Math.round(mo));
+    const low = mo < ST.MORALE.RESIGN_BELOW && ST.MORALE.RESIGN_ROLES.includes(s.role);
+    r.mood.hidden = !low; setText(r.mood, '想離職');
     let sal = s.salary; try { sal = ST.salaryOf(s); } catch (e) { /* keep */ }
     setText(r.sal, money(sal));
     setClass(el, 'selected', !!(ui.selected && ui.selected.type === 'staff' && ui.selected.id === s.id));
@@ -184,40 +191,105 @@ function buildStaff(body, state, ui) {
 
 // ---------------------------------------------------------------- equipment
 function buildEquip(body, state, ui) {
-  const sum = h('div', { class: 'row u-between' });
+  const sum = h('div', { class: 'row u-between u-eqsum' });
   const tbody = h('tbody');
   const table = h('table', { class: 'list u-eq' },
-    h('thead', null, h('tr', null, h('th', null, '設備'), h('th', null, '位置'), h('th', null, '耗損'), h('th', { class: 'num' }, '維護/月'), h('th'))),
+    h('thead', null, h('tr', null, h('th', null, '設備'), h('th', { class: 'u-poscol' }, '位置'), h('th', null, '耗損'), h('th', { class: 'num u-upcol' }, '維護/月'), h('th'))),
     tbody);
-  body.append(sum, table, h('div', { class: 'muted u-small u-p' }, '出售設備會退回約 50% 造價；設備耗損越高，維護越花錢。點選列可在地圖上選取。'));
+
+  // 保養合約 (M2): half wear speed for N weeks, one price for every machine owned now
+  const contractInfo = h('div', { class: 'u-small' });
+  const contractBtns = EQ.WEAR_TUNE.CONTRACT_WEEKS.map(w => h('button', { class: 'btn small', type: 'button', onclick: () => {
+    const r = EQ.signMaintenance(state, w);
+    bus.emit('toast', r.ok ? { text: `已簽 ${w} 週保養合約（${money(r.cost)}），期間設備耗損減半`, kind: 'good' } : { text: `無法簽約：${r.reason}`, kind: 'bad' });
+  } }, `${w} 週`));
+  const contract = h('div', { class: 'card u-contract' },
+    h('div', { class: 'u-row2' }, h('span', { class: 'u-sico' }, '🧰'), h('div', { class: 'u-grow' }, h('b', null, '保養合約'), contractInfo)),
+    h('div', { class: 'row u-contract-btns' }, contractBtns));
+
+  body.append(sum, contract, table, h('div', { class: 'muted u-small u-p' }, '電療、牽引、熱敷、超音波、震波、雷射、懸吊等儀器會隨使用耗損：≥ 70 顯示老舊，≥ 90 每週有機會故障（故障的儀器無法使用，需「維修」）。「保養」可預防，保養合約期間耗損減半。出售設備會退回約 50% 造價。點選列可在地圖上選取。'));
+
+  function toast(r, okText) {
+    bus.emit('toast', r.ok ? { text: `${okText}（${money(r.cost)}）`, kind: 'good' } : { text: r.reason || '無法執行', kind: 'bad' });
+  }
   function create(o) {
     const d = BUILDABLES[o.defId] || {};
-    const wear = bar();
+    const wear = bar(), wearNum = h('em', { class: 'u-num' });
+    const badges = h('span', { class: 'u-eqbadges' });
+    const repair = h('button', { class: 'btn small primary', type: 'button', onclick: () => toast(EQ.repairObject(state, o.id), `已修復${d.name || ''}`) });
+    const service = h('button', { class: 'btn small', type: 'button', onclick: () => toast(EQ.serviceObject(state, o.id), `已保養${d.name || ''}`) });
+    const sell = h('button', { class: 'btn small danger', type: 'button', onclick: () => {
+      confirmDialog({
+        title: '出售設備', text: `確定出售「${d.name}」？退回約 ${money(Math.floor((d.cost || 0) / 2))}。`, okLabel: '出售', danger: true,
+        onOk: () => { removeAt(state, o.x, o.y); },
+      });
+    } }, '出售');
+    const wearCell = h('td', { class: 'u-wearcell' }, h('span', { class: 'u-wearin' }, wear, wearNum));
     const tr = h('tr', { dataset: { id: o.id }, onclick: e => { if (!e.target.closest('button')) select(ui, 'object', o.id); } },
-      h('td', null, `${d.glyph || ''} ${d.name || o.defId}`),
-      h('td', { class: 'muted' }, `${o.x},${o.y}`),
-      h('td', { class: 'u-wearcell' }, wear),
-      h('td', { class: 'num' }, fmt(d.upkeep || 0)),
-      h('td', null, h('button', { class: 'btn small danger', type: 'button', onclick: () => {
-        confirmDialog({
-          title: '出售設備', text: `確定出售「${d.name}」？退回約 ${money(Math.floor((d.cost || 0) / 2))}。`, okLabel: '出售', danger: true,
-          onOk: () => { removeAt(state, o.x, o.y); },
-        });
-      } }, '出售')));
-    tr._wear = wear;
+      h('td', null, h('span', { class: 'u-eqname' }, `${d.glyph || ''} ${d.name || o.defId}`), badges),
+      h('td', { class: 'muted u-poscol' }, `${o.x},${o.y}`),
+      wearCell,
+      h('td', { class: 'num u-upcol' }, fmt(d.upkeep || 0)),
+      h('td', { class: 'u-actcell' }, h('span', { class: 'u-acts' }, repair, service, sell)));
+    tr._r = { wear, wearNum, badges, repair, service, wearCell, wearable: EQ.isWearable(o.defId) };
     return tr;
   }
   function upd(tr, o) {
-    const w = o.wear > 1 ? o.wear / 100 : (o.wear || 0);
-    setBar(tr._wear, w, w > 0.7 ? 'bad' : w > 0.4 ? 'warn' : '');
+    const r = tr._r;
+    const wearable = r.wearable;
+    const w = EQ.wearOf(o);
+    r.wearCell.firstChild.hidden = !wearable;
+    if (wearable) {
+      setBar(r.wear, w / 100, o.broken || w >= EQ.WEAR_TUNE.OLD_AT ? 'bad' : w >= 50 ? 'warn' : '');
+      setText(r.wearNum, Math.round(w));
+    }
+    const maint = EQ.maintainedWeeksLeft(state, o);
+    const key = (o.broken ? 'B' : '') + (wearable && w >= EQ.WEAR_TUNE.OLD_AT ? 'O' : '') + (maint > 0 ? 'M' + maint : '');
+    if (r.badges._k !== key) {
+      r.badges._k = key;
+      r.badges.replaceChildren(
+        o.broken ? h('span', { class: 'tag u-eqb bad' }, '故障') : null,
+        !o.broken && wearable && w >= EQ.WEAR_TUNE.OLD_AT ? h('span', { class: 'tag u-eqb warn' }, '老舊') : null,
+        maint > 0 ? h('span', { class: 'tag u-eqb good', tip: '保養合約中：耗損速度減半' }, `合約 ${maint} 週`) : null);
+    }
+    setClass(tr, 'u-broken', !!o.broken);
+    r.repair.hidden = !o.broken;
+    r.service.hidden = !wearable || !!o.broken;
+    if (o.broken) {
+      const c = EQ.repairCost(o);
+      setText(r.repair, `維修 ${fmt(c)}`); r.repair.dataset.tip = `維修費 ${money(c)}，修好後耗損歸零`; r.repair.disabled = state.money < c;
+    }
+    if (wearable && !o.broken) {
+      const c = EQ.serviceCost(o);
+      setText(r.service, `保養 ${fmt(c)}`); r.service.dataset.tip = `保養費 ${money(c)}，耗損歸零`; r.service.disabled = state.money < c || w <= 0;
+    }
     setClass(tr, 'u-sel', !!(ui.selected && ui.selected.type === 'object' && ui.selected.id === o.id));
   }
   return {
     update() {
       const objs = state.objects;
       reconcile(tbody, objs, o => o.id, create, upd);
-      let up = 0; for (const o of objs) up += (BUILDABLES[o.defId] || {}).upkeep || 0;
-      sum._k !== objs.length + '|' + up && (sum._k = objs.length + '|' + up, sum.replaceChildren(h('span', null, `共 ${objs.length} 件設備`), h('b', null, `維護費合計 ${money(up)} / 月`)));
+      let up = 0, nb = 0, nw = 0, nWear = 0;
+      for (const o of objs) {
+        up += (BUILDABLES[o.defId] || {}).upkeep || 0;
+        if (EQ.isWearable(o.defId)) { nWear++; if (o.broken) nb++; else if (EQ.isWorn(o)) nw++; }
+      }
+      const k = objs.length + '|' + up + '|' + nb + '|' + nw;
+      if (sum._k !== k) {
+        sum._k = k;
+        sum.replaceChildren(h('span', null, `共 ${objs.length} 件設備`,
+          nb ? h('b', { class: 'bad' }, `　故障 ${nb}`) : null, nw ? h('b', { class: 'warn-text' }, `　老舊 ${nw}`) : null),
+        h('b', null, `維護費合計 ${money(up)} / 月`));
+      }
+      // maintenance contract box
+      const cw = Math.max(0, ...EQ.wearables(state).map(o => EQ.maintainedWeeksLeft(state, o)));
+      const info = nWear ? (cw > 0 ? `保養合約生效中，剩 ${cw} 週：儀器耗損速度減半。` : '簽約期間所有儀器耗損速度減半（只涵蓋簽約當下已有的儀器）。') : '還沒有會耗損的儀器（電療、牽引、熱敷等）。';
+      setText(contractInfo, info);
+      EQ.WEAR_TUNE.CONTRACT_WEEKS.forEach((w, i) => {
+        const c = EQ.contractCost(state, w), btn = contractBtns[i];
+        setText(btn, `${w} 週　${fmt(c)}`);
+        btn.disabled = !nWear || state.money < c;
+      });
     },
   };
 }

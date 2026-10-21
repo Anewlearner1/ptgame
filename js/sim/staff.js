@@ -191,11 +191,14 @@ export function addMorale(state, role, delta) {
   }
   return n;
 }
-export function addStamina(state, role, delta) {
+// `carry`: the effect happens at the very start of a new day (week:start), just before the overnight regeneration in
+// updateStaff would wash it out - so it is applied after that regeneration instead.
+export function addStamina(state, role, delta, carry) {
   let n = 0;
   for (const s of state.staff) {
     if (role && s.role !== role) continue;
-    s.stamina = clamp((typeof s.stamina === 'number' ? s.stamina : s.staminaMax || 100) + delta, 0, s.staminaMax || 100);
+    if (carry) s.staminaCarry = (s.staminaCarry || 0) + delta;
+    else s.stamina = clamp((typeof s.stamina === 'number' ? s.stamina : s.staminaMax || 100) + delta, 0, s.staminaMax || 100);
     n++;
   }
   return n;
@@ -408,6 +411,7 @@ export function updateStaff(state, dtMin) {
     if (s.restObj === undefined) s.restObj = null;
     if (s.bubble) { s.bubble.ttl -= dtMin; if (s.bubble.ttl <= 0) s.bubble = null; }
     if (newDay) s.stamina = Math.min(s.staminaMax, s.stamina + s.staminaMax * TUNE.OVERNIGHT_REGEN);
+    if (s.staminaCarry) { s.stamina = clamp(s.stamina + s.staminaCarry, 0, s.staminaMax); delete s.staminaCarry; }
 
     // drop jobs whose patient disappeared
     if (s.task && !patientIds.has(s.task.patientId)) releaseStaff(state, s);

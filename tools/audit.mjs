@@ -3,8 +3,9 @@
 // Usage (from repo root; no server needed):
 //   node tools/audit.mjs                 # everything, 5 simulated years per long-run policy (a few minutes)
 //   node tools/audit.mjs --quick         # 2 years per policy (~1-2 min) - good for CI
-//   node tools/audit.mjs --only features,edge,save   # run only some sections: features | edge | save | longrun | achievements
+//   node tools/audit.mjs --only features,edge,save   # run only some sections: features | edge | save | longrun | achievements | events
 //   node tools/audit.mjs --years 3 --policies idle,chaos --seed 7 [--verbose]
+//   (events = docs/EVENTS_EXT.md: every event x every choice, cond evaluator, wear/morale/risk/review/buffs/follow-ups)
 // Exit code 1 if any assertion fails. Prints a feature-conformance table at the end.
 //
 // The sim uses Math.random everywhere (state.seed is only informational), so the harness installs a seeded PRNG
@@ -107,7 +108,9 @@ function fresh(seed = SEED, liveAchv = false) {
 function resolvePending() {
   const pd = state.events.pendingDilemma;
   if (!pd) return;
-  Ev.resolveDilemma(state, Math.floor(rng() * pd.choices.length));
+  const ok = pd.choices.map((c, i) => i).filter(i => Ev.choiceAffordable(state, pd.choices[i]));   // the UI disables unaffordable options
+  const pool = ok.length ? ok : pd.choices.map((c, i) => i);
+  Ev.resolveDilemma(state, pool[Math.floor(rng() * pool.length)]);
   state.time.paused = false;
 }
 function step(dt = 1, resolve = true) {
@@ -176,6 +179,19 @@ function invariants() {
       must(A.title === null || !!(A.unlocked[A.title] && (ACHD.ACHIEVEMENTS.find(d => d.id === A.title) || {}).title), 'achv title invalid');
       for (const [k, v] of Object.entries(A.counters)) if (typeof v === 'number') must(Number.isFinite(v) && (k === 'lowestMoneySeen' || k === 'startMoney' || v >= 0), 'achv counter ' + k + '=' + v);
     }
+  }
+  { // M2 / M3 / M4 / M5 / M7 / M10 fields stay in range
+    for (const o of state.objects) { must(o.wear === undefined || (o.wear >= 0 && o.wear <= 100), 'wear out of range ' + o.defId + ' ' + o.wear); }
+    const rk = state.nhi.risk, rv = state.reviewScore;
+    must(rk === undefined || (rk >= 0 && rk <= 100), 'risk out of range ' + rk);
+    must(rv === undefined || (rv >= 1 && rv <= 5), 'reviewScore out of range ' + rv);
+    for (const s of state.staff) must(s.morale === undefined || (s.morale >= 0 && s.morale <= 100), 'morale out of range ' + s.morale);
+    const ev = state.events;
+    must(!ev.buffs || (Array.isArray(ev.buffs) && ev.buffs.every(b => b.weeksLeft > 0 && b.mods && typeof b.label === 'string')), 'buffs malformed');
+    must(!ev.flags || typeof ev.flags === 'object', 'flags malformed');
+    must(!ev.pendingFollowUps || ev.pendingFollowUps.every(f => typeof f.id === 'string' && Number.isFinite(f.due)), 'followUps malformed');
+    must(!ev.pendingFollowUps || ev.pendingFollowUps.length <= 40, 'too many follow-ups');
+    must(!ev.buffs || ev.buffs.length <= 40, 'too many buffs');
   }
   const e = entryTile(state);
   must(!cells.has(e.x + ',' + e.y), 'entry tile blocked');
@@ -492,7 +508,7 @@ function featuresSection() {
     for (const b of EVD.BOARDS) for (const k of Object.keys(b.effects || {})) if (!okKey(k)) bad.push('board ' + b.id + ':' + k);
     for (const z of SYNERGIES) { for (const k of Object.keys(z.effects || {})) if (!okKey(k)) bad.push('synergy ' + z.id + ':' + k); for (const n of z.needs) if (!BUILDABLES[n]) bad.push('synergy ' + z.id + ' needs ' + n); }
     for (const c of EVD.COMMUNITY) { for (const t of Object.keys((c.effects || {}).spawn || {})) if (!PATIENT_TYPES[t]) bad.push('community ' + c.id + ' type ' + t); for (const k of Object.keys((c.effects || {}).mods || {})) if (!okKey(k)) bad.push('community ' + c.id + ':' + k); }
-    const fxKeys = new Set(['money', 'reputation', 'points', 'sat', 'nhiPenalty']);
+    const fxKeys = new Set(['money', 'reputation', 'points', 'sat', 'nhiPenalty', 'risk']);
     for (const e of [...EVD.RANDOM_EVENTS, ...EVD.DILEMMAS]) for (const ch of e.choices) {
       for (const k of Object.keys(ch.effects || {})) if (!fxKeys.has(k)) bad.push(e.id + ' effect ' + k);
       for (const k of Object.keys((ch.effects || {}).points || {})) if (!K.POINT_KEYS.includes(k)) bad.push(e.id + ' points ' + k);
@@ -903,7 +919,7 @@ function edgeSection() {
   check('board: toggling on without funds refused', Ev.setBoard(state, EVD.BOARDS[0].id, true) === false && !state.policy.boards.length);
   state.money = 1e6; check('board: on then off', Ev.setBoard(state, EVD.BOARDS[0].id, true) && Ev.setBoard(state, EVD.BOARDS[0].id, false) && !state.policy.boards.length);
   check('focus: bad value refused, good applied', Ev.setFocus(state, 'xxx') === false && Ev.setFocus(state, 'ltc') && near(state.mods.typeSpawn.elder, 1.6));
-  fresh(); state.money = 0; Ev.triggerEvent(state, 'vendor_promo'); Ev.resolveDilemma(state, 0);
+  fresh(); state.money = 0; Ev.triggerEvent(state, 'nhi_audit'); Ev.resolveDilemma(state, 1);
   check('event cost with no money: money may go negative, ledger consistent', state.money < 0 && invariants().length === 0, invariants().join(';'));
 }
 
@@ -1319,10 +1335,689 @@ function achievementsSection() {
 }
 
 // =====================================================================================================
+// SECTION: events (docs/EVENTS_EXT.md): data validation, cond evaluator, every event x choice, M2 wear / M3 risk / M4 morale /
+// M5 buffs / M7 review / M10 flags+follow-ups, save round trip mid-buff
+// =====================================================================================================
+const EQ = await imp('sim/equipment.js');
+const { FOCUS } = await imp('data/patients.js');
+const EXT = { A: await imp('data/events_ext.js'), B: await imp('data/events_ext2.js') };
+const COND_KEYS = new Set(['months', 'weather', 'weatherId', 'minYear', 'maxYear', 'minRep', 'maxRep', 'minLot', 'hasObject', 'needObjects', 'hasStaff', 'pvBelow', 'policy', 'flag', 'notFlag',
+  'riskAtLeast', 'riskAtMost', 'wearAtLeast', 'moraleBelow', 'reviewBelow', 'monthPointsOverCapPct', 'minPatientsTotal']);
+const FX_KEYS = new Set(['money', 'reputation', 'sat', 'nhiPenalty', 'points', 'buff', 'setFlag', 'clearFlag', 'followUp', 'risk', 'wear', 'breakdown', 'repair', 'stamina', 'morale', 'resign', 'reviewScore', 'maintenance']);
+const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
+const RICH_LAY = [['reception', 16, 17], ['sofa', 10, 17], ['sofa', 12, 17], ['sofa', 10, 15], ['tv', 12, 15], ['water', 14, 17], ['plant', 9, 19], ['plant', 13, 19], ['plant', 14, 15],
+  ['exam_room', 9, 8], ['exam_room', 11, 8], ['manual_room', 14, 8], ['laser_room', 16, 8], ['redcord', 18, 8], ['shockwave', 13, 10], ['coffee', 12, 10],
+  ['heatbox', 10, 12], ['heatbox', 11, 12], ['heatbox', 12, 12], ['tens', 13, 12], ['tens', 14, 12], ['tens', 15, 12], ['traction', 16, 12], ['traction', 17, 12], ['bed', 19, 12], ['bed', 20, 12], ['bed', 21, 12],
+  ['rest_room', 21, 16], ['ir_lamp', 18, 15], ['ball_pit', 20, 9], ['soft_mat', 20, 11]];
+function putAnywhere(defId) {
+  const l = state.lot;
+  for (let y = l.y0; y < l.y0 + l.h; y++) for (let x = l.x0; x < l.x0 + l.w; x++) if (B.canPlace(state, defId, x, y, 0).ok) return put(defId, x, y);
+  return null;
+}
+// L1 clinic with every wearable machine, two of each licensed role, lots of cash
+function richClinic(seed = SEED) {
+  fresh(seed);
+  state.money = 5e6; state.reputation = 300; state.research.done = Object.keys(RESEARCH);
+  state.lotLevel = 1; state.lot = { ...LOTS[1].lot }; state.door = { ...LOTS[1].door }; state.time.year = 2;
+  state.objects = []; state.staff = []; refresh();
+  opts_quietPut = true;
+  for (const [d, x, y] of RICH_LAY) put(d, x, y);
+  for (const d of ['us_room', 'shockwave_room']) putAnywhere(d);
+  opts_quietPut = false;
+  for (const r of ['doctor', 'doctor', 'pt', 'pt', 'ot', 'ot', 'st', 'st', 'nurse', 'nurse']) state.staff.push(S.createStaff(state, r, null, 16 + (state.staff.length % 3), 14));
+  refresh();
+  return state;
+}
+const wearables = () => state.objects.filter(o => EQ.isWearable(o.defId));
+function baselineMods(withoutBuffs = true) {
+  const keep = state.events.buffs; if (withoutBuffs) state.events.buffs = [];
+  const m = JSON.parse(JSON.stringify(Mod.recomputeMods(state)));
+  state.events.buffs = keep; Mod.recomputeMods(state);
+  return m;
+}
+
+function eventsSection() {
+  section('Events engine (EVENTS_EXT)');
+  const pool = Ev.eventPool();
+  const TUNE0 = { ...Ev.EVENT_TUNE };
+  const restoreTune = () => Object.assign(Ev.EVENT_TUNE, TUNE0);
+
+  // ---------------- A. data validation ----------------
+  {
+    const bad = [], notes = [];
+    const ids = new Set(), dupe = [];
+    const allDefs = [...EVD.RANDOM_EVENTS, ...EXT.A.EVENTS_EXT_A, ...EXT.B.EVENTS_EXT_B];
+    for (const d of allDefs) { if (ids.has(d.id)) dupe.push(d.id); ids.add(d.id); }
+    check('events: ids unique across RANDOM_EVENTS + EXT_A + EXT_B', dupe.length === 0, dupe.join());
+    check('events: the pool merges all three data sets', pool.length === ids.size && pool.length >= 58, `${pool.length}/${ids.size}`);
+    check('events: EXT_A has 30 and EXT_B 28 events (A01-A14,B01-B16 / C01-C16,D01-D12)', EXT.A.EVENTS_EXT_A.length === 30 && EXT.B.EVENTS_EXT_B.length === 28, `${EXT.A.EVENTS_EXT_A.length}/${EXT.B.EVENTS_EXT_B.length}`);
+    const modKeys = new Set(Object.keys(defaultMods()));
+    const okMod = (k) => modKeys.has(k) || k === 'satShift' || k === 'nhiCapBonus';
+    const checkFx = (id, tag, fx) => {
+      for (const k of Object.keys(fx || {})) {
+        if (!FX_KEYS.has(k)) bad.push(`${id} ${tag}: unknown effect key ${k}`);
+      }
+      if (!fx) return;
+      for (const k of Object.keys(fx.points || {})) if (!K.POINT_KEYS.includes(k)) bad.push(`${id} ${tag}: points.${k}`);
+      for (const k of ['money', 'reputation', 'sat', 'nhiPenalty', 'risk', 'reviewScore', 'maintenance']) if (fx[k] !== undefined && !Number.isFinite(fx[k])) bad.push(`${id} ${tag}: ${k} not a number`);
+      if (fx.buff) {
+        const b = fx.buff;
+        if (!(b.weeks >= 1) || !b.label) bad.push(`${id} ${tag}: buff needs weeks>=1 and a label`);
+        for (const k of Object.keys(b.mods || {})) if (!okMod(k) || !Number.isFinite(b.mods[k])) bad.push(`${id} ${tag}: buff mod ${k}`);
+        for (const t of Object.keys(b.spawn || {})) if (!PATIENT_TYPES[t] || !Number.isFinite(b.spawn[t])) bad.push(`${id} ${tag}: buff spawn ${t}`);
+        if (!Object.keys(b.mods || {}).length && !Object.keys(b.spawn || {}).length) bad.push(`${id} ${tag}: buff without mods/spawn`);
+      }
+      if (fx.setFlag !== undefined && typeof fx.setFlag !== 'string') bad.push(`${id} ${tag}: setFlag`);
+      if (fx.clearFlag !== undefined && typeof fx.clearFlag !== 'string') bad.push(`${id} ${tag}: clearFlag`);
+      if (fx.followUp && (!ids.has(fx.followUp.id) || !(fx.followUp.afterWeeks >= 0) || (fx.followUp.p !== undefined && !(fx.followUp.p >= 0 && fx.followUp.p <= 1)))) bad.push(`${id} ${tag}: followUp ${JSON.stringify(fx.followUp)}`);
+      if (fx.wear && (!(fx.wear.target === 'all' || fx.wear.target === 'random' || EQ.isWearable(fx.wear.target)) || !Number.isFinite(fx.wear.delta))) bad.push(`${id} ${tag}: wear ${JSON.stringify(fx.wear)}`);
+      if (fx.breakdown !== undefined && !(fx.breakdown === 'random' || EQ.isWearable(fx.breakdown))) bad.push(`${id} ${tag}: breakdown ${fx.breakdown}`);
+      if (fx.repair !== undefined && !(fx.repair === 'all' || fx.repair === 'broken')) bad.push(`${id} ${tag}: repair ${fx.repair}`);
+      for (const k of ['stamina', 'morale']) if (fx[k] && (!Number.isFinite(fx[k].delta) || (fx[k].role !== undefined && !K.ROLES.includes(fx[k].role)))) bad.push(`${id} ${tag}: ${k} ${JSON.stringify(fx[k])}`);
+      if (fx.resign && (!K.ROLES.includes(fx.resign.role) || !(fx.resign.p >= 0 && fx.resign.p <= 1))) bad.push(`${id} ${tag}: resign ${JSON.stringify(fx.resign)}`);
+    };
+    for (const d of allDefs) {
+      if (!d.title || !d.text) bad.push(d.id + ': missing title/text');
+      if (d.cat !== undefined && !['nhi', 'patient', 'ops', 'season'].includes(d.cat)) bad.push(d.id + ': cat ' + d.cat);
+      for (const k of Object.keys(d.cond || {})) if (!COND_KEYS.has(k)) bad.push(`${d.id}: unknown cond key ${k}`);
+      if (d.cond && d.cond.hasStaff) for (const r of Object.keys(d.cond.hasStaff)) if (!K.ROLES.includes(r)) bad.push(`${d.id}: hasStaff role ${r}`);
+      for (const key of ['hasObject', 'needObjects']) for (const o of (d.cond && d.cond[key]) || []) if (!BUILDABLES[o]) bad.push(`${d.id}: ${key} ${o}`);
+      if (d.cond && d.cond.wearAtLeast && d.cond.wearAtLeast.defId && !BUILDABLES[d.cond.wearAtLeast.defId]) bad.push(`${d.id}: wearAtLeast def`);
+      if (!Array.isArray(d.choices) || d.choices.length < 2 || d.choices.length > 3) bad.push(`${d.id}: needs 2-3 choices (${(d.choices || []).length})`);
+      let free = 0;
+      (d.choices || []).forEach((c, i) => {
+        const tag = 'c' + i;
+        if (!c.label) bad.push(`${d.id} ${tag}: label`);
+        if (c.chance) {
+          if (c.effects) bad.push(`${d.id} ${tag}: chance and effects are exclusive`);
+          if (!(c.chance.p >= 0 && c.chance.p <= 1)) bad.push(`${d.id} ${tag}: chance.p`);
+          for (const side of ['win', 'lose']) {
+            const s = c.chance[side];
+            if (!s || typeof s.result !== 'string' || !s.result || !s.effects) bad.push(`${d.id} ${tag}: chance.${side} needs effects + result`);
+            else checkFx(d.id, `${tag}.${side}`, s.effects);
+          }
+        } else {
+          if (!c.result) bad.push(`${d.id} ${tag}: result`);
+          if (!c.effects) bad.push(`${d.id} ${tag}: effects missing`);
+          checkFx(d.id, tag, c.effects);
+        }
+        if (c.requires) { if (!(c.requires.money > 0)) bad.push(`${d.id} ${tag}: requires`); } else free++;
+      });
+      if (!free) notes.push(d.id);
+    }
+    if (notes.length) console.log('  (data note) every option needs money in: ' + notes.join(', ') + ' - the engine frees the last option when the player is broke');
+    check('events data: schema (cond keys, effect keys, buffs, flags, follow-ups, wear/role targets) is valid', bad.length === 0, bad.slice(0, 6).join(' | ') + (bad.length > 6 ? ` (+${bad.length - 6})` : ''));
+    // every flag that is read by a cond is set by some choice (otherwise the event can never fire)
+    const setters = new Set(), readers = new Set();
+    for (const d of allDefs) {
+      for (const c of d.choices) for (const fx of [c.effects, c.chance && c.chance.win.effects, c.chance && c.chance.lose.effects]) if (fx && fx.setFlag) setters.add(fx.setFlag);
+      for (const f of [].concat((d.cond || {}).flag || [])) readers.add(f);
+    }
+    check('events data: every cond.flag is set by some choice', [...readers].every(f => setters.has(f)), [...readers].filter(f => !setters.has(f)).join());
+    check('events data: at least 1 event per category and 8+ season events', ['nhi', 'patient', 'ops', 'season'].every(c => pool.some(d => d.cat === c)) && pool.filter(d => d.cat === 'season').length >= 8);
+  }
+
+  // ---------------- B. cond evaluator, one test per key (M1) ----------------
+  {
+    const cm = (cond) => Ev.condMet(state, cond);
+    richClinic();
+    state.time.month = 5; state.weather = { kind: 'rain', id: 'plumrain', temp: 25 };
+    check('cond: empty / missing cond is always true, unknown keys ignored', cm({}) && cm(undefined) && cm({ bogusKey: 1 }));
+    check('cond.months', cm({ months: [5] }) && cm({ months: [1, 5, 12] }) && !cm({ months: [6, 7] }));
+    check('cond.weather (kind)', cm({ weather: ['rain'] }) && cm({ weather: ['rain', 'cold'] }) && !cm({ weather: ['cold', 'hot'] }));
+    check('cond.weatherId (梅雨)', cm({ weatherId: 'plumrain' }) && !cm({ weatherId: 'rain' }));
+    state.time.year = 3;
+    check('cond.minYear / maxYear', cm({ minYear: 3 }) && !cm({ minYear: 4 }) && cm({ maxYear: 3 }) && !cm({ maxYear: 2 }) && cm({ minYear: 2, maxYear: 4 }));
+    state.reputation = 150;
+    check('cond.minRep / maxRep', cm({ minRep: 150 }) && !cm({ minRep: 151 }) && cm({ maxRep: 150 }) && !cm({ maxRep: 149 }));
+    check('cond.minLot', cm({ minLot: 1 }) && !cm({ minLot: 2 }));
+    check('cond.hasObject (any of)', cm({ hasObject: ['tens'] }) && cm({ hasObject: ['nope', 'tens'] }) && !cm({ hasObject: ['nope'] }));
+    check('cond.needObjects (all of)', cm({ needObjects: ['tens', 'heatbox'] }) && !cm({ needObjects: ['tens', 'nope'] }));
+    check('cond.hasStaff {role:n}', cm({ hasStaff: { pt: 2 } }) && !cm({ hasStaff: { pt: 3 } }) && cm({ hasStaff: { pt: 1, nurse: 2 } }) && !cm({ hasStaff: { pt: 1, nurse: 3 } }));
+    state.nhi.pointValue = 0.8;
+    check('cond.pvBelow (last settled point value)', cm({ pvBelow: 0.9 }) && !cm({ pvBelow: 0.8 }) && !cm({ pvBelow: 0.5 }));
+    state.policy.focus = 'ltc';
+    check('cond.policy', cm({ policy: 'ltc' }) && !cm({ policy: 'ortho' }) && !cm({ policy: 'peds' }));
+    state.events.flags = { seen_x: true };
+    check('cond.flag / notFlag', cm({ flag: 'seen_x' }) && !cm({ flag: 'seen_y' }) && cm({ notFlag: 'seen_y' }) && !cm({ notFlag: 'seen_x' }));
+    state.nhi.risk = 40;
+    check('cond.riskAtLeast / riskAtMost', cm({ riskAtLeast: 40 }) && !cm({ riskAtLeast: 41 }) && cm({ riskAtMost: 40 }) && !cm({ riskAtMost: 39 }));
+    for (const o of state.objects) if (EQ.isWearable(o.defId)) o.wear = 20;
+    state.objects.find(o => o.defId === 'tens').wear = 75;
+    check('cond.wearAtLeast {defId,n} (specific machine)', cm({ wearAtLeast: { defId: 'tens', n: 70 } }) && !cm({ wearAtLeast: { defId: 'tens', n: 80 } }) && !cm({ wearAtLeast: { defId: 'heatbox', n: 70 } }));
+    check('cond.wearAtLeast {n} (any machine)', cm({ wearAtLeast: { n: 70 } }) && !cm({ wearAtLeast: { n: 80 } }));
+    for (const s of state.staff) s.morale = 70;
+    state.staff[2].morale = 30;
+    check('cond.moraleBelow (any staff)', cm({ moraleBelow: 40 }) && !cm({ moraleBelow: 30 }) && !cm({ moraleBelow: 20 }));
+    state.reviewScore = 3.5;
+    check('cond.reviewBelow', cm({ reviewBelow: 4 }) && !cm({ reviewBelow: 3.5 }) && !cm({ reviewBelow: 3 }));
+    const cap = Eco.nhiCap(state);
+    state.nhi.monthPoints = cap * 0.95;
+    check('cond.monthPointsOverCapPct', cm({ monthPointsOverCapPct: 90 }) && !cm({ monthPointsOverCapPct: 100 }));
+    state.stats.patientsTotal = 120;
+    check('cond.minPatientsTotal', cm({ minPatientsTotal: 100 }) && !cm({ minPatientsTotal: 121 }));
+    check('cond: keys combine with AND', cm({ months: [5], minYear: 3, hasObject: ['tens'], flag: 'seen_x' }) && !cm({ months: [5], minYear: 3, hasObject: ['tens'], flag: 'nope' }));
+    // pool filtering uses the same evaluator, honours cooldowns, and the monthly cap on `big` events
+    richClinic(); state.time.month = 6; state.weather = { kind: 'sunny', id: 'sunny', temp: 28 };
+    const all0 = Ev.eligibleEvents(state);
+    check('events: eligibility respects cond (season events need their month/weather)', !all0.some(d => d.id === 'cold_joint_surge') && !all0.some(d => d.id === 'cny_back_strain'));
+    state.time.month = 1; state.weather = { kind: 'cold', id: 'cold', temp: 10 };
+    check('events: season events become eligible in season', Ev.eligibleEvents(state).some(d => d.id === 'cold_joint_surge') && Ev.eligibleEvents(state).some(d => d.id === 'cny_back_strain'));
+    state.events.cooldowns = { 'evt:cold_joint_surge': Cal.absoluteWeek(state) + 5 };
+    check('events: cooldownWeeks excludes an event until it expires', !Ev.eligibleEvents(state).some(d => d.id === 'cold_joint_surge'));
+    state.events.cooldowns = {};
+    state.time.year = 3; state.nhi.monthPoints = Eco.nhiCap(state);
+    const bigs = pool.filter(d => d.big);
+    check('events: there are big events and they carry weight 3 by default / explicit', bigs.length >= 6, String(bigs.length));
+    check('events: before that, some big event is eligible', Ev.eligibleEvents(state).some(d => d.big));
+    Ev.triggerEvent(state, bigs[0].id); Ev.resolveDilemma(state, 0);
+    check('events: after one big event the month allows no other big (cap 1 per month)', !Ev.eligibleEvents(state).some(d => d.big));
+    state.time.month = 2;
+    check('events: the cap resets next month', Ev.eligibleEvents(state).some(d => d.big));
+    // weights
+    richClinic();
+    const w0 = Ev.eventWeight(state, pool.find(d => d.cat === 'season'));
+    check('events: season weight x1.5', near(w0, pool.find(d => d.cat === 'season').weight * 1.5));
+    const nhiDef = pool.find(d => d.cat === 'nhi');
+    state.nhi.risk = 10; const wLow = Ev.eventWeight(state, nhiDef); state.nhi.risk = 80; const wHigh = Ev.eventWeight(state, nhiDef);
+    check('events: nhi-category weight x2 while risk > 60', near(wHigh, wLow * 2) && near(wLow, nhiDef.weight));
+  }
+
+  // ---------------- C. every event x every choice (x win/lose) ----------------
+  {
+    let combos = 0, fail = 0;
+    const failures = [];
+    const bad = (m) => { fail++; if (failures.length < 8) failures.push(m); };
+    const clinicPre = () => {
+      richClinic();
+      state.time.clock = 600;                                   // mid-day: stamina effects apply immediately
+      state.nhi.monthPoints = 20000; state.nhi.risk = 50; state.reviewScore = 3;
+      for (const o of wearables()) { o.wear = 50; }
+      for (const s of state.staff) { s.morale = 60; s.stamina = s.staminaMax / 2; }
+    };
+    for (const def of pool) {
+      def.choices.forEach((c, i) => {
+        for (const roll of c.chance ? ['win', 'lose'] : [undefined]) {
+          const tag = `${def.id}#${i}${roll ? '/' + roll : ''}`;
+          combos++;
+          clinicPre();
+          const hasRepair = (c.chance ? c.chance[roll].effects : c.effects).repair;
+          if (hasRepair) { const v = state.objects.find(o => o.defId === 'ir_lamp'); EQ.breakObject(state, v); }
+          const fx = c.chance ? c.chance[roll].effects : c.effects;
+          const before = {
+            money: state.money, rep: state.reputation, pts: { ...state.points }, mp: state.nhi.monthPoints, risk: Eco.riskOf(state), review: Eco.reviewOf(state),
+            wear: new Map(state.objects.map(o => [o.id, o.wear || 0])), stam: new Map(state.staff.map(s => [s.id, s.stamina])), mor: new Map(state.staff.map(s => [s.id, S.moraleOf(s)])),
+            staff: state.staff.length, broken: state.objects.filter(o => o.broken).length, fu: state.events.pendingFollowUps ? state.events.pendingFollowUps.length : 0,
+            mods: baselineMods(),
+          };
+          let out = null;
+          try {
+            if (!Ev.triggerEvent(state, def.id)) { bad(tag + ': trigger returned null'); continue; }
+            const pd = state.events.pendingDilemma;
+            if (pd.id !== def.id || pd.choices.length !== def.choices.length) bad(tag + ': pending mismatch');
+            const pc = pd.choices[i];
+            if (!!pc.chance !== !!c.chance || (c.chance && Math.abs(pc.chance.p - c.chance.p) > 1e-9) || (!!pc.requires !== !!c.requires)) bad(tag + ': pending choice lost chance/requires');
+            out = Ev.resolveDilemma(state, i, { roll });
+          } catch (e) { bad(tag + ': THROW ' + e.message); state.events.pendingDilemma = null; state.time.paused = false; continue; }
+          if (!out || !out.ok) { bad(tag + ': resolve returned ' + JSON.stringify(out)); continue; }
+          if (state.events.pendingDilemma || state.time.paused) bad(tag + ': still pending/paused');
+          if (c.chance ? out.roll !== roll : out.roll !== null) bad(tag + ': roll flag ' + out.roll);
+          const expectResult = c.chance ? (c.chance[roll].result || c.result) : c.result;
+          if (!out.result || out.result !== expectResult) bad(tag + ': result text');
+          if (!Array.isArray(out.chips) || out.summary.length !== out.chips.length) bad(tag + ': chips/summary');
+          const near2 = (a, b) => Math.abs(a - b) < 1e-6;
+          // ---- effect-by-effect
+          if (!near2(state.money, before.money + (fx.money || 0))) bad(`${tag}: money ${state.money - before.money} vs ${fx.money || 0}`);
+          if (!near2(state.reputation, clampN(before.rep + (fx.reputation || 0), 0, 1000))) bad(tag + ': reputation');
+          for (const k of K.POINT_KEYS) if (!near2(state.points[k], Math.max(0, before.pts[k] + ((fx.points && fx.points[k]) || 0)))) bad(tag + ': points.' + k);
+          if (!near2(state.nhi.monthPoints, Math.max(0, before.mp - (fx.nhiPenalty || 0)))) bad(tag + ': nhiPenalty');
+          if (!near2(Eco.riskOf(state), clampN(before.risk + (fx.risk || 0), 0, 100))) bad(tag + ': risk ' + Eco.riskOf(state));
+          if (!near2(Eco.reviewOf(state), clampN(Math.round(clampN(before.review + (fx.reviewScore || 0), 1, 5) * 100) / 100, 1, 5))) bad(tag + ': reviewScore ' + Eco.reviewOf(state));
+          if (fx.setFlag && !state.events.flags[fx.setFlag]) bad(tag + ': setFlag');
+          if (fx.clearFlag && state.events.flags[fx.clearFlag] && fx.clearFlag !== fx.setFlag) bad(tag + ': clearFlag');
+          if (fx.followUp) {
+            const n = state.events.pendingFollowUps.filter(f => f.id === fx.followUp.id).length;
+            if ((fx.followUp.p === undefined || fx.followUp.p >= 1) ? n !== 1 : n > 1) bad(tag + ': followUp count ' + n);
+            const f = state.events.pendingFollowUps.find(q => q.id === fx.followUp.id);
+            if (f && f.due !== Cal.absoluteWeek(state) + fx.followUp.afterWeeks) bad(tag + ': followUp due');
+          } else if (state.events.pendingFollowUps.length !== before.fu) bad(tag + ': stray follow-up');
+          if (fx.buff) {
+            const b = state.events.buffs.find(x => x.label === fx.buff.label);
+            if (!b || b.weeksLeft !== Math.round(fx.buff.weeks)) bad(tag + ': buff entry ' + JSON.stringify(b));
+            else {
+              for (const [k, v] of Object.entries(fx.buff.mods || {})) {
+                let exp = before.mods[k] + v;
+                if (MULT_FLOOR[k]) exp = Math.max(MULT_FLOOR[k], exp);
+                if (k === 'spawnMult') exp = Math.min(2, exp);
+                if (!near2(state.mods[k], exp)) bad(`${tag}: mods.${k} ${state.mods[k]} vs ${exp}`);
+              }
+              for (const [t, v] of Object.entries(fx.buff.spawn || {})) {
+                const fm = (FOCUS[state.policy.focus].spawnMult || {})[t] == null ? 1 : FOCUS[state.policy.focus].spawnMult[t];   // the focus multiplier applies after buffs
+                const exp = Math.max(0, (before.mods.typeSpawn[t] == null ? 1 : before.mods.typeSpawn[t]) + v * fm);
+                if (!near2(state.mods.typeSpawn[t], Math.min(3.5, exp))) bad(`${tag}: typeSpawn.${t} ${state.mods.typeSpawn[t]} vs ${exp}`);
+              }
+            }
+            if (!out.chips.some(x => x.text.startsWith(`持續 ${Math.round(fx.buff.weeks)} 週：`))) bad(tag + ': buff chip text ' + out.summary.join('|'));
+          }
+          if (fx.wear && fx.wear.delta) {
+            const tg = fx.wear.target;
+            const hit = state.objects.filter(o => EQ.isWearable(o.defId) && Math.abs((o.wear || 0) - before.wear.get(o.id)) > 1e-9);
+            if (tg === 'random') { if (hit.length !== 1) bad(tag + ': wear random touched ' + hit.length); }
+            else {
+              for (const o of wearables()) {
+                const want = (tg === 'all' || o.defId === tg) ? clampN(before.wear.get(o.id) + fx.wear.delta, 0, 100) : before.wear.get(o.id);
+                if (!near2(o.wear || 0, want)) bad(`${tag}: wear ${o.defId} ${o.wear} vs ${want}`);
+              }
+            }
+            if (!out.chips.some(x => x.text.includes('耗損'))) bad(tag + ': wear chip');
+          }
+          if (fx.breakdown) {
+            const nb = state.objects.filter(o => o.broken).length - before.broken;
+            if (nb < 1 && !fx.repair) bad(tag + ': breakdown did not break anything');
+            if (fx.breakdown !== 'random' && !state.objects.some(o => o.broken && o.defId === fx.breakdown)) bad(tag + ': wrong machine broke');
+            if (!out.chips.some(x => x.text.includes('故障'))) bad(tag + ': breakdown chip');
+          }
+          if (fx.repair) {
+            if (state.objects.some(o => o.broken)) bad(tag + ': repair left a broken machine');
+            if (fx.repair === 'all' && wearables().some(o => (o.wear || 0) !== 0)) bad(tag + ': repair all kept wear');
+          }
+          for (const k of ['stamina', 'morale']) if (fx[k] && fx[k].delta) {
+            for (const s of state.staff) {
+              const hit = !fx[k].role || s.role === fx[k].role;
+              const was = k === 'stamina' ? before.stam.get(s.id) : before.mor.get(s.id);
+              const now = k === 'stamina' ? s.stamina : S.moraleOf(s);
+              const max = k === 'stamina' ? s.staminaMax : 100;
+              if (!near2(now, hit ? clampN(was + fx[k].delta, 0, max) : was)) bad(`${tag}: ${k} ${s.role} ${now} vs ${was}`);
+            }
+            if (!out.chips.some(x => x.text.includes(k === 'stamina' ? '體力' : '士氣'))) bad(tag + ': ' + k + ' chip');
+          }
+          if (fx.resign) {
+            const n0 = before.staff, n1 = state.staff.length;
+            if (fx.resign.p >= 1 ? n1 !== n0 - 1 : !(n1 === n0 || n1 === n0 - 1)) bad(tag + ': resign headcount ' + n0 + '->' + n1);
+            if (state.staff.filter(s => s.role === fx.resign.role).length < 1) bad(tag + ': resign emptied the role');
+            if (fx.resign.p >= 1 && !out.chips.some(x => x.text.includes('離職'))) bad(tag + ': resign chip');
+          } else if (state.staff.length !== before.staff) bad(tag + ': staff count changed without resign');
+          if (fx.maintenance) {
+            const until = Cal.absoluteWeek(state) + fx.maintenance;
+            if (!wearables().every(o => o.maintainedUntil === until)) bad(tag + ': maintenance not applied');
+          }
+          if (fx.money && !out.chips.some(x => x.text.startsWith('資金'))) bad(tag + ': money chip');
+          if (fx.risk && !out.chips.some(x => x.text.includes('風險'))) bad(tag + ': risk chip');
+          if (fx.reviewScore && !out.chips.some(x => x.text.includes('評價'))) bad(tag + ': review chip');
+          const inv = invariants();
+          if (inv.length) bad(tag + ': invariants ' + inv.slice(0, 2).join(';'));
+          // the sim keeps running after the decision
+          try { for (let t = 0; t < 25; t++) step(1, false); } catch (e) { bad(tag + ': sim THROW ' + e.message); }
+        }
+      });
+    }
+    check(`events: ALL ${pool.length} events x every choice (x win/lose) = ${combos} combos apply their effects exactly, summarise them and keep the sim valid`, fail === 0, failures.join(' || '));
+  }
+
+  // ---------------- D. chance options + requires.money gate ----------------
+  {
+    richClinic();
+    const def = pool.find(d => d.choices.some(c => c.chance));
+    const ci = def.choices.findIndex(c => c.chance);
+    // the roll is made once, when the decision opens: reloading the save cannot re-roll it
+    Ev.triggerEvent(state, def.id);
+    const u0 = state.events.pendingDilemma.choices[ci].chance.u;
+    const dump = Sav.exportSave(state);
+    check('chance: pre-rolled value stored in the pending decision (u in [0,1))', typeof u0 === 'number' && u0 >= 0 && u0 < 1);
+    const outcomes = new Set();
+    for (let k = 0; k < 3; k++) { Sav.importSave(state, dump); outcomes.add(Ev.resolveDilemma(state, ci).roll); if (k < 2) { Sav.importSave(state, dump); } }
+    check('chance: the same save always resolves to the same side', outcomes.size === 1, [...outcomes].join());
+    Sav.importSave(state, dump);
+    state.events.pendingDilemma.choices[ci].chance.u = 0; state.events.pendingDilemma.choices[ci].chance.p = 0.5;
+    check('chance: u < p wins', Ev.resolveDilemma(state, ci).roll === 'win');
+    richClinic(); Ev.triggerEvent(state, def.id); state.events.pendingDilemma.choices[ci].chance.u = 0.999; state.events.pendingDilemma.choices[ci].chance.p = 0.5;
+    check('chance: u >= p loses', Ev.resolveDilemma(state, ci).roll === 'lose');
+    // distribution over many openings follows p
+    let wins = 0, N = 400;
+    const probe = pool.find(d => d.choices.some(c => c.chance && c.chance.p > 0.2 && c.chance.p < 0.8));
+    const pi = probe.choices.findIndex(c => c.chance && c.chance.p > 0.2 && c.chance.p < 0.8), pp = probe.choices[pi].chance.p;
+    for (let k = 0; k < N; k++) { richClinic(SEED + 1000 + k); Ev.triggerEvent(state, probe.id); if (Ev.resolveDilemma(state, pi).roll === 'win') wins++; }
+    check(`chance: win rate ${(wins / N).toFixed(2)} ~ p ${pp}`, Math.abs(wins / N - pp) < 0.1);
+    // requires.money: refused when poor, allowed when rich; a decision never strands a poor player
+    const rq = pool.find(d => d.choices.some(c => c.requires));
+    const ri = rq.choices.findIndex(c => c.requires);
+    richClinic(); state.money = rq.choices[ri].requires.money - 1; Ev.triggerEvent(state, rq.id);
+    const m0 = state.money;
+    check('requires.money: choice refused (null, nothing applied) when money is short', Ev.resolveDilemma(state, ri) === null && !!state.events.pendingDilemma && state.money === m0);
+    check('requires.money: choiceAffordable reflects it', !Ev.choiceAffordable(state, state.events.pendingDilemma.choices[ri]) && Ev.choiceAffordable(state, state.events.pendingDilemma.choices.find(c => !c.requires)));
+    state.money = rq.choices[ri].requires.money;
+    check('requires.money: allowed once money is enough (exactly equal counts)', !!Ev.resolveDilemma(state, ri));
+    // all options unaffordable -> the last one is freed so the game cannot lock up
+    richClinic(); state.money = 0;
+    Ev.triggerEvent(state, 'infection_control_audit');
+    const allReq = state.events.pendingDilemma.choices.every(c => c.requires);
+    check('requires.money: if every option is unaffordable the last one loses its requirement', !allReq || (Ev.choiceAffordable(state, state.events.pendingDilemma.choices[state.events.pendingDilemma.choices.length - 1]) && !!Ev.resolveDilemma(state, state.events.pendingDilemma.choices.length - 1)));
+  }
+
+  // ---------------- E. pacing: grace, gap, cap, follow-ups ----------------
+  {
+    richClinic(); state.time.year = 1; state.time.month = 1; state.time.week = 1;
+    const T = Ev.EVENT_TUNE, saved = { ...T };
+    T.CHANCE = 1; T.GRACE = 6; T.MIN_GAP = 2; T.EARLY_MULT = 1;
+    state.events.cooldowns = {}; delete state.events.lastEventWeek;
+    let firstWeek = null, shown = [];
+    const off = bus.on('event:show', (e) => shown.push({ week: Cal.absoluteWeek(state), id: e.event.id }));
+    for (let w = 0; w < 12; w++) { bus.emit('week:start', { ...state.time }); if (state.events.pendingDilemma) { if (firstWeek === null) firstWeek = Cal.absoluteWeek(state); resolvePending(); } state.time.week++; if (state.time.week > 4) { state.time.week = 1; state.time.month++; } }
+    off();
+    check('pacing: no random event before the grace period (6 weeks)', firstWeek !== null && firstWeek >= 6, String(firstWeek));
+    const weeks = shown.map(s => s.week);
+    check('pacing: at least MIN_GAP weeks between random events', weeks.every((w, i) => i === 0 || w - weeks[i - 1] >= 2), weeks.join());
+    // follow-ups: forced regardless of chance / gap, when due, one per week
+    richClinic(); state.events.cooldowns = {};
+    T.CHANCE = 0;
+    state.events.pendingFollowUps = [{ id: 'dispute_mediation', due: Cal.absoluteWeek(state) + 2 }];
+    let seen = [];
+    const off2 = bus.on('event:show', (e) => seen.push(e.event.id));
+    for (let w = 0; w < 4; w++) { bus.emit('week:start', {}); if (state.events.pendingDilemma) resolvePending(); state.time.week = (state.time.week % 4) + 1; }
+    off2();
+    check('follow-up: forced into the schedule once due (chance 0, no random roll), and consumed', seen.includes('dispute_mediation') && !state.events.pendingFollowUps.some(f => f.id === 'dispute_mediation'), seen.join());
+    // a follow-up that is not due yet stays queued; unknown ids are dropped
+    richClinic(); T.CHANCE = 0;
+    state.events.pendingFollowUps = [{ id: 'dispute_mediation', due: Cal.absoluteWeek(state) + 9 }, { id: 'no_such_event', due: 0 }];
+    bus.emit('week:start', {});
+    check('follow-up: not-yet-due entries stay, dangling ids are discarded', !state.events.pendingDilemma && state.events.pendingFollowUps.length === 1 && state.events.pendingFollowUps[0].id === 'dispute_mediation');
+    // `big` follow-ups wait for the next month after a big event
+    richClinic(); T.CHANCE = 0;
+    const big = pool.find(d => d.big && d.id !== 'dispute_mediation');
+    const fuBig = pool.find(d => d.big);
+    state.events.lastBigMonth = Math.floor(Cal.absoluteWeek(state) / K.WEEKS_PER_MONTH);
+    state.events.pendingFollowUps = [{ id: fuBig.id, due: 0 }];
+    bus.emit('week:start', {});
+    check('follow-up: a due big event is postponed while the month already had one', !state.events.pendingDilemma && state.events.pendingFollowUps.length === 1);
+    restoreTune();
+  }
+
+  // ---------------- F. M5/M6 buffs: expiry, rollback, save/load ----------------
+  {
+    richClinic();
+    const fx = { buff: { weeks: 3, label: '測試浪湧', mods: { spawnMult: 0.15, elderSat: 2, patience: 0.1 }, spawn: { elder: 0.3, sports: -0.2 } } };
+    const chips = Ev.applyEffectsDetailed(state, fx);
+    check('buff: summary reads 「持續 3 週：…」 with a 病患 +15% part', chips.length === 1 && chips[0].text.startsWith('持續 3 週：') && chips[0].text.includes('病患 +15%'), chips.map(c => c.text).join('|'));
+    const rel = (k, d) => near(state.mods[k], baselineMods()[k] + d);
+    const fmo = (t) => { const v = (FOCUS[state.policy.focus].spawnMult || {})[t]; return v == null ? 1 : v; };
+    const tsBase = (t) => { const v = baselineMods().typeSpawn[t]; return v == null ? 1 : v; };
+    check('buff: applied through recomputeMods (spawnMult, elderSat, patience, typeSpawn)', rel('spawnMult', 0.15) && rel('elderSat', 2) && rel('patience', 0.1) && near(state.mods.typeSpawn.elder, tsBase('elder') + 0.3 * fmo('elder')) && near(state.mods.typeSpawn.sports, tsBase('sports') - 0.2 * fmo('sports')));
+    check('buff: stored in state.events.buffs with weeksLeft', state.events.buffs.length === 1 && state.events.buffs[0].weeksLeft === 3 && state.events.buffs[0].label === '測試浪湧');
+    check('buff: re-applying the same label refreshes it instead of stacking', (() => { Ev.applyEffects(state, fx); return state.events.buffs.length === 1 && rel('spawnMult', 0.15); })());
+    check('buff: shown by activeEffects() (label + weeks left)', Ev.activeEffects(state).some(a => a.label === '測試浪湧' && a.weeksLeft === 3 && a.chips.length >= 3));
+    // mid-buff save / load keeps it
+    const dump = Sav.exportSave(state);
+    state.events.cooldowns = {};
+    const tick = () => { bus.emit('week:start', { ...state.time }); };
+    Ev.EVENT_TUNE.CHANCE = 0;
+    tick();
+    check('buff: counts down at each week:start', state.events.buffs[0].weeksLeft === 2);
+    Sav.importSave(state, dump);
+    check('buff: survives save -> load (entry, weeksLeft 3, mods recomputed)', state.events.buffs.length === 1 && state.events.buffs[0].weeksLeft === 3 && rel('spawnMult', 0.15) && rel('elderSat', 2));
+    tick(); tick();
+    check('buff: still active with 1 week left', state.events.buffs.length === 1 && state.events.buffs[0].weeksLeft === 1 && rel('spawnMult', 0.15));
+    const dump2 = Sav.exportSave(state);
+    tick();
+    check('buff: expires and every mod rolls back to the exact no-buff value', state.events.buffs.length === 0 && JSON.stringify(state.mods) === JSON.stringify(baselineMods()));
+    Sav.importSave(state, dump2); tick();
+    check('buff: expiry also works after a reload (save with 1 week left)', state.events.buffs.length === 0 && JSON.stringify(state.mods) === JSON.stringify(baselineMods()));
+    restoreTune();
+    // junk in a save is repaired
+    richClinic();
+    state.events.buffs = [{ label: 'x', weeksLeft: 2, mods: { spawnMult: 0.1, bad: 'str' } }, { label: 'y', weeksLeft: -1, mods: {} }, 5, null];
+    state.events.flags = { a: true, b: 0, c: 'yes' }; state.events.pendingFollowUps = [{ id: 'dispute_mediation', due: 3 }, { id: 4 }, null];
+    state.nhi.risk = 999; state.reviewScore = 17; state.objects[0].wear = -5; state.objects[1].broken = 1; state.staff[0].morale = 'abc';
+    Sav.importSave(state, JSON.stringify({ version: K.SAVE_VERSION, state: JSON.parse(Sav.exportSave(state)).state }));
+    check('save: sanitize repairs buffs / flags / follow-ups / risk / review / wear / broken / morale', state.events.buffs.length === 1 && state.events.buffs[0].mods.bad === undefined && state.events.buffs[0].id &&
+      Object.keys(state.events.flags).sort().join() === 'a,c' && state.events.pendingFollowUps.length === 1 && state.nhi.risk === 100 && state.reviewScore === 5 && state.objects[0].wear === 0 && state.objects[1].broken === true && state.staff[0].morale === 70,
+      JSON.stringify({ b: state.events.buffs, f: state.events.flags, fu: state.events.pendingFollowUps, r: state.nhi.risk, rv: state.reviewScore, w: state.objects[0].wear, br: state.objects[1].broken, m: state.staff[0].morale }));
+    check('save: an event with `chance` pending survives export -> import', (() => { richClinic(); const d = pool.find(q => q.choices.some(c => c.chance)); Ev.triggerEvent(state, d.id); const j = Sav.exportSave(state); fresh(); Sav.importSave(state, j); return state.events.pendingDilemma && state.events.pendingDilemma.id === d.id && state.events.pendingDilemma.choices.some(c => c.chance); })());
+    // flags / buffs / wear all round-trip exactly through a long sim
+    richClinic(); Ev.applyEffects(state, { buff: { weeks: 40, label: '長期', mods: { patience: 0.05 } }, setFlag: 'long', risk: 7, reviewScore: -0.3, wear: { target: 'all', delta: 12 }, breakdown: 'tens', maintenance: 20 });
+    const a = Sav.exportSave(state); Sav.importSave(state, a); const b = Sav.exportSave(state);
+    check('save: events state (buffs, flags, risk, review, wear, broken, contract) is stable across import/export', JSON.parse(a).state.events.buffs[0].weeksLeft === 40 && JSON.stringify(JSON.parse(a).state.objects) === JSON.stringify(JSON.parse(b).state.objects) && JSON.stringify(JSON.parse(a).state.events) === JSON.stringify(JSON.parse(b).state.events));
+  }
+
+  // ---------------- G. M2 wear / breakdown / repair ----------------
+  {
+    richClinic();
+    const tens = state.objects.find(o => o.defId === 'tens'), sw = state.objects.find(o => o.defId === 'shockwave');
+    tens.wear = 0; sw.wear = 0;
+    EQ.useWear(state, tens); EQ.useWear(state, sw);
+    check('wear: +0.4 per treatment (+0.2 for shockwave)', near(tens.wear, 0.4) && near(sw.wear, 0.2));
+    const bed = state.objects.find(o => o.defId === 'bed'); EQ.useWear(state, bed);
+    check('wear: only the listed machine kinds wear (bed/exam_room do not)', !bed.wear);
+    tens.wear = 10; EQ.weeklyWear(state);
+    check('wear: +0.3 per week', near(tens.wear, 10.3));
+    tens.wear = 10; EQ.applyMaintenance(state, 10); EQ.useWear(state, tens); EQ.weeklyWear(state);
+    check('wear: a maintenance contract halves the speed (use and weekly)', near(tens.wear, 10 + 0.2 + 0.15), String(tens.wear));
+    delete tens.maintainedUntil;
+    const nine = EQ.WEAR_TUNE.BREAK_AT;
+    tens.wear = nine - 1;
+    for (let i = 0; i < 20; i++) EQ.weeklyWear(state);          // below 90 nothing breaks (89 + 0.3 stays < 90 for one tick only)
+    // thresholds
+    tens.wear = 89; tens.broken = false;
+    let n = 0; for (let i = 0; i < 400; i++) { tens.wear = 95; tens.broken = false; if (EQ.weeklyWear(state).includes(tens)) n++; }
+    check(`wear: >= 90 -> about 25% weekly breakdown chance (${(n / 400).toFixed(2)})`, n / 400 > 0.17 && n / 400 < 0.33);
+    tens.wear = 80; tens.broken = false; let m = 0; for (let i = 0; i < 300; i++) { tens.wear = 80; if (EQ.weeklyWear(state).includes(tens)) m++; }
+    check('wear: below 90 never breaks down by itself', m === 0);
+    check('wear: 老舊 at >= 70', EQ.isWorn({ wear: 70 }) && !EQ.isWorn({ wear: 69.9 }));
+
+    // ---- prices + actions
+    richClinic();
+    const t2 = state.objects.find(o => o.defId === 'tens'), uq = state.objects.find(o => o.defId === 'us_room');
+    check('prices: repair 8% (min 2,000), service 3%', EQ.repairCost(t2) === Math.max(2000, Math.round(BUILDABLES.tens.cost * 0.08)) && EQ.repairCost(uq) === Math.round(BUILDABLES.us_room.cost * 0.08) && EQ.serviceCost(uq) === Math.round(BUILDABLES.us_room.cost * 0.03) && EQ.repairCost(state.objects.find(o => o.defId === 'heatbox')) === 2000);
+    t2.wear = 60; const mo = state.money;
+    const rs = EQ.serviceObject(state, t2.id);
+    check('serviceObject: wear -> 0, charged via economy.spend (ledger.maintain)', rs.ok && t2.wear === 0 && state.money === mo - EQ.serviceCost(t2) && state.ledger.expense.maintain >= EQ.serviceCost(t2), JSON.stringify(rs));
+    check('serviceObject: refused when already like new / not wearable / unknown', !EQ.serviceObject(state, t2.id).ok && !EQ.serviceObject(state, state.objects.find(o => o.defId === 'bed').id).ok && !EQ.serviceObject(state, 99999).ok);
+    EQ.breakObject(state, t2); t2.wear = 95;
+    check('serviceObject: refused on a broken machine (needs 維修)', !EQ.serviceObject(state, t2.id).ok);
+    const m1 = state.money, rr = EQ.repairObject(state, t2.id);
+    check('repairObject: broken -> false, wear 0, pays the repair price', rr.ok && !t2.broken && t2.wear === 0 && state.money === m1 - EQ.repairCost(t2) && rr.cost === EQ.repairCost(t2));
+    check('repairObject: refused on a healthy machine', !EQ.repairObject(state, t2.id).ok);
+    EQ.breakObject(state, t2); state.money = 100;
+    check('repairObject / serviceObject / signMaintenance: refuse (and charge nothing) when poor', !EQ.repairObject(state, t2.id).ok && t2.broken && state.money === 100 && !EQ.signMaintenance(state, 26).ok && state.money === 100);
+    state.money = 5e6;
+    const c26 = EQ.contractCost(state, 26), m2 = state.money, sg = EQ.signMaintenance(state, 26);
+    check('signMaintenance: pays the contract, every machine gets maintainedUntil = now + weeks', sg.ok && sg.cost === c26 && state.money === m2 - c26 && wearables().every(o => o.maintainedUntil === Cal.absoluteWeek(state) + 26) && EQ.maintainedWeeksLeft(state, t2) === 26);
+    check('signMaintenance: refused for 0 weeks', !EQ.signMaintenance(state, 0).ok);
+    state.objects = state.objects.filter(o => !EQ.isWearable(o.defId));
+    check('signMaintenance: refused when there is nothing to maintain', !EQ.signMaintenance(state, 13).ok);
+
+    // ---- a broken machine is never used; breakdown mid-treatment is released gracefully; repair resumes work
+    fresh(); wire(); Ev.EVENT_TUNE.CHANCE = 0;      // (random events could repair it behind our back)
+    state.money = 2e6; state.reputation = 120;
+    state.objects = state.objects.filter(o => !['heatbox'].includes(o.defId)); refresh();
+    const tn = putAnywhere('tens'); refresh();
+    for (let i = 0; i < 40; i++) { P.spawnPatient(state, 'elder'); }
+    let doneTens = 0; const offT = bus.on('treatment:done', e => { if (e.treatmentId === 'tens') doneTens++; });
+    let broke = false, midOk = true, treatingWas = null;
+    for (let t = 0; t < MIN_PER_WEEK && !broke; t++) {
+      step(1, true);
+      const p = state.patients.find(q => q.stage === 'treating' && q.targetObj === tn.id);
+      if (p) { treatingWas = p; EQ.breakObject(state, tn); broke = true; }
+    }
+    check('broken mid-treatment: a patient was being treated when it broke', !!treatingWas);
+    if (treatingWas) {
+      step(1, true);
+      const p = state.patients.find(q => q.id === treatingWas.id);
+      const stf = treatingWas.staffId && state.staff.find(s => s.id === treatingWas.staffId);
+      check('broken mid-treatment: treatment aborted, patient released back to waiting/leaving (no deadlock)', !p || (p.targetObj !== tn.id && p.stage !== 'treating'), p && p.stage + '/' + p.targetObj);
+      check('broken mid-treatment: station and staff are free again', !tn.busy && !tn.usedBy && !tn.staffId && (!stf || !stf.task || stf.task.objId !== tn.id));
+    }
+    const doneAtBreak = doneTens;
+    for (let t = 0; t < MIN_PER_WEEK * 1.5; t++) step(1, true);
+    check('broken machine is never used again (no tens treatments while broken)', doneTens === doneAtBreak, `${doneTens} vs ${doneAtBreak}`);
+    check('broken machine: sim stays valid, patients do not pile up forever', invariants().length === 0 && state.patients.length < 60, invariants().join(';'));
+    const pre = EQ.repairObject(state, tn.id);
+    for (let t = 0; t < MIN_PER_WEEK * 2; t++) step(1, true);
+    offT();
+    check('after 維修 the machine is used again', pre.ok && doneTens > doneAtBreak, `${doneTens} vs ${doneAtBreak}`);
+    restoreTune();
+    check('feasibility: with every tens broken, patients skip the step (complain) instead of waiting forever', (() => {
+      fresh(); wire(); state.money = 2e6;
+      state.objects = state.objects.filter(o => !['heatbox', 'tens', 'traction', 'ir_lamp'].includes(o.defId)); refresh();
+      const t3 = putAnywhere('tens'); EQ.breakObject(state, t3);
+      state.reputation = 150; let tens3 = 0; const o3 = bus.on('treatment:done', e => { if (e.treatmentId === 'tens') tens3++; });
+      for (let t = 0; t < MIN_PER_WEEK * 2; t++) step(1, true);
+      o3();
+      return tens3 === 0 && state.patients.every(p => p.age < 700) && invariants().length === 0;
+    })());
+
+    // ---- auto breakdown hook: weekly tick breaks it, a decision opens (event or generic) and can be answered
+    richClinic(); Ev.EVENT_TUNE.CHANCE = 0;
+    for (const o of state.objects) if (EQ.isWearable(o.defId)) o.wear = 99;
+    let brokeSeen = 0; const offB = bus.on('equipment:broken', () => brokeSeen++);
+    let shownId = null; const offS = bus.on('event:show', e => { shownId = e.event.id; });
+    for (let i = 0; i < 40 && !state.events.pendingDilemma; i++) bus.emit('week:start', {});
+    offB(); offS();
+    check('auto-breakdown: weekly roll breaks a worn-out machine and opens a decision for it', brokeSeen >= 1 && !!state.events.pendingDilemma && !!shownId, String(shownId));
+    const pdc = state.events.pendingDilemma;
+    check('auto-breakdown: the decision offers an affordable way out', pdc.choices.some(c => Ev.choiceAffordable(state, c)));
+    Ev.resolveDilemma(state, 0);
+    check('auto-breakdown: resolving keeps the game consistent', !state.events.pendingDilemma && invariants().length === 0);
+    // generic fallback (no C-event for ir_lamp)
+    richClinic(); const lamp = state.objects.find(o => o.defId === 'ir_lamp'); EQ.breakObject(state, lamp);
+    state.events.cooldowns = {};
+    const gp = Ev.triggerBreakdownEvent(state, lamp);
+    check('breakdown: machines without a dedicated event get the generic 叫修 decision that repairs exactly that machine', gp && gp.id === 'equip_breakdown' && (() => { const mm = state.money; Ev.resolveDilemma(state, 0); return !lamp.broken && state.money === mm - EQ.repairCost(lamp); })());
+    richClinic(); const lamp2 = state.objects.find(o => o.defId === 'ir_lamp'); EQ.breakObject(state, lamp2); const mLamp = state.money; Ev.triggerBreakdownEvent(state, lamp2); Ev.resolveDilemma(state, 1);
+    check('breakdown: 「先停用」 leaves it broken and costs nothing', lamp2.broken && state.money === mLamp);
+    // wear -100 as an event repair clears broken
+    richClinic(); const t5 = state.objects.find(o => o.defId === 'tens'); EQ.breakObject(state, t5); t5.wear = 95;
+    Ev.applyEffects(state, { wear: { target: 'tens', delta: -100 } });
+    check('event effect wear -100 on a broken machine repairs it', !t5.broken && t5.wear === 0);
+  }
+
+  // ---------------- H. M4 morale / resignation ----------------
+  {
+    richClinic();
+    const pt = state.staff.filter(s => s.role === 'pt');
+    for (const s of state.staff) { s.morale = 50; s.tiredAcc = 0; }
+    state.objects = state.objects.filter(o => !(BUILDABLES[o.defId].restRecovery > 0)); refresh();
+    S.weeklyMorale(state);
+    check('morale: +1 per week without a rest room', state.staff.every(s => s.morale === 51));
+    put('rest_room', 21, 16); S.weeklyMorale(state);
+    check('morale: +1 more with a rest room (+2/week)', state.staff.every(s => s.morale === 53));
+    pt[0].tiredAcc = S.MORALE.TIRED_MIN; S.weeklyMorale(state);
+    check('morale: exhausted staff lose 3 net of the +2', near(pt[0].morale, 53 + 2 - 3) && near(pt[1].morale, 55) && pt[0].tiredAcc === 0);
+    for (const s of state.staff) s.morale = 99; S.weeklyMorale(state);
+    check('morale: clamped at 100', state.staff.every(s => s.morale === 100));
+    S.addMorale(state, 'pt', -200);
+    check('morale effect: role filter + clamp at 0', pt.every(s => s.morale === 0) && state.staff.filter(s => s.role !== 'pt').every(s => s.morale === 100));
+    // updateStaff accumulates exhaustion minutes
+    const s0 = state.staff[0]; s0.stamina = 1; s0.tiredAcc = 0; for (let i = 0; i < 30; i++) S.updateStaff(state, 1);
+    check('morale: updateStaff counts the minutes spent exhausted', s0.tiredAcc >= 5, String(s0.tiredAcc));
+
+    // ---- resign flow
+    richClinic(); wire();
+    for (let i = 0; i < 30; i++) P.spawnPatient(state, 'elder');
+    for (let t = 0; t < 200; t++) step(1, true);
+    const busyPt = state.staff.filter(s => s.role === 'pt' && s.task && s.task.treatmentId !== '__chat')[0] || state.staff.filter(s => s.role === 'pt')[0];
+    busyPt.morale = 5;
+    const cand = S.resignCandidate(state);
+    check('resign: lowest-morale licensed staff (role not left empty) is the candidate', cand && cand.id === busyPt.id);
+    const poolN = state.hirePool.length;
+    const staffN = state.staff.length;
+    const gone = S.resignStaff(state, busyPt.id);
+    check('resign: staff removed, replacement added to the hire pool, event emitted', gone && state.staff.length === staffN - 1 && !state.staff.some(s => s.id === busyPt.id) && state.hirePool.length >= Math.min(poolN + 1, S.MORALE.POOL_MAX) && state.hirePool.some(c => c.role === 'pt'));
+    check('resign: no object, rest room or task still points at them', state.objects.every(o => o.staffId !== busyPt.id) && state.staff.every(s => s.restObj == null || state.objects.some(o => o.id === s.restObj)));
+    for (let t = 0; t < MIN_PER_WEEK * 2; t++) step(1, true);
+    check('resign: patients who were with them are released, sim stays valid (no dangling staffId)', state.patients.every(p => !p.staffId || state.staff.some(s => s.id === p.staffId)) && invariants().length === 0, invariants().join(';'));
+    check('resign: lone staff of a role cannot resign (candidate rule + effect falls back to -15 morale)', (() => {
+      richClinic(); state.staff = state.staff.filter(s => s.role !== 'st' || s.id === state.staff.find(q => q.role === 'st').id);
+      const only = state.staff.find(s => s.role === 'st'); only.morale = 3;
+      const r = S.resignRole(state, 'st', 1);
+      return S.resignCandidate(state) === null && !r.left && r.hit && S.moraleOf(only) === 0 && state.staff.includes(only);
+    })());
+    // weekly roll
+    richClinic(); Ev.EVENT_TUNE.CHANCE = 0; state.events.cooldowns = {};
+    for (const s of state.staff) s.morale = 80; state.staff.find(s => s.role === 'pt').morale = 10;
+    let opened = null; const offO = bus.on('event:show', e => { if (!opened) opened = e.event.id; });
+    let weeks = 0; for (; weeks < 400 && !state.events.pendingDilemma; weeks++) { state.events.cooldowns = {}; for (const s of state.staff.filter(q => q.role === 'pt')) { if (s.morale > 15) s.morale = 15; } state.staff.find(s => s.role === 'pt').morale = 10; bus.emit('week:start', {}); }
+    offO();
+    check(`resign: a demoralised PT eventually triggers the 治療師遞出辭呈 decision (~8%/week; took ${weeks}w)`, opened === 'pt_resign' && weeks > 1, String(opened));
+    const before = state.staff.length; Ev.resolveDilemma(state, pool.find(d => d.id === 'pt_resign').choices.findIndex(c => c.effects && c.effects.resign));
+    check('resign: choosing 放行 removes exactly one PT and keeps at least one', state.staff.length === before - 1 && state.staff.filter(s => s.role === 'pt').length >= 1);
+    richClinic(); Ev.EVENT_TUNE.CHANCE = 0; state.events.cooldowns = {};
+    for (const s of state.staff) s.morale = 80; state.staff.find(s => s.role === 'ot').morale = 10;
+    opened = null; const offO2 = bus.on('event:show', e => { if (!opened) opened = e.event.id; });
+    for (let w2 = 0; w2 < 400 && !state.events.pendingDilemma; w2++) { state.staff.find(s => s.role === 'ot').morale = 10; bus.emit('week:start', {}); }
+    offO2();
+    check('resign: a non-PT role gets the generic resignation decision (加薪 / 放行)', opened === 'staff_resign' && state.events.pendingDilemma.choices.length === 2, String(opened));
+    Ev.resolveDilemma(state, 0);
+    check('resign: 加薪慰留 raises morale of that role', S.moraleOf(state.staff.find(s => s.role === 'ot')) > 10);
+    restoreTune();
+    // stamina effect at the start of a day survives the overnight regeneration
+    richClinic(); wire(); state.time.clock = K.OPEN_MIN;
+    for (const s of state.staff) s.stamina = 40;
+    Ev.applyEffects(state, { stamina: { role: 'pt', delta: -20 } });
+    check('stamina effect at day start is deferred (carry) instead of washed out by overnight regen', state.staff.filter(s => s.role === 'pt').every(s => s.staminaCarry === -20 && s.stamina === 40));
+    S.updateStaff(state, 0.5); S.updateStaff(state, 1);
+    const ptS = state.staff.find(s => s.role === 'pt'), drS = state.staff.find(s => s.role === 'doctor');
+    check('stamina effect: applied after the overnight regen (pt ends 20 lower than a doctor)', near(drS.stamina - ptS.stamina, 20, 2) && ptS.staminaCarry === undefined, `${drS.stamina} ${ptS.stamina}`);
+  }
+
+  // ---------------- I. M3 NHI risk / M7 review score ----------------
+  {
+    richClinic();
+    check('risk: starts at 0 and review at 4.0', Eco.riskOf(state) === 0 && Eco.reviewOf(state) === 4);
+    const cap = Eco.nhiCap(state);
+    check('risk: monthly input is 0 well under the cap, grows past it', Eco.monthlyRiskDelta(state, cap * 0.5) === 0 && Eco.monthlyRiskDelta(state, cap * 1.2) > 5 && Eco.monthlyRiskDelta(state, cap * 5) === Eco.RISK_TUNE.MONTH_CAP);
+    state.history.push({ nhiPoints: cap * 0.5, year: 2, month: 1, patients: 10, satisfaction: 60 });
+    check('risk: fast month-on-month growth adds risk', Eco.monthlyRiskDelta(state, cap * 0.85) > 0);
+    state.nhi.nhiN = 100; state.nhi.complexN = 90;
+    check('risk: a high share of complex treatments adds risk', Eco.monthlyRiskDelta(state, cap * 0.3) > 0);
+    state.nhi.nhiN = 0; state.nhi.complexN = 0; state.history = [];
+    state.nhi.monthPoints = cap * 1.3; state.nhi.risk = 10;
+    const rec = Eco.settleMonth(state);
+    check('risk: settleMonth applies the monthly input and records it', Eco.riskOf(state) > 10 && rec.risk === Math.round(Eco.riskOf(state) * 10) / 10 && state.history[state.history.length - 1].risk === rec.risk);
+    state.nhi.risk = 5; bus.emit('week:end', {}); bus.emit('week:end', {});
+    check('risk: decays 1 per week (never below 0)', Eco.riskOf(state) === 3 && (state.nhi.risk = 0, bus.emit('week:end', {}), Eco.riskOf(state) === 0));
+    // effect on events
+    const aud = pool.find(d => d.id === 'nhi_audit');
+    state.nhi.risk = 70; check('risk: > 60 doubles the weight of nhi events (nhi_audit)', near(Ev.eventWeight(state, aud), aud.weight * 2));
+    // effect on the yearly inspection
+    richClinic();
+    state.nhi.risk = 0; const f0 = Ins.evaluateRules(state, state.time.year).find(r => r.id === 'nhi_abuse').frac;
+    state.nhi.risk = 100; const f1 = Ins.evaluateRules(state, state.time.year).find(r => r.id === 'nhi_abuse').frac;
+    check('risk: high risk lowers the annual 健保署 nhi_abuse score', f1 < f0 - 0.3 && f0 === 1, `${f0} -> ${f1}`);
+    // M7 review score
+    richClinic();
+    state.stats.satSum = 80 * 50; state.stats.satN = 50; state.nhi.monthPoints = 0; Eco.settleMonth(state);
+    check('review: average satisfaction > 70 -> +0.05', near(state.reviewScore, 4.05), String(state.reviewScore));
+    state.stats.satSum = 40 * 50; state.stats.satN = 50; Eco.settleMonth(state);
+    check('review: average satisfaction < 45 -> -0.1', near(state.reviewScore, 3.95), String(state.reviewScore));
+    state.stats.satSum = 60 * 50; state.stats.satN = 50; Eco.settleMonth(state);
+    check('review: satisfaction 45..70 leaves it unchanged', near(state.reviewScore, 3.95));
+    state.reviewScore = 5; Eco.addReview(state, 1); const hi = state.reviewScore; state.reviewScore = 1; Eco.addReview(state, -1);
+    check('review: clamped to 1..5', hi === 5 && state.reviewScore === 1);
+    state.reviewScore = 4; const a4 = P.expectedArrivalsPerWeek(state); state.reviewScore = 5; const a5 = P.expectedArrivalsPerWeek(state); state.reviewScore = 3; const a3 = P.expectedArrivalsPerWeek(state);
+    check('review: arrivals x (1 + (score-4)*0.1): every 0.1 = 1%', near(a5 / a4, 1.1, 1e-9) && near(a3 / a4, 0.9, 1e-9));
+  }
+
+  // ---------------- J. result summaries are readable ----------------
+  {
+    richClinic(); state.time.clock = 600;
+    const chips = Ev.applyEffectsDetailed(state, { wear: { target: 'all', delta: 10 }, risk: -10, morale: { delta: -3 }, stamina: { role: 'pt', delta: -5 }, reviewScore: -0.2, maintenance: 8, breakdown: 'tens', repair: 'broken' });
+    const txt = chips.map(c => c.text);
+    check('summaries: 設備耗損 +10 / 審查風險 −10 / 士氣 −3 / 體力 / 網路評價 −0.2 / 保養合約 / 故障 / 修復', txt.includes('設備耗損 +10') && txt.includes('審查風險 −10') && txt.includes('士氣 −3') && txt.some(t => t.includes('體力 −5')) && txt.includes('網路評價 −0.2') && txt.some(t => t.includes('保養合約 8 週')) && txt.some(t => t.includes('故障')) && txt.includes('故障設備已修復'), txt.join(' | '));
+    check('summaries: good/bad flags follow the sign (wear up = bad, risk down = good)', chips.find(c => c.text === '設備耗損 +10').good === false && chips.find(c => c.text === '審查風險 −10').good === true);
+    check('applyEffects (legacy) still returns plain strings', Ev.applyEffects(state, { money: 1000, reputation: 2 }).every(t => typeof t === 'string'));
+  }
+  feature('Events: pool of RANDOM_EVENTS + EXT_A + EXT_B, cond/weights/cooldown/big cap/follow-ups', 'works', `${Ev.eventPool().length} events forced x all choices`);
+  feature('Equipment wear / breakdown / repair / maintenance (M2)', 'works', 'wear, auto-breakdown event, 維修/保養/合約');
+  feature('Staff morale + resignation (M4), NHI risk (M3), review score (M7), buffs (M5/M6)', 'works', 'weekly/monthly updates, save round-trip');
+}
+const MULT_FLOOR = { spawnMult: 0.1, patience: 0.1, slipRisk: 0.1, walkSpeed: 0.1, nhiTurnover: 0.1, selfPayPrice: 0.1, researchGain: 0.1, staffStamina: 0.1, rentMult: 0.1, wageMult: 0.1 };
+
+// =====================================================================================================
 if (want('features')) featuresSection();
 if (want('edge')) edgeSection();
 if (want('save')) saveSection();
 if (want('achievements')) achievementsSection();
+if (want('events')) eventsSection();
 if (want('longrun')) longrunSection();
 
 if (FEATURES.length) {

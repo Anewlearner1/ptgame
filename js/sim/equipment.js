@@ -135,7 +135,10 @@ export function wearTargets(state, target) {
 }
 export function addWear(state, target, delta) {
   const hit = wearTargets(state, target);
-  for (const o of hit) o.wear = clamp(wearOf(o) + delta, 0, 100);
+  for (const o of hit) {
+    o.wear = clamp(wearOf(o) + delta, 0, 100);
+    if (delta <= -100) o.broken = false;       // a full reset (e.g. 叫師傅來修: wear -100) is a repair
+  }
   return hit;
 }
 export function breakdownTarget(state, target) {

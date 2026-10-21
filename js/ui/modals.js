@@ -8,7 +8,7 @@ import { LOTS } from '../data/lots.js';
 import { DILEMMAS, RANDOM_EVENTS } from '../data/events.js';
 import { INTRO_STEPS } from '../data/texts.js';
 import { monthlyCosts } from '../sim/economy.js';
-import { resolveDilemma } from '../sim/events.js';
+import { resolveDilemma, eventById, choiceAffordable } from '../sim/events.js';
 import { newGame, loadGame, listSaves } from '../sim/save.js';
 
 // ---- ledger snapshot: the ledger is reset inside settleMonth, so keep the last pre-reset copy ----
@@ -125,8 +125,7 @@ export function resetPendingKey() { shownKey = null; }
 function resolveDef(d) {
   if (!d) return null;
   if (d.choices) return d;
-  const all = DILEMMAS.concat(RANDOM_EVENTS);
-  const def = all.find(x => x.id === d.id);
+  const def = eventById(d.id) || DILEMMAS.concat(RANDOM_EVENTS).find(x => x.id === d.id);
   return def ? { ...def, ...d } : d;
 }
 
@@ -140,10 +139,14 @@ export function showPending(raw) {
   const isDilemma = !!d.trigger || DILEMMAS.some(x => x.id === d.id);
   const list = h('div', { class: 'u-choices' });
   d.choices.forEach((c, i) => {
+    const poor = !choiceAffordable(state, c);
+    const note = [];
+    if (c.chance) note.push(h('span', { class: 'tag u-odds', tip: '擲骰決定結果：成功與失敗的後果不同' }, `🎲 成功率 ${Math.round((c.chance.p || 0) * 100)}%`));
+    if (c.requires && c.requires.money) note.push(h('span', { class: 'tag u-costnote' + (poor ? ' lack' : '') }, `需 ${money(c.requires.money)}`));
     list.appendChild(h('button', {
-      class: 'btn u-choice', type: 'button',
+      class: 'btn u-choice' + (c.chance ? ' u-chance' : '') + (poor ? ' u-poor' : ''), type: 'button', disabled: poor,
       onclick: () => choose(d, i),
-    }, h('span', { class: 'kbd' }, String(i + 1)), h('span', null, c.label)));
+    }, h('span', { class: 'kbd' }, String(i + 1)), h('span', { class: 'u-choice-main' }, (c.chance ? '🎲 ' : '') + c.label), note.length ? h('span', { class: 'u-choice-note' }, note) : null));
   });
   const body = h('div', null, h('p', { class: 'u-p' }, d.text || ''), list);
   showModal({
@@ -151,7 +154,7 @@ export function showPending(raw) {
     body, noActions: true, dismissable: false, pause: false, tag: 'dilemma',
     onKey: e => {
       const n = parseInt(e.key, 10);
-      if (n >= 1 && n <= d.choices.length) { e.preventDefault(); choose(d, n - 1); }
+      if (n >= 1 && n <= d.choices.length && choiceAffordable(ctx.state, d.choices[n - 1])) { e.preventDefault(); choose(d, n - 1); }
     },
   });
 }
@@ -159,13 +162,17 @@ export function showPending(raw) {
 function choose(d, i) {
   const state = ctx.state;
   const ch = d.choices[i];
-  try { resolveDilemma(state, i); } catch (e) { console.error(e); }
+  let out = null;
+  try { out = resolveDilemma(state, i); } catch (e) { console.error(e); }
+  if (!out) return;     // refused (not affordable / stale): keep the decision open
   shownKey = null;
   closeModal(true);
-  const eff = effectChips(ch.effects);
+  // what really happened (a 🎲 option shows only the side that was rolled)
+  const eff = out.chips && out.chips.length ? out.chips : effectChips(out.effects || ch.effects);
   const body = h('div', null,
     h('p', { class: 'u-p' }, h('b', null, `你選擇了：${ch.label}`)),
-    h('p', { class: 'u-p' }, ch.result || ''),
+    out.roll ? h('p', { class: 'u-p ' + (out.roll === 'win' ? 'good' : 'bad') }, out.roll === 'win' ? '🎲 運氣不錯，成功了！' : '🎲 運氣不好，失敗了…') : null,
+    h('p', { class: 'u-p' }, out.result || ch.result || ''),
     eff.length ? chips(eff) : null);
   showModal({ title: '📋 結果', body, tag: 'dilemma-result', buttons: [{ label: '好的', primary: true }] });
 }

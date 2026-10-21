@@ -66,15 +66,15 @@ export const RANDOM_EVENTS = [
     ],
   },
   {
-    id: 'nhi_audit', title: '健保署抽審', weight: 8, cond: { minYear: 1 },
+    id: 'nhi_audit', cat: 'nhi', big: true, title: '健保署抽審', weight: 8, cond: { minYear: 1 },
     text: '健保署來函，要抽調上個月的病歷和申報資料。信封很厚，主任的表情很薄。',
     choices: [
       {
-        label: '配合調閱，全力準備', effects: { money: -80000, reputation: 3 },
+        label: '配合調閱，全力準備', effects: { money: -80000, reputation: 3, risk: -12 },
         result: '病歷寫得清清楚楚，審查員翻了三小時，最後蓋了個章說「還可以」。',
       },
       {
-        label: '交給行政處理，自己繼續看診', effects: { money: -240000, reputation: -8 },
+        label: '交給行政處理，自己繼續看診', effects: { money: -240000, reputation: -8, risk: 6 },
         result: '行政阿姨硬著頭皮補件，還是少了兩張簽名，罰單寄到了家裡。',
       },
     ],
@@ -94,7 +94,7 @@ export const RANDOM_EVENTS = [
     ],
   },
   {
-    id: 'poach', title: '員工被挖角', weight: 7, cond: { minYear: 1 },
+    id: 'poach', cat: 'ops', title: '員工被挖角', weight: 7, cond: { minYear: 1 },
     text: '隔壁大醫院的人資私訊你的員工，說薪水可以多兩成，還附停車位。',
     choices: [
       {
@@ -112,7 +112,7 @@ export const RANDOM_EVENTS = [
     text: '儀器業務帶著笑容來：「醫生，這台新機器限時八折，現在下單還送保固！」',
     choices: [
       {
-        label: '買！機器看起來很厲害', effects: { money: -480000, points: { device: 20 } },
+        label: '買！機器看起來很厲害', requires: { money: 480000 }, effects: { money: -480000, points: { device: 20 } },
         result: '機器開箱那天，全診所都來拍照。說明書有三百頁，但螢幕很漂亮。',
       },
       {
@@ -122,11 +122,11 @@ export const RANDOM_EVENTS = [
     ],
   },
   {
-    id: 'flood', title: '颱風淹水', weight: 5, cond: {},
+    id: 'flood', cat: 'season', title: '颱風淹水', weight: 5, cond: { weather: ['typhoon'] },
     text: '颱風過後，馬路變成小河。診所一樓的地板泡在水裡，沙發還在飄。',
     choices: [
       {
-        label: '全體動員清理，搶救設備', effects: { money: -360000, reputation: 4 },
+        label: '全體動員清理，搶救設備', requires: { money: 360000 }, effects: { money: -360000, reputation: 4 },
         result: '同仁穿雨鞋、拿拖把，忙到半夜。病人隔天來看到，都說「你們很拚」。',
       },
       {
@@ -192,11 +192,11 @@ export const RANDOM_EVENTS = [
     ],
   },
   {
-    id: 'equip_recall', title: '儀器召回通知', weight: 4, cond: { minYear: 1 },
+    id: 'equip_recall', title: '儀器召回通知', weight: 4, cond: { minYear: 1, hasObject: ['tens'] },
     text: '廠商發通知，你家那台電療儀有安全疑慮要召回，換新機要自費，還附一張道歉信。',
     choices: [
       {
-        label: '立刻換新，安全第一', effects: { money: -600000, reputation: 3, points: { device: 5 } },
+        label: '立刻換新，安全第一', requires: { money: 600000 }, effects: { money: -600000, reputation: 3, points: { device: 5 } },
         result: '新機器亮亮的，病人說「這台看起來比較可靠」，你心裡鬆了一口氣。',
       },
       {

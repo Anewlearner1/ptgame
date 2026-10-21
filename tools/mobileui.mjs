@@ -302,7 +302,7 @@ for (const [w, h, kind] of VIEWPORTS) {
   };
   await showModal('settlement', () => __game.bus.emit('nhi:settled', { points: 31000, pointValue: 0.9, income: 60000, expense: 52000, net: 8000, cap: 28000, nhiIncome: 27900, selfIncome: 32100, salary: 30000, rent: 60000, maintain: 2000, year: 1, month: 1 }));
   await showModal('inspection', () => __game.bus.emit('inspection:result', { pass: false, score: 61, notes: ['走道寬度不足，輪椅進出有困難。', '缺少無障礙廁所。', '病歷保存良好。'], rewardOrFine: -20000 }));
-  await showModal('event', () => __game.bus.emit('event:show', { event: { id: 'test_ev', title: '測試事件：里長來訪', text: '里長帶著一群長輩來參觀你的診所，問你能不能辦一場免費的衛教講座？這件事情很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長。', choices: [{ label: '好啊，歡迎', result: '大家都很開心。', effects: {} }, { label: '先婉拒，最近太忙了', result: '里長有點失望。', effects: {} }] } }));
+  await showModal('event', () => { const ev = { id: 'test_ev', title: '測試事件：里長來訪', text: '里長帶著一群長輩來參觀你的診所，問你能不能辦一場免費的衛教講座？這件事情很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長。', choices: [{ label: '好啊，歡迎', result: '大家都很開心。', effects: {} }, { label: '先婉拒，最近太忙了', result: '里長有點失望。', effects: {} }] }; __game.state.events.pendingDilemma = ev; __game.bus.emit('event:show', { event: ev }); });   // resolveDilemma refuses a choice when nothing is pending
   await closeModals();
   await showModal('help', () => { document.querySelector('.speed-btn.u-help')?.click(); });
   // 診所 panel -> achievements tab at this viewport
@@ -319,7 +319,7 @@ for (const [w, h, kind] of VIEWPORTS) {
     const id = await page.evaluate(() => __game.state.objects.find(o => o.defId === 'plant')?.id ?? __game.state.objects[0].id);
     await page.evaluate(id => { __game.bus.emit('object:context', { id, x: innerWidth / 2, y: innerHeight / 2 }); }, id); await pause(page, 250);
     const c = await page.evaluate(() => { const m = document.querySelector('.u-ctx'); if (!m || m.hidden) return null; const b = m.getBoundingClientRect(); return { inside: b.left >= 0 && b.right <= innerWidth && b.top >= 0 && b.bottom <= innerHeight, btns: [...m.querySelectorAll('.u-ctx-btn')].map(x => [x.textContent.trim(), x.getBoundingClientRect().height]) }; });
-    ok(c && c.inside && c.btns.length === 3 && c.btns.every(b => b[1] >= 44), 'context popover: 資訊 / 旋轉 / 拆除, ≥44px rows, inside the screen');
+    ok(c && c.inside && c.btns.length === 4 && c.btns.every(b => b[1] >= 44), 'context popover: 資訊 / 移動 / 旋轉 / 拆除, ≥44px rows, inside the screen');
     await shot('50-context');
     await page.evaluate(() => [...document.querySelectorAll('.u-ctx-btn')].find(b => b.textContent.includes('資訊'))?.click()); await pause(page, 500);
     ok(await page.evaluate(() => __game.ui.selected && !document.querySelector('.u-selcard').hidden), 'context 資訊 opens the selection card');

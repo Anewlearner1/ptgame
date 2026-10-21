@@ -164,6 +164,7 @@ function sanitize(m) {
   const wd = (WEATHER || []).find(x => x.id === w.id) || (WEATHER || []).find(x => x.kind === w.kind);
   m.weather = wd ? { ...w, kind: wd.kind, id: wd.id, temp: num(w.temp, 24) } : { kind: 'sunny', id: 'sunny', temp: 24 };
   m.events.active = m.events.active.filter(a => a && typeof a === 'object' && Number.isFinite(a.weeksLeft));
+  sanitizeEventsExt(m);
   const pd = m.events.pendingDilemma;
   if (pd && !(typeof pd === 'object' && Array.isArray(pd.choices) && pd.choices.length)) m.events.pendingDilemma = null;
   m.hirePool = m.hirePool.filter(c => c && c.cid && STAFF_ROLES[c.role]);
@@ -174,7 +175,9 @@ function sanitize(m) {
   const objs = [];
   for (const o of m.objects) {
     if (!o || !BUILDABLES[o.defId] || !Number.isFinite(o.x) || !Number.isFinite(o.y) || !Number.isFinite(o.id)) continue;
-    o.rot = o.rot ? 1 : 0; o.wear = Math.max(0, num(o.wear, 0));
+    o.rot = o.rot ? 1 : 0; o.wear = clampN(o.wear, 0, 100, 0);
+    if (o.broken) { o.broken = true; o.busy = false; o.usedBy = null; o.staffId = null; } else delete o.broken;
+    if (Number.isFinite(o.maintainedUntil)) o.maintainedUntil = Math.floor(o.maintainedUntil); else delete o.maintainedUntil;
     if (typeof o.busy !== 'boolean') o.busy = false;
     if (o.usedBy === undefined) o.usedBy = null;
     if (o.staffId === undefined) o.staffId = null;
@@ -199,6 +202,9 @@ function sanitize(m) {
     s.salary = Math.max(0, num(s.salary, def.baseSalary || 0));
     s.x = num(s.x, m.door.x + 0.5); s.y = num(s.y, m.door.y - 0.5);
     s.level = Math.max(1, Math.floor(num(s.level, 1)));
+    if (s.morale !== undefined) s.morale = clampN(s.morale, 0, 100, 70);
+    if (s.tiredAcc !== undefined) s.tiredAcc = Math.max(0, num(s.tiredAcc, 0));
+    if (Number.isFinite(s.staminaCarry) && s.staminaCarry !== 0) s.staminaCarry = clampN(s.staminaCarry, -100, 100, 0); else delete s.staminaCarry;
     // runtime fields: only fill what is missing (a valid in-flight task / path survives the round trip)
     if (!Array.isArray(s.path)) s.path = [];
     if (s.task === undefined || (s.task !== null && typeof s.task !== 'object')) s.task = null;
@@ -268,6 +274,32 @@ function sanitizeAchv(m) {
   }
   const td = typeof a.title === 'string' ? defs.get(a.title) : null;
   m.achv = { unlocked, counters: c, title: td && td.title && unlocked[td.id] ? td.id : null, badges };
+}
+// M3 risk, M7 review score, M10 flags / follow-ups, M5 buffs (docs/EVENTS_EXT.md): repair whatever a hand-edited or older save has wrong
+function sanitizeEventsExt(m) {
+  // only repair fields that exist: the engine creates them lazily, and sanitise() must not alter a state the engine produced
+  if (m.reviewScore !== undefined) m.reviewScore = Math.round(clampN(m.reviewScore, 1, 5, 4) * 100) / 100;
+  if (m.nhi.risk !== undefined) m.nhi.risk = clampN(m.nhi.risk, 0, 100, 0);
+  for (const k of ['nhiN', 'complexN']) if (m.nhi[k] !== undefined) m.nhi[k] = Math.max(0, Math.floor(num(m.nhi[k], 0)));
+  const e = m.events;
+  if (e.flags !== undefined) {
+    const flags = {};
+    if (e.flags && typeof e.flags === 'object' && !Array.isArray(e.flags)) for (const [k, v] of Object.entries(e.flags)) if (v) flags[k] = true;
+    e.flags = flags;
+  }
+  if (e.pendingFollowUps !== undefined) {
+    e.pendingFollowUps = (Array.isArray(e.pendingFollowUps) ? e.pendingFollowUps : [])
+      .filter(f => f && typeof f.id === 'string' && Number.isFinite(f.due)).map(f => ({ id: f.id, due: Math.floor(f.due) })).slice(0, 40);
+  }
+  if (e.buffs !== undefined) {
+    e.buffs = (Array.isArray(e.buffs) ? e.buffs : []).filter(b => b && typeof b === 'object' && Number.isFinite(b.weeksLeft) && b.weeksLeft > 0 && b.mods && typeof b.mods === 'object')
+      .map(b => {
+        const mods = {};
+        for (const [k, v] of Object.entries(b.mods)) if (typeof v === 'number' && Number.isFinite(v)) mods[k] = v;
+        return { ...b, id: typeof b.id === 'string' ? b.id : 'buff0', label: typeof b.label === 'string' ? b.label : '特殊效應', weeksLeft: Math.min(520, Math.ceil(b.weeksLeft)), mods };
+      }).slice(0, 40);
+  }
+  for (const k of ['lastBigMonth', 'lastEventWeek', 'buffSeq']) if (e[k] !== undefined && !Number.isFinite(e[k])) delete e[k];
 }
 function createInitialStateMods() { return base0().mods; }
 function base0() { return quietly(() => createInitialState()); }

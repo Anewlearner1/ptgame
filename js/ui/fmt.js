@@ -20,29 +20,8 @@ export const STAFF_STATE_LABELS = {
 export const TYPE_ICONS = { elder: '👴', office: '💼', sports: '🏃', kid: '🧒' };
 export const ROLE_ICONS = { doctor: '🩺', pt: '💪', ot: '🧩', st: '🗣', nurse: '💉' };
 
-export const MOD_LABELS = {
-  nhiTurnover: ['健保翻桌率', 'pct'], selfPayConv: ['自費轉換率', 'pct'], selfPayPrice: ['自費單價', 'pct'],
-  researchGain: ['點數獲得', 'pct'], elderSat: ['長輩滿意度', 'abs'], walkSpeed: ['步行速度', 'pct'],
-  spawnMult: ['來客量', 'pct'], patience: ['病患耐心', 'pct'], slipRisk: ['滑倒風險', 'pct'],
-  staffStamina: ['員工體力消耗', 'pct'], rentMult: ['房租', 'pct'], wageMult: ['薪資支出', 'pct'],
-  nhiCapBonus: ['健保點數上限', 'pct'],
-};
-const LOWER_BETTER = new Set(['slipRisk', 'staffStamina', 'rentMult', 'wageMult']);
-
-// {nhiTurnover:0.2, elderSat:8} -> [{text:'健保翻桌率 +20%', good:true}, ...]
-export function modChips(patch) {
-  const out = [];
-  for (const k of Object.keys(patch || {})) {
-    const v = patch[k];
-    if (typeof v !== 'number') continue;
-    const m = MOD_LABELS[k] || [k, 'abs'];
-    const sign = v > 0 ? '+' : v < 0 ? '-' : '';
-    const val = m[1] === 'pct' ? Math.abs(Math.round(v * 100)) + '%' : String(Math.abs(v));
-    const good = LOWER_BETTER.has(k) ? v < 0 : v > 0;
-    out.push({ text: `${m[0]} ${sign}${val}`, good });
-  }
-  return out;
-}
+// mod labels / chips live in sim/efftext.js (shared with the event engine's result summaries)
+export { MOD_LABELS, modChips } from '../sim/efftext.js';
 
 // dilemma / event choice effects -> chips
 export function effectChips(e) {

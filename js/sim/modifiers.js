@@ -19,6 +19,8 @@ export const COMFORT_MAX = 12;            // cap on comfortScoreAt
 export const ENV_PATIENCE_PER_COMFORT = 0.004;   // clinic-wide comfort -> patience multiplier delta
 export const ENV_PATIENCE_PER_RELIEF = 0.008;    // anxietyRelief -> patience
 export const ENV_PATIENCE_CAP = 0.2;
+const SPAWN_MULT_MAX = 2.0;
+const TYPE_SPAWN_MAX = 3.5;
 const MULT_MIN = 0.1;                     // floor for multiplier-type mods
 const MODS_MIN_ZERO_OK = new Set(['selfPayConv', 'elderSat']);
 
@@ -65,7 +67,8 @@ function clampMods(m) {
       if (m[k] < MULT_MIN) m[k] = MULT_MIN;
     }
   }
-  for (const t of Object.keys(m.typeSpawn)) if (m.typeSpawn[t] < 0) m.typeSpawn[t] = 0;
+  for (const t of Object.keys(m.typeSpawn)) m.typeSpawn[t] = Math.max(0, Math.min(TYPE_SPAWN_MAX, m.typeSpawn[t]));
+  if (m.spawnMult > SPAWN_MULT_MAX) m.spawnMult = SPAWN_MULT_MAX;      // stacked buffs cannot run away
 }
 
 export function recomputeMods(state) {
@@ -97,6 +100,8 @@ export function recomputeMods(state) {
 
   // 4. active events / community actions (their mods patch is stored on the entry)
   for (const a of (state.events && state.events.active) || []) applyPatch(m, a.mods);
+  // 4b. M5/M6 timed buffs from event choices (state.events.buffs, expire in events.js -> mods:dirty rolls them back)
+  for (const b of (state.events && state.events.buffs) || []) applyPatch(m, b.mods);
 
   // 5. enabled health-education boards
   for (const id of (state.policy && state.policy.boards) || []) {

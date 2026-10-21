@@ -10,6 +10,7 @@ import { POINT_KEYS, POINT_LABELS } from '../../core/constants.js';
 import { listAchievements, equipTitle, setBadges, displayTitle, badgeIcons } from '../../sim/achievements.js';
 import * as EV from '../../sim/events.js';
 import * as INSP from '../../sim/inspection.js';
+import { riskOf, reviewOf, RISK_TUNE } from '../../sim/economy.js';
 import { h, setClass, setText, tabbed, bar, setBar } from '../dom.js';
 import { money, fmt, TYPE_ICONS } from '../fmt.js';
 import { chipList, section, boardsSection } from './common.js';
@@ -338,13 +339,53 @@ function buildTitle(body, state) {
   };
 }
 
+// ---- 營運狀態列 (always visible above the tabs): 院長稱號 · 網路評價 (M7) · 審查風險 (M3) + 目前效應 (buffs / community)
+function buildStatus(state) {
+  const titleEl = h('span', { class: 'u-st-title' });
+  const reviewEl = h('span', { class: 'tag u-st-review', tip: '網路評價（1~5）：每月依平均滿意度漲跌，每差 0.1 影響新客量約 1%。' });
+  const riskNum = h('em', { class: 'u-num' }), riskBar = bar();
+  const riskEl = h('span', { class: 'u-bl u-st-risk', tip: `健保審查風險（0~100）：申報量逼近上限、成長太快或複雜治療占比高會上升，每週自然下降 ${RISK_TUNE.WEEK_DECAY}。超過 ${RISK_TUNE.HIGH} 時審查類事件更容易發生，年度抽查也會扣分。` }, '審查風險', riskBar, riskNum);
+  const eff = h('div', { class: 'u-st-eff' });
+  const el = h('div', { class: 'card u-status' }, h('div', { class: 'u-st-row' }, titleEl, reviewEl, riskEl), eff);
+  let sig = '';
+  return {
+    el,
+    update() {
+      const rep = Math.round(state.reputation);
+      let dt = titleFor(rep).cur.title;
+      try { dt = displayTitle(state) || dt; } catch (e) { /* module not ready */ }
+      setText(titleEl, `🎖 ${dt}`);
+      const rv = reviewOf(state);
+      setText(reviewEl, `⭐ 評價 ${rv.toFixed(1)}`);
+      setClass(reviewEl, 'good', rv >= 4.2); setClass(reviewEl, 'bad', rv < 3.2);
+      const rk = riskOf(state);
+      setBar(riskBar, rk / 100, rk > RISK_TUNE.HIGH ? 'bad' : rk > 30 ? 'warn' : '');
+      setText(riskNum, Math.round(rk));
+      let list = [];
+      try { list = EV.activeEffects(state); } catch (e) { /* ignore */ }
+      const k = list.map(a => a.label + ':' + a.weeksLeft + ':' + a.chips.map(c => c.text).join('/')).join('|');
+      if (k !== sig) {
+        sig = k;
+        eff.hidden = !list.length;
+        eff.replaceChildren(...(list.length ? [h('span', { class: 'u-st-lab' }, '目前效應')] : []),
+          ...list.map(a => {
+            const good = a.chips.length ? a.chips.filter(c => c.good).length >= a.chips.length / 2 : true;
+            return h('span', { class: 'tag u-chip u-st-chip ' + (good ? 'good' : 'bad'), tip: a.chips.map(c => c.text).join('、') || a.label }, `${a.label}　${a.weeksLeft} 週`);
+          }));
+      }
+    },
+  };
+}
+
 export function mountClinic(root, state, ui) {
+  const status = buildStatus(state);
   const t = tabbed([
     { id: 'policy', label: '🧭 經營方針', build: b => buildPolicy(b, state) },
     { id: 'boards', label: '📌 衛教看板', build: b => buildBoards(b, state) },
     { id: 'expand', label: '🏗 擴建', build: b => buildExpand(b, state) },
     { id: 'title', label: '🎖 稱號與徽章', build: b => buildTitle(b, state) },
   ], store);
-  root.appendChild(t.el);
-  return { update() { t.update(); } };
+  root.append(status.el, t.el);
+  status.update();
+  return { update() { status.update(); t.update(); } };
 }

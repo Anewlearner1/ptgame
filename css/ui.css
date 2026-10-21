@@ -280,3 +280,45 @@
   .u-repdet { display: none; }
   .u-achsum { margin: 4px 0 6px; gap: 2px; }
 }
+
+/* ---------- events ext: choice notes, 營運狀態列, 設備維護 (wear / repair / contract), 士氣 ----------------------- */
+.btn.u-choice { flex-wrap: wrap; }
+.u-choice-main { flex: 1 1 0; min-width: 0; }
+.u-choice-note { flex: 0 0 100%; display: flex; flex-wrap: wrap; gap: 4px; padding-left: 28px; }
+.tag.u-odds { background: #e8e0f7; color: #4b3a7a; box-shadow: 0 0 0 2px #7a66b0; }
+.tag.u-costnote { background: #efe4c9; color: var(--ink); box-shadow: 0 0 0 2px var(--wood); }
+.tag.u-costnote.lack { background: var(--u-bad-bg); color: #8f2a38; box-shadow: 0 0 0 2px #8f2a38; }
+.btn.u-choice.u-poor, .btn.u-choice[disabled] { opacity: .6; }
+.u-status { padding: 6px 10px; margin-bottom: 8px; }
+.u-st-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; }
+.u-st-title { font-weight: 800; }
+.u-st-risk { gap: 5px; }
+.u-st-risk .bar { width: 56px; flex: 0 0 56px; height: 8px; }
+.tag.u-st-review.good { background: var(--u-good-bg); color: #1d5c2a; }
+.tag.u-st-review.bad { background: var(--u-bad-bg); color: #8f2a38; }
+.u-st-eff { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 5px; }
+.u-st-eff[hidden] { display: none; }
+.u-st-lab { font-size: 11px; color: var(--muted); font-weight: 700; }
+.u-srow2 .u-bars3.u-bars4 { grid-template-columns: repeat(2, 1fr); }
+.tag.u-mood { background: var(--u-bad-bg); color: #8f2a38; box-shadow: 0 0 0 2px #8f2a38; }
+.tag.u-mood[hidden] { display: none; }
+.u-eqsum { margin: 4px 0; font-size: 13px; }
+.warn-text { color: #8a5a00; }
+.u-contract { padding: 8px 10px; margin: 6px 0; }
+.u-contract-btns { margin-top: 6px; gap: 6px; flex-wrap: wrap; }
+.u-contract-btns .btn { margin-bottom: 0; }
+.u-eqname { font-weight: 700; }
+.u-eqbadges { display: inline-flex; gap: 4px; margin-left: 6px; flex-wrap: wrap; vertical-align: middle; }
+.tag.u-eqb.bad { background: var(--u-bad-bg); color: #8f2a38; box-shadow: 0 0 0 2px #8f2a38; }
+.tag.u-eqb.warn { background: #fff0c4; color: #7a5200; box-shadow: 0 0 0 2px #b88a1a; }
+.tag.u-eqb.good { background: var(--u-good-bg); color: #1d5c2a; box-shadow: 0 0 0 2px #1d5c2a; }
+.u-eq .u-wearcell { width: 96px; }
+.u-wearin { display: flex; align-items: center; gap: 4px; }
+.u-wearin .bar { flex: 1 1 auto; min-width: 36px; }
+.u-wearin[hidden] { display: none; }
+.u-eq tbody tr.u-broken { background: #fbe6e8; }
+.u-acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.u-acts .btn { margin: 0; }
+.u-acts .btn[hidden] { display: none; }
+@media (max-width: 520px) { .u-eq .u-poscol, .u-eq .u-upcol { display: none; } }
+.lay-mobile .u-eq .u-poscol, .lay-mobile .u-eq .u-upcol { display: none; }

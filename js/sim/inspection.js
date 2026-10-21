@@ -5,7 +5,7 @@ import { BUILDABLES } from '../data/buildables.js';
 import { LOTS, INSPECTION_RULES } from '../data/lots.js';
 import { RESEARCH } from '../data/research.js';
 import { rebuildOccupancy } from '../core/grid.js';
-import { spend, lotDef } from './economy.js';
+import { spend, lotDef, riskOf } from './economy.js';
 import { recomputeMods } from './modifiers.js';
 import { recomputeZones } from './synergy.js';
 
@@ -24,6 +24,8 @@ export const ANTISLIP_TARGET = 0.4;      // coverage of walkable lot tiles by �
 export const SAT_TARGET = 50;            // yearly avg satisfaction
 export const NHI_ABUSE_PV = 0.9;          // a month only counts as 'abuse' when the diluted point value falls below this (mild saturation is fine)
 export const NHI_ABUSE_MONTHS_FAIL = 4;  // diluted months per year that count as full abuse
+export const RISK_PENALTY_FROM = 30;     // NHI review risk (0..100) above this reduces the nhi_abuse rule score
+export const RISK_PENALTY_MAX = 0.6;     // ... by up to this fraction of the rule at risk 100
 export const SAT_WINDOW_MONTHS = 3;      // window for "current" average satisfaction used by expansion
 
 let unsub = [];
@@ -110,7 +112,11 @@ export function evaluateRules(state, year) {
   add('satisfaction', 8, sat == null ? 1 : sat / SAT_TARGET, sat == null ? '本年度尚無病患資料。' : `全年平均滿意度 ${sat.toFixed(0)}（標準 ${SAT_TARGET}）。`);
 
   const dil = (state.history || []).filter(h => h.year === year && (h.pointValue || 1) < NHI_ABUSE_PV).length;
-  add('nhi_abuse', 12, 1 - dil / NHI_ABUSE_MONTHS_FAIL, dil ? `全年有 ${dil} 個月健保點數超出上限、點值被壓低。` : '健保申報量都在合理範圍內。');
+  // M3: a high NHI review risk also costs points at the annual 健保署抽查 (RISK_PENALTY_FROM..100 -> up to RISK_PENALTY_MAX)
+  const risk = riskOf(state);
+  const riskPen = risk > RISK_PENALTY_FROM ? (risk - RISK_PENALTY_FROM) / (100 - RISK_PENALTY_FROM) * RISK_PENALTY_MAX : 0;
+  const nhiNote = (dil ? `全年有 ${dil} 個月健保點數超出上限、點值被壓低。` : '健保申報量都在合理範圍內。') + (riskPen > 0 ? `審查風險偏高（${Math.round(risk)}），抽查時被多看了幾眼。` : '');
+  add('nhi_abuse', 12, 1 - dil / NHI_ABUSE_MONTHS_FAIL - riskPen, nhiNote);
   return results;
 }
 
