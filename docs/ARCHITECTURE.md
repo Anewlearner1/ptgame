@@ -274,3 +274,8 @@ Tile diamond 64×32 (`TILE_W`,`TILE_H`); object `height` px extruded upward; wor
 ## 7. Definition of done
 * `python3 -m http.server` → open `index.html` → starter clinic visible, patients walk in, register, wait, get treated, pay, leave; week/month rolls; month report modal; build/demolish works; save/load works; no console errors for 10 minutes at ×3 speed; 60 fps-ish with ~40 agents.
 * Every PRD feature in the vertical slice is reachable from the UI. Everything in this doc is implemented or explicitly listed as deferred in the agent's report.
+
+## 美術包（概念圖圖集）
+- 素材：`assets/art/atlas.png` + `atlas.json`（79 個去背素材，由 `tools/build_atlas.py` 從使用者提供的概念圖切出；原圖在 `assets/art/source/`，不隨網站部署）。命名見 `assets/art/README.md`。
+- `js/render/art.js`：`loadArt() / artReady() / artRect(name) / artCanvas(name) / artUrl() / artEnabled() / setArtEnabled(on)`；事件 `art:changed {enabled, ready}`。設定存 `localStorage 'ptgame.art'`（預設新美術；可切回「原像素風」）。圖集載入失敗時全部退回程式繪製。
+- 地圖：人物（醫師/護理師/PT/OT；ST 用 `staff.pharmacist`；四類病患）與設備（bed、traction、tens、soft_mat、shockwave）使用圖集。介面：`js/ui/artdom.js`（`artEl`、`artBanner`）。測試：`tools/arttest.mjs`、`tools/artui.mjs`（各用自己的 http.server 連接埠，見檔頭）。
