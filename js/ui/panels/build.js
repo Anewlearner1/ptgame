@@ -6,6 +6,7 @@ import { isUnlocked, relocationCost } from '../../sim/build.js';
 import { h, setClass, setText, tabbed } from '../dom.js';
 import { money } from '../fmt.js';
 import { layout, setBMode } from '../layout.js';
+import { artEl, artOn, itemSprite } from '../artdom.js';
 
 const store = { tab: 'env', sub: {} };
 let keepPref = false;     // 📌 keep-tool pin (ui.tool.keep, consumed by render/input.js): stay armed after each placement
@@ -41,6 +42,7 @@ export function mountBuild(root, state, ui) {
   const trayName = h('b', { class: 'u-tray-name' });
   const trayCost = h('span', { class: 'u-tray-cost muted' });
   const trayGlyph = h('span', { class: 'u-tray-glyph' });
+  const trayArt = artEl(null, { size: 44, noReserve: true, cls: 'u-tray-art' });
   const bPin = h('button', { class: 'btn u-tray-btn', type: 'button', 'aria-label': '連續放置', onclick: () => {
     if (ui.tool.mode === 'move') { ui.tool.keep = !ui.tool.keep; return; }
     keepPref = !keepPref; if (ui.tool.mode === 'place' || ui.tool.mode === 'paint') ui.tool.keep = keepPref;
@@ -51,7 +53,7 @@ export function mountBuild(root, state, ui) {
   const bFull = h('button', { class: 'btn u-tray-btn u-tray-full', type: 'button', 'aria-label': '展開建造清單', onclick: () => setBMode('full') }, '⤢', h('span', { class: 'u-tray-lbl' }, ' 展開'));
   const bChip = h('button', { class: 'btn u-tray-btn u-tray-chipbtn', type: 'button', 'aria-label': '收合', onclick: () => setBMode('chip') }, '▾');
   const tray = h('div', { class: 'u-tray' },
-    h('div', { class: 'u-tray-item' }, trayGlyph, h('div', { class: 'u-tray-txt' }, trayName, trayCost)),
+    h('div', { class: 'u-tray-item' }, trayArt, trayGlyph, h('div', { class: 'u-tray-txt' }, trayName, trayCost)),
     h('div', { class: 'u-tray-btns' }, bPin, bRot, bAgain, bCancel, bFull, bChip));
   root.appendChild(tray);
 
@@ -115,7 +117,9 @@ export function mountBuild(root, state, ui) {
       onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickItem(d); } },
     },
       h('span', { class: 'u-info', dataset: { tipDef: d.id }, 'aria-label': '資訊', onclick: e => e.stopPropagation() }, 'ⓘ'),
-      h('div', { class: 'u-glyph', style: { background: d.top || '#ccc', color: '#fff' } }, d.glyph || '?'),
+      itemSprite(d.id)
+        ? artEl(itemSprite(d.id), { width: 52, height: 44, fallback: d.glyph || '?', fbCls: 'u-glyph u-art-glyphfb', fbBg: d.top || '#ccc', fbColor: '#fff', title: d.name })
+        : h('div', { class: 'u-glyph', style: { background: d.top || '#ccc', color: '#fff' } }, d.glyph || '?'),
       h('div', { class: 'u-iname' }, d.name),
       cost,
       h('div', { class: 'u-sub muted' }, `${d.w}×${d.h} · 維護 ${money(d.upkeep || 0)}`),
@@ -161,6 +165,10 @@ export function mountBuild(root, state, ui) {
       const td = armed && m !== 'demolish' && m !== 'move' ? d : lastDef;
       trayGlyph.textContent = m === 'demolish' ? '🧨' : m === 'move' ? (carried ? carried.glyph || '?' : '✥') : td ? td.glyph || '?' : '🔨';
       trayGlyph.style.background = m === 'move' ? (carried ? carried.top || '#ccc' : '#bcd9f5') : m !== 'demolish' && td ? td.top || '#ccc' : '#e8d9b8';
+      const tsp = m !== 'demolish' && m !== 'move' && td ? itemSprite(td.id) : null;
+      const useArt = !!(tsp && artOn());
+      trayArt.setArt(useArt ? tsp : null);
+      trayGlyph.hidden = useArt;
       setText(trayName, m === 'demolish' ? '拆除模式' : m === 'move' ? (carried ? `移動「${carried.name}」` : '移動模式') : td ? td.name : '建造');
       setText(trayCost, m === 'demolish' ? '點擊物件或地板'
         : m === 'move' ? (carried ? `搬移費 ${money(relocationCost(ui.tool.carryDef))}` : '點選要搬移的設備')

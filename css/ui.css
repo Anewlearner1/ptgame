@@ -206,6 +206,8 @@
 }
 @media (max-height: 600px) {
   :root { --u-title-h: 40px; }
+  .u-art[data-art="off"] > .u-art-fb.u-art-glyphfb { width: 32px; height: 32px; font-size: 18px; }
+  .u-item .u-art { --aw: 44px !important; --ah: 38px !important; }
   .u-selcard { bottom: 58px; padding: 8px 10px; width: 232px; }
   .u-item { padding: 5px 4px; }
   .u-item .u-glyph { width: 32px; height: 32px; font-size: 18px; margin-bottom: 2px; }
@@ -328,3 +330,57 @@
 .lay-mobile .u-acts { flex-wrap: nowrap; gap: 3px; }
 .lay-mobile .u-acts .btn { padding-left: 7px; padding-right: 7px; white-space: nowrap; }
 .lay-mobile .u-eqbadges { display: flex; margin: 2px 0 0; }
+
+/* ---------- concept-art sprites (js/ui/artdom.js) ---------------------------------------------------------------- */
+/* .u-art: fixed --aw x --ah box (reserved even while the atlas loads); the <i> is the sprite fitted inside it,
+   all scaling done with calc() on the sprite's atlas rect (--sx --sy --sw --sh) so media queries can resize the box. */
+.u-art { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; vertical-align: middle;
+  width: var(--aw, 32px); height: var(--ah, 32px); position: relative; line-height: 1; }
+.u-art[hidden] { display: none; }
+.u-art > i {
+  --iw: min(var(--aw), calc(var(--ah) * var(--sw, 1) / var(--sh, 1)));
+  --ih: min(var(--ah), calc(var(--aw) * var(--sh, 1) / var(--sw, 1)));
+  display: block; width: var(--iw); height: var(--ih);
+  background-image: var(--art-url); background-repeat: no-repeat;
+  background-size: calc(var(--iw) * var(--AW, 1024) / var(--sw, 1)) calc(var(--ih) * var(--AH, 1024) / var(--sh, 1));
+  background-position: calc(var(--iw) * var(--sx, 0) / var(--sw, 1) * -1) calc(var(--ih) * var(--sy, 0) / var(--sh, 1) * -1);
+  image-rendering: auto; pointer-events: none;
+}
+.u-art[data-art="wait"] > i, .u-art[data-art="off"] > i, .u-art[data-art="none"] > i { display: none; }
+.u-art[data-art="wait"] { visibility: hidden; }
+.u-art > .u-art-fb { display: none; font-weight: inherit; font-size: var(--fbs, calc(var(--ah) * 0.58)); }
+.u-art[data-art="off"] > .u-art-fb { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+.u-art.u-art-tile > i { border-radius: 8px; }
+.u-art.u-art-ring { box-shadow: 0 0 0 2px var(--ink); background: #dcebfb; }
+.u-art.u-art-ring[data-art="off"] { background: var(--paper); box-shadow: none; }
+.u-art.u-art-ico > i { filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.25)); }
+.u-art.u-art-inline { margin: 0 4px 0 0; vertical-align: -0.35em; }
+.u-art[data-art="off"] > .u-art-fb.u-art-glyphfb { width: 40px; height: 40px; font-size: 22px; box-shadow: 0 0 0 2px var(--ink), inset 0 -4px 0 0 rgba(0, 0, 0, 0.22); }
+.u-eqart { display: inline-flex; align-items: center; gap: 6px; }
+.u-art-pair { display: inline-flex; align-items: flex-end; gap: 4px; flex: 0 0 auto; }
+
+.u-banner { display: block; width: min(100%, calc(var(--bn-vh, 36dvh) * var(--bw, 401) / var(--bh, 194))); aspect-ratio: calc(var(--bw, 401) / var(--bh, 194));
+  margin: 0 auto 10px; background-image: var(--art-url); background-repeat: no-repeat; border-radius: 10px; box-shadow: 0 0 0 2px var(--ink);
+  image-rendering: auto; }
+.u-banner[hidden] { display: none; }
+.u-banner[data-art="wait"] { background-image: none; background: var(--shade, #e8dcc3); visibility: hidden; }
+.u-banner.u-banner-sm { --bn-vh: 18dvh; margin-bottom: 8px; }
+
+/* decision modal: portrait.doctor beside the narrative */
+.u-speaker { display: flex; align-items: flex-start; gap: 12px; }
+.u-speaker > .u-art { margin-top: 2px; }
+.u-speaker > .u-p { margin: 0; flex: 1 1 0; min-width: 0; }
+.u-modal-ico { margin-right: 6px; vertical-align: -0.28em; }
+
+/* selection card */
+.u-shead .u-art-pair { margin-right: 2px; }
+.u-seltask { display: inline-flex; align-items: center; gap: 4px; }
+
+/* lists */
+.u-row2 > .u-art, .u-row2 > .u-art-pair { margin-top: 1px; }
+.u-chip-art { display: inline-flex; align-items: center; gap: 2px; }
+.u-artswitch { gap: 8px; }
+.u-artswitch .btn { flex: 1 1 0; min-width: 0; white-space: normal; line-height: 1.3; }
+.modal .u-banner:not(.u-banner-sm) { max-width: 380px; }
+.lay-portrait .modal .u-banner:not(.u-banner-sm) { --bn-vh: 17dvh; }
+.lay-compact .modal .u-banner:not(.u-banner-sm) { --bn-vh: 30dvh; }

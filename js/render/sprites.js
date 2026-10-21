@@ -8,6 +8,7 @@
 import { BUILDABLES } from '../data/buildables.js';
 import * as PAT from '../data/patients.js';
 import * as STF from '../data/staffdefs.js';
+import { artObjectSprite } from './artdraw.js';
 
 const PX = 2;
 
@@ -870,6 +871,8 @@ const HMAX = { sofa: 18, water: 26, tv: 24, plant: 28, sign: 18, reception: 24, 
 
 const _objs = new Map();
 export function getObjectSprite(defId, rot) {
+  const adef = BUILDABLES[defId];
+  if (adef) { const as = artObjectSprite(adef, rot ? 1 : 0); if (as) return as; }   // atlas art (null unless loaded + enabled + matched)
   const key = defId + (rot ? ':1' : ':0');
   let s = _objs.get(key);
   if (s) return s;
@@ -901,6 +904,7 @@ export function getObjectSprite(defId, rot) {
 // alpha lookup for pixel-accurate hit tests
 const _alpha = new WeakMap();
 export function spriteHit(sprite, px, py) {
+  if (sprite.art) { const f = sprite.width / sprite.dw; px *= f; py *= f; }       // atlas sprites are drawn at dw x dh world px
   if (px < 0 || py < 0 || px >= sprite.width || py >= sprite.height) return false;
   let m = _alpha.get(sprite);
   if (!m) {

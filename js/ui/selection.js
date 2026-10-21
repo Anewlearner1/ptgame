@@ -9,6 +9,7 @@ import { h, clear, setText, bar, setBar, toneOf, setClass, append } from './dom.
 import { STAGE_LABELS, STAFF_STATE_LABELS, TYPE_ICONS, ROLE_ICONS, money } from './fmt.js';
 import { confirmDialog } from './modal.js';
 import { layout, setBMode } from './layout.js';
+import { artEl, STAFF_SPRITE, PATIENT_SPRITE, moodSprite, staffTaskIcon, itemSprite } from './artdom.js';
 
 let card = null, body = null, key = null, refs = null;
 
@@ -38,15 +39,17 @@ function buildPatient(state, ui, e) {
   refs = {
     stage: h('span', { class: 'tag' }), pat: bar(), sat: bar(), cure: bar(), bubble: h('div', { class: 'u-bubble' }),
     plan: h('div', { class: 'u-chips' }), paid: h('span'), flags: h('span', { class: 'muted' }),
+    mood: artEl(moodSprite(e.type, e.satisfaction, e.patience), { size: 44, cls: 'u-art-tile u-art-ring', fallback: TYPE_ICONS[e.type] || '🙂', title: '心情' }),
   };
   body.append(
-    h('div', { class: 'u-shead' }, h('span', { class: 'u-sico' }, TYPE_ICONS[e.type] || '🙂'),
+    h('div', { class: 'u-shead' }, h('span', { class: 'u-art-pair' }, refs.mood, artEl(PATIENT_SPRITE[e.type], { height: 48, width: 34, title: P.name || e.type })),
       h('div', { class: 'u-stitle' }, h('b', null, e.name), h('span', { class: 'muted' }, P.name || e.type)), refs.stage),
     row('耐心', refs.pat), row('滿意度', refs.sat), row('康復進度', refs.cure),
     refs.plan, refs.bubble, row('已付', refs.paid), refs.flags);
 }
 function updPatient(state, e) {
   const P = PATIENT_TYPES[e.type] || {};
+  refs.mood.setArt(moodSprite(e.type, e.satisfaction, e.patience));
   setText(refs.stage, STAGE_LABELS[e.stage] || e.stage);
   setBar(refs.pat, e.patience / 100, toneOf(e.patience / 100));
   setBar(refs.sat, e.satisfaction / 100, toneOf(e.satisfaction / 100));
@@ -74,9 +77,15 @@ function updPatient(state, e) {
 function buildStaff(state, ui, e) {
   const R = STAFF_ROLES[e.role] || {};
   const trait = TRAITS.find(t => t.id === e.trait);
-  refs = { st: h('span', { class: 'tag' }), stam: bar(), task: h('div', { class: 'muted' }) };
+  refs = {
+    st: h('span', { class: 'tag' }), stam: bar(), taskTxt: h('span'),
+    taskIco: artEl(null, { size: 22, cls: 'u-art-ico', title: '工作中' }),
+  };
+  refs.task = h('div', { class: 'muted u-seltask' }, refs.taskIco, refs.taskTxt);
   append(body, [
-    h('div', { class: 'u-shead' }, h('span', { class: 'u-sico' }, ROLE_ICONS[e.role] || '🧑‍⚕️'),
+    h('div', { class: 'u-shead' }, e.role in STAFF_SPRITE
+      ? artEl(STAFF_SPRITE[e.role], { height: 52, width: 38, fallback: ROLE_ICONS[e.role] || '🧑‍⚕️', title: R.name || e.role })
+      : h('span', { class: 'u-sico' }, ROLE_ICONS[e.role] || '🧑‍⚕️'),
       h('div', { class: 'u-stitle' }, h('b', null, e.name), h('span', { class: 'muted' }, R.name || e.role)), refs.st),
     row('技術', h('span', { class: 'u-bl' }, bar(e.skill / 10), h('em', { class: 'u-num' }, e.skill))),
     row('魅力', h('span', { class: 'u-bl' }, bar(e.charm / 10), h('em', { class: 'u-num' }, e.charm))),
@@ -95,14 +104,18 @@ function updStaff(state, e) {
     const p = state.patients.find(x => x.id === e.task.patientId);
     t = `正在進行：${T ? T.name : ''}${p ? '（' + p.name + '）' : ''}`;
   }
-  setText(refs.task, t);
+  setText(refs.taskTxt, t);
+  refs.task.hidden = !t;
+  refs.taskIco.setArt(t ? staffTaskIcon(e, TREATMENTS) : null);
 }
 
 function buildObject(state, ui, e) {
   const d = BUILDABLES[e.defId] || {};
   refs = { wear: bar(), use: h('span') };
   body.append(
-    h('div', { class: 'u-shead' }, h('span', { class: 'u-sico' }, d.glyph || '📦'),
+    h('div', { class: 'u-shead' }, itemSprite(e.defId)
+      ? artEl(itemSprite(e.defId), { size: 48, fallback: d.glyph || '📦', title: d.name })
+      : h('span', { class: 'u-sico' }, d.glyph || '📦'),
       h('div', { class: 'u-stitle' }, h('b', null, d.name || e.defId), h('span', { class: 'muted' }, `${e.x}, ${e.y}`)), refs.use),
     h('div', { class: 'muted u-p' }, d.desc || ''),
     row('耗損', refs.wear),

@@ -1,9 +1,10 @@
 // Service worker: network-first for everything same-origin (so a deploy is never stale),
 // cache fallback so the game still opens and plays offline after one online visit.
 // Bump CACHE when the caching strategy itself changes; content updates need no bump.
-const CACHE = 'ptgame-v1';
+const CACHE = 'ptgame-v2';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'css/style.css', 'css/ui.css', 'css/mobile.css',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'icons/icon.svg'];
+  'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'icons/icon.svg',
+  'assets/art/atlas.json', 'assets/art/atlas.png'];   // sprite atlas: precached (optional: the game falls back to the procedural art)
 const NET_TIMEOUT = 5000;   // slow mobile networks: fall back to the cache after this long
 
 self.addEventListener('install', e => {

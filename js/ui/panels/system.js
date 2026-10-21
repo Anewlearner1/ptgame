@@ -7,6 +7,8 @@ import { section } from './common.js';
 import { confirmDialog } from '../modal.js';
 import { showTutorial, showHelp } from '../modals.js';
 import { layout } from '../layout.js';
+import { artBanner } from '../artdom.js';
+import { artEnabled, setArtEnabled } from '../../render/art.js';
 import { canFullscreen, isFullscreen, toggleFullscreen, canPromptInstall, promptInstall, isStandalone, isIOS } from '../pwa.js';
 
 const store = { tab: 'save', metric: 'cash' };
@@ -148,6 +150,18 @@ function buildSettings(body, state, ui) {
   const help = h('button', { class: 'btn small', type: 'button', onclick: () => showHelp() }, '操作說明');
   const inst = installSection();
   if (inst) body.append(inst);
+  // 美術風格: concept art (new) vs the original procedural pixel art; applies immediately and persists (render/art.js)
+  const styleBtns = [[true, '新美術（概念圖）'], [false, '原像素風']].map(([on, label]) =>
+    h('button', { class: 'btn u-artbtn', type: 'button', dataset: { art: on ? 'new' : 'classic' }, onclick: () => setArtEnabled(on) }, label));
+  const syncStyle = () => {
+    const on = artEnabled();
+    styleBtns.forEach((b, i) => { const act = (i === 0) === on; b.classList.toggle('primary', act); b.classList.toggle('active', act); b.setAttribute('aria-pressed', act ? 'true' : 'false'); });
+  };
+  syncStyle();
+  const unsub = bus.on('art:changed', () => { if (styleBtns[0].isConnected) syncStyle(); else unsub(); });
+  body.append(section('🎨 美術風格',
+    h('div', { class: 'row u-artswitch', role: 'group', 'aria-label': '美術風格' }, styleBtns),
+    h('p', { class: 'muted u-p u-small' }, '切換後立即生效，並記在這台裝置上。新美術會多下載一張約 1 MB 的圖片（首次載入後可離線使用）；在手機上若想節省流量，可改回「原像素風」。')));
   body.append(section('遊戲設定',
     h('label', { class: 'u-setting' }, grid, ' 顯示地圖格線（G）'),
     h('label', { class: 'u-setting' }, snd, ' 音效（預留，尚無音效）'),
@@ -159,7 +173,11 @@ function buildSettings(body, state, ui) {
           title: '重新開始', text: '確定要放棄目前的診所，重新開業嗎？', okLabel: '重新開業', danger: true,
           onOk: () => { try { SV.newGame(state); } catch (e) { console.error(e); } },
         });
-      } }, '🆕 新遊戲')));
+      } }, '🆕 新遊戲')),
+    section('關於',
+      artBanner('scene.clinic', { title: '診所一景', maxVh: 15, cls: 'u-banner-sm' }),
+      h('p', { class: 'muted u-p u-small' }, '復健科診所物語'),
+      h('p', { class: 'muted u-p u-small' }, '角色與設備美術：使用者提供的概念圖')));
   return { update() { if (grid.checked !== ui.showGrid) grid.checked = ui.showGrid; } };
 }
 

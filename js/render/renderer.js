@@ -14,6 +14,8 @@ import {
   getObjectSprite, getFloorSprite, getGroundSprite, getPersonSprite, getIconSprite, getShadowSprite,
   getCarSprite, CAR_VARIANTS, warmSprites, spriteHit,
 } from './sprites.js';
+import { loadArt, artReady } from './art.js';
+import { setArtScale, drawArtPerson, personHeight, patientSprite, staffSprite, artFlip, blit } from './artdraw.js';
 
 const HW = TILE_W / 2, HH = TILE_H / 2;
 const LX = 1100, LY = 240;                               // layer origin offset (world -> layer px)
@@ -34,6 +36,8 @@ export function initRenderer(cv) {
   layerCtx = layer.getContext('2d');
   layerCtx.imageSmoothingEnabled = false;
   warmSprites();
+  bus.on('art:changed', () => { objSig = ''; layer._built = false; });   // atlas loaded / style toggled: rebuild object sprites + static layer
+  loadArt();                                                            // non-blocking; the procedural art is used until (and unless) it resolves
   ensureSize();
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => ensureSize()).observe(canvas);
   window.addEventListener('resize', ensureSize);
@@ -420,6 +424,19 @@ function progressOf(a) {
   return -1;
 }
 
+// Atlas sprite for a person: 2-phase bob + tilt while walking, gentle bob while working / treating, seated = lowered + legs faded.
+// Returns the world y of the sprite top (NaN -> caller draws the procedural sprite).
+const DEG = Math.PI / 180;
+function artAgent(g, name, id, x, y, dir, moving, sit, busy, now) {
+  const wx = isoX(x, y);
+  let wy = isoY(x, y), bob = 0, tilt = 0;
+  if (moving) { const ph = ((now / 120 + id) | 0) & 1; bob = ph ? -1.5 : 0; tilt = (ph ? 3 : -3) * DEG; }
+  else if (busy) bob = Math.sin(now / 300 + id * 1.7) * 0.9 - 0.9;
+  else if (!sit) bob = (Math.sin(now / 420 + id) > 0.7) ? -1 : 0;
+  if (sit) wy += -SEAT_LIFT - 1 + 0.45 * personHeight(name);
+  return drawArtPerson(g, name, wx, wy + bob, artFlip(name, dir, id), tilt, sit);
+}
+
 function drawPatient(g, p, now, ui) {
   const stage = p.stage;
   const path = p.path;
@@ -447,13 +464,23 @@ function drawPatient(g, p, now, ui) {
     }
   }
   faceMap.set(p.id, dir);
-  const spr = getPersonSprite(p.type, dir, frame, { pose, variant: p.id & 3 });
-  const wx = isoX(x, y), wy = isoY(x, y) - lift;
+  const wx = isoX(x, y);
+  let wy = isoY(x, y) - lift;
   const sh = getShadowSprite();
   g.drawImage(sh, Math.round(wx - sh.ax), Math.round(isoY(x, y) - sh.ay));
-  const bob = (!moving && pose === 'stand') ? ((Math.sin(now / 420 + p.id) > 0.7) ? -1 : 0) : 0;
-  g.drawImage(spr, Math.round(wx - spr.ax), Math.round(wy - spr.ay + bob));
-  const top = wy - spr.ay + bob;
+  let top = NaN;
+  if (artReady()) {
+    let tdef = null;
+    if (stage === 'treating' && p.targetObj != null) { const r = recById.get(p.targetObj); if (r) tdef = r.def.id; }
+    const name = patientSprite(p, { moving, sit: pose === 'sit', wait: pose === 'stand' && stage === 'waiting', targetDef: tdef });
+    top = artAgent(g, name, p.id, x, y, dir, moving, pose === 'sit', stage === 'treating', now);
+  }
+  if (top !== top) {
+    const spr = getPersonSprite(p.type, dir, frame, { pose, variant: p.id & 3 });
+    const bob = (!moving && pose === 'stand') ? ((Math.sin(now / 420 + p.id) > 0.7) ? -1 : 0) : 0;
+    g.drawImage(spr, Math.round(wx - spr.ax), Math.round(wy - spr.ay + bob));
+    top = wy - spr.ay + bob;
+  }
   // overhead: bubble > progress bar > status icon
   if (p.bubble && p.bubble.text) {
     addOverlay(getBubble(p.bubble.text, 'say'), wx, top - 2, 1);
@@ -487,13 +514,17 @@ function drawStaff(g, s, now, ui) {
     if (tx != null) dir = dirTo(tx - x, ty - y, dir);
   }
   faceMap.set(s.id, dir);
-  const spr = getPersonSprite(s.role, dir, frame, { pose, variant: s.id & 7 });
   const wx = isoX(x, y), wy = isoY(x, y);
   const sh = getShadowSprite();
   g.drawImage(sh, Math.round(wx - sh.ax), Math.round(wy - sh.ay));
-  const bob = (!moving && pose === 'stand') ? ((Math.sin(now / 500 + s.id * 2) > 0.75) ? -1 : 0) : 0;
-  g.drawImage(spr, Math.round(wx - spr.ax), Math.round(wy - spr.ay + bob));
-  const top = wy - spr.ay + bob;
+  let top = NaN;
+  if (artReady()) { const name = staffSprite(s.role); if (name) top = artAgent(g, name, s.id, x, y, dir, moving, false, pose === 'work', now); }
+  if (top !== top) {
+    const spr = getPersonSprite(s.role, dir, frame, { pose, variant: s.id & 7 });
+    const bob = (!moving && pose === 'stand') ? ((Math.sin(now / 500 + s.id * 2) > 0.75) ? -1 : 0) : 0;
+    g.drawImage(spr, Math.round(wx - spr.ax), Math.round(wy - spr.ay + bob));
+    top = wy - spr.ay + bob;
+  }
   if (s.bubble && s.bubble.text) addOverlay(getBubble(s.bubble.text, 'say'), wx, top - 2, 1);
   else if (s.state === 'working' && s.task && s.task.total > 0) {
     // staff bar is shown on the patient; add a small role marker when exhausted
@@ -587,6 +618,7 @@ export function render(state, ui, now) {
   if (hooks.refreshHover && ui.tool && ui.tool.mode !== 'none' && now - hoverTick > 160) { hoverTick = now; hooks.refreshHover(); }
 
   const cam = ui.cam, z = cam.zoom, dpr = view.dpr, S = z * dpr;
+  setArtScale(S);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -722,7 +754,7 @@ export function render(state, ui, now) {
   // flat objects
   for (let i = 0; i < flatRecs.length; i++) {
     const r = flatRecs[i];
-    if (r === carryRec) { ctx.globalAlpha = 0.3; ctx.drawImage(r.spr, r.px, r.py); ctx.globalAlpha = 1; } else ctx.drawImage(r.spr, r.px, r.py);
+    if (r === carryRec) { ctx.globalAlpha = 0.3; blit(ctx, r.spr, r.px, r.py); ctx.globalAlpha = 1; } else blit(ctx, r.spr, r.px, r.py);
   }
 
   // ── entities ──
@@ -752,7 +784,7 @@ export function render(state, ui, now) {
     }
     if (si < nR) {
       const r = recs[si];
-      if (r === carryRec) { ctx.globalAlpha = 0.3; ctx.drawImage(r.spr, r.px, r.py); ctx.globalAlpha = 1; } else ctx.drawImage(r.spr, r.px, r.py);
+      if (r === carryRec) { ctx.globalAlpha = 0.3; blit(ctx, r.spr, r.px, r.py); ctx.globalAlpha = 1; } else blit(ctx, r.spr, r.px, r.py);
     }
   }
 
@@ -765,7 +797,7 @@ export function render(state, ui, now) {
   if (ghostO) {
     const spr = getObjectSprite(ghostO.def.id, ghostO.rot);
     ctx.globalAlpha = 0.62;
-    ctx.drawImage(spr, Math.round(isoX(ghostO.o.x, ghostO.o.y) - spr.ax), Math.round(isoY(ghostO.o.x, ghostO.o.y) - spr.ay));
+    blit(ctx, spr, Math.round(isoX(ghostO.o.x, ghostO.o.y) - spr.ax), Math.round(isoY(ghostO.o.x, ghostO.o.y) - spr.ay));
     ctx.globalAlpha = 1;
     ctx.strokeStyle = ghostO.ok ? '#5dff8a' : '#ff5a5a'; ctx.lineWidth = 2;
     rectPath(ctx, ghostO.o.x, ghostO.o.y, ghostO.w, ghostO.h); ctx.stroke();
@@ -928,7 +960,7 @@ export function pickAt(state, ui, sx, sy, radius = 0) {
     let x = a.x, y = a.y;
     if (type === 'patient' && a.seat && Math.abs(a.seat.x + 0.5 - x) < 0.4 && Math.abs(a.seat.y + 0.5 - y) < 0.4) { x = a.seat.x + 0.5; y = a.seat.y + 0.5; }
     const ax = isoX(x, y), ay = isoY(x, y);
-    if (Math.abs(wx - ax) <= 15 && wy >= ay - 46 && wy <= ay + 6) {
+    if (Math.abs(wx - ax) <= 15 && wy >= ay - (artReady() ? 54 : 46) && wy <= ay + 6) {
       const d = x + y;
       if (d > bestD) { bestD = d; best = { type, id: a.id }; }
     }

@@ -26,6 +26,8 @@ jobs:
         run: |
           mkdir _site
           cp -r index.html manifest.webmanifest sw.js css js icons _site/
+          mkdir -p _site/assets/art
+          cp assets/art/atlas.png assets/art/atlas.json _site/assets/art/
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

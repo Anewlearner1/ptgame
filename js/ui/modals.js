@@ -2,6 +2,7 @@
 import { bus } from '../core/bus.js';
 import { ctx } from './ctx.js';
 import { h } from './dom.js';
+import { artEl, artBanner } from './artdom.js';
 import { fmt, money, signed, effectChips } from './fmt.js';
 import { showModal, closeModal } from './modal.js';
 import { LOTS } from '../data/lots.js';
@@ -93,7 +94,7 @@ export function showSettlement(p) {
     h('div', { class: 'u-kvrow' }, h('span', null, '目前資金'), h('b', null, money(state.money))));
 
   showModal({
-    title: `📊 ${snap.year ? `第${snap.year}年 ${snap.month}月` : ''}營運報告`,
+    title: h('span', null, artEl('role.record', { size: 28, fallback: '📊', cls: 'u-art-ico u-modal-ico', title: '營運報告' }), `${snap.year ? `第${snap.year}年 ${snap.month}月` : ''}營運報告`),
     body, cls: 'u-wide', tag: 'settle', buttons: [{ label: '繼續經營', primary: true }],
   });
 }
@@ -115,7 +116,7 @@ export function showInspection(p) {
     rfNode,
     h('div', { class: 'u-sec' }, '督導意見'),
     h('ul', { class: 'u-list' }, (p.notes && p.notes.length ? p.notes : ['無特別意見']).map(n => h('li', null, String(n)))));
-  showModal({ title: '🏛 年度督導與健保署抽查', body, tag: 'inspection', buttons: [{ label: '收到', primary: true }] });
+  showModal({ title: h('span', null, artEl('role.assess', { size: 28, fallback: '🏛', cls: 'u-art-ico u-modal-ico', title: '督導' }), '年度督導與健保署抽查'), body, tag: 'inspection', buttons: [{ label: '收到', primary: true }] });
 }
 
 // ---------------------------------------------------------------- events & dilemmas
@@ -148,7 +149,8 @@ export function showPending(raw) {
       onclick: () => choose(d, i),
     }, h('span', { class: 'kbd' }, String(i + 1)), h('span', { class: 'u-choice-main' }, (c.chance ? '🎲 ' : '') + c.label), note.length ? h('span', { class: 'u-choice-note' }, note) : null));
   });
-  const body = h('div', null, h('p', { class: 'u-p' }, d.text || ''), list);
+  const body = h('div', null,
+    h('div', { class: 'u-speaker' }, artEl('portrait.doctor', { size: 72, cls: 'u-art-tile u-art-portrait', title: '診所醫師' }), h('p', { class: 'u-p' }, d.text || '')), list);
   showModal({
     title: (isDilemma ? '🤔 兩難抉擇：' : '📰 事件：') + (d.title || ''),
     body, noActions: true, dismissable: false, pause: false, tag: 'dilemma',
@@ -207,7 +209,7 @@ export function showTutorial(force) {
   const textEl = h('p', { class: 'u-p u-intro-text' });
   const dots = h('div', { class: 'u-dots' });
   const head = h('div', { class: 'u-intro-head' });
-  const body = h('div', null, head, textEl, dots);
+  const body = h('div', null, artBanner('scene.clinic', { title: '診所一景' }), head, textEl, dots);
   function fill() {
     const s = steps[i];
     head.textContent = `${s.title ? s.title + '　' : ''}${i + 1} / ${steps.length}`;

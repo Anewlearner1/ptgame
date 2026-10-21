@@ -14,6 +14,7 @@ import { h, setClass, setText, tabbed, bar, setBar, toneOf, reconcile } from '..
 import { money, fmt, modChips, STAGE_LABELS, STAFF_STATE_LABELS, TYPE_ICONS, ROLE_ICONS } from '../fmt.js';
 import { chipList, section } from './common.js';
 import { confirmDialog } from '../modal.js';
+import { artEl, STAFF_SPRITE, moodSprite, itemSprite } from '../artdom.js';
 
 const store = { tab: 'patients', filter: 'all' };
 
@@ -42,10 +43,11 @@ function buildPatients(body, state, ui) {
     const r = {
       stage: h('span', { class: 'tag' }), sat: bar(), pat: bar(), plan: h('div', { class: 'u-steps' }),
       hp: bar(),
+      mood: artEl(moodSprite(p.type, p.satisfaction, p.patience), { size: 40, cls: 'u-art-tile u-art-ring', fallback: TYPE_ICONS[p.type] || '🙂', fbSize: 22 }),
     };
     const el = h('div', { class: 'card u-prow', role: 'button', tabIndex: 0, dataset: { id: p.id }, onclick: () => select(ui, 'patient', p.id) },
       h('div', { class: 'u-row2' },
-        h('span', { class: 'u-sico' }, TYPE_ICONS[p.type] || '🙂'),
+        r.mood,
         h('div', { class: 'u-grow' }, h('b', null, p.name), ' ', h('span', { class: 'muted u-small' }, P.name || p.type)),
         r.stage),
       h('div', { class: 'u-bars3' },
@@ -58,6 +60,7 @@ function buildPatients(body, state, ui) {
   function upd(el, p) {
     const r = el._r;
     setText(r.stage, STAGE_LABELS[p.stage] || p.stage);
+    r.mood.setArt(moodSprite(p.type, p.satisfaction, p.patience));
     setBar(r.sat, p.satisfaction / 100, toneOf(p.satisfaction / 100));
     setBar(r.pat, p.patience / 100, toneOf(p.patience / 100));
     const need = (PATIENT_TYPES[p.type] || {}).cureNeeded || 1;
@@ -88,6 +91,12 @@ function maxStaff(state) {
 }
 function stars(v) { const n = Math.round(v); return '★'.repeat(Math.max(0, Math.min(10, n))) + '☆'.repeat(Math.max(0, 10 - n)); }
 
+function staffThumb(role) {
+  const em = ROLE_ICONS[role] || '🧑‍⚕️';
+  if (!STAFF_SPRITE[role]) return h('span', { class: 'u-sico' }, em);
+  return artEl(STAFF_SPRITE[role], { height: 52, width: 36, fallback: em, fbSize: 22, title: (STAFF_ROLES[role] || {}).name });
+}
+
 function buildStaff(body, state, ui) {
   const head = h('div', { class: 'row u-between' }, h('b', null, '在職員工'), h('span', { class: 'muted' }));
   const headCount = head.lastChild;
@@ -103,7 +112,7 @@ function buildStaff(body, state, ui) {
     const tr = traitOf(s.trait);
     const el = h('div', { class: 'card u-srow2', role: 'button', tabIndex: 0, dataset: { id: s.id }, onclick: e => { if (!e.target.closest('button')) select(ui, 'staff', s.id); } },
       h('div', { class: 'u-row2' },
-        h('span', { class: 'u-sico' }, ROLE_ICONS[s.role] || '🧑‍⚕️'),
+        staffThumb(s.role),
         h('div', { class: 'u-grow' }, h('b', null, s.name), ' ', h('span', { class: 'muted u-small' }, R.name || s.role),
           tr ? h('span', { class: 'tag u-tag2', tip: tr.desc }, tr.name) : null, r.mood),
         r.st),
@@ -165,7 +174,7 @@ function buildStaff(body, state, ui) {
       else bus.emit('toast', { text: full ? '員工人數已達上限，請先擴建或研發行政效率' : state.money < c.hireCost ? '資金不足，無法招聘' : '無法招聘', kind: 'bad' });
     } }, '雇用');
     const el = h('div', { class: 'card u-row2', dataset: { cid: c.cid } },
-      h('span', { class: 'u-sico' }, ROLE_ICONS[c.role] || '🧑‍⚕️'),
+      staffThumb(c.role),
       h('div', { class: 'u-grow' }, h('b', null, c.name), ' ', h('span', { class: 'muted u-small' }, R.name || c.role),
         tr ? h('span', { class: 'tag u-tag2', tip: tr.desc }, tr.name) : null,
         h('div', { class: 'u-small' }, `技術 ${c.skill}　魅力 ${c.charm}　月薪 ${money(c.salary)}　簽約金 ${money(c.hireCost)}`)),
@@ -226,7 +235,9 @@ function buildEquip(body, state, ui) {
     } }, '出售');
     const wearCell = h('td', { class: 'u-wearcell' }, h('span', { class: 'u-wearin' }, wear, wearNum));
     const tr = h('tr', { dataset: { id: o.id }, onclick: e => { if (!e.target.closest('button')) select(ui, 'object', o.id); } },
-      h('td', null, h('span', { class: 'u-eqname' }, `${d.glyph || ''} ${d.name || o.defId}`), badges),
+      h('td', null, itemSprite(o.defId)
+        ? h('span', { class: 'u-eqname u-eqart' }, artEl(itemSprite(o.defId), { size: 28, fallback: d.glyph || '', fbSize: 18 }), d.name || o.defId)
+        : h('span', { class: 'u-eqname' }, `${d.glyph || ''} ${d.name || o.defId}`), badges),
       h('td', { class: 'muted u-poscol' }, `${o.x},${o.y}`),
       wearCell,
       h('td', { class: 'num u-upcol' }, fmt(d.upkeep || 0)),

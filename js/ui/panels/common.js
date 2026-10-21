@@ -4,6 +4,7 @@ import { BOARDS } from '../../data/events.js';
 import * as EV from '../../sim/events.js';
 import { h, setClass, setText } from '../dom.js';
 import { modChips, money } from '../fmt.js';
+import { artEl } from '../artdom.js';
 
 export function chipList(list) {
   return h('span', { class: 'u-chips' }, list.map(c => h('span', { class: 'tag u-chip ' + (c.good ? 'good' : 'bad') }, c.text)));
@@ -26,7 +27,7 @@ export function boardsSection(state) {
     } });
     const el = h('div', { class: 'card u-row2', dataset: { board: b.id } },
       h('div', { class: 'u-grow' },
-        h('b', null, '📌 ' + b.name),
+        h('b', null, artEl('role.educate', { size: 22, fallback: '📌', fbSize: 16, cls: 'u-art-ico u-art-inline' }), (b.name || '')),
         h('div', { class: 'muted u-small' }, b.desc),
         h('div', { class: 'u-small' }, chipList(modChips(b.effects)), `　張貼 ${money(b.cost)}　維護 ${money(b.upkeep)}/月`)),
       btn);

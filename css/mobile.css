@@ -300,6 +300,9 @@ img, canvas { -webkit-user-drag: none; }
 .lay-compact #stage[data-bmode="strip"] .u-tray-lbl { display: inline; }
 .lay-compact #stage[data-bmode="strip"] .u-tray-chipbtn { display: inline-flex; }
 .lay-compact #stage[data-bmode="strip"] .u-tray-glyph { width: 32px; height: 32px; font-size: 18px; }
+.lay-compact #stage[data-bmode="strip"] .u-tray-art { --aw: 34px !important; --ah: 32px !important; }
+.lay-compact #stage[data-bmode="strip"] .u-item .u-art { --aw: 30px !important; --ah: 28px !important; }
+.lay-compact #stage[data-bmode="strip"] .u-art[data-art="off"] > .u-art-fb.u-art-glyphfb { width: 28px; height: 28px; font-size: 16px; }
 .lay-compact #stage[data-bmode="strip"] .u-tabbed { min-width: 0; }
 .lay-compact #stage[data-bmode="strip"] .u-tabbody > .tabs { display: none; }
 .lay-compact #stage[data-bmode="strip"] .u-buildgrid {
@@ -324,3 +327,8 @@ img, canvas { -webkit-user-drag: none; }
 /* desktop with a touch screen (e.g. 1024x768 tablet landscape): keep layout, only larger targets (section 1) */
 .lay-desktop.touch .sidebar-btn { height: 60px; }
 .lay-desktop.touch .speed-btn { min-width: 48px; height: 44px; }
+
+/* concept-art thumbnails in the short-landscape selection card */
+.lay-compact .u-shead .u-art-pair .u-art-tile { --aw: 34px !important; --ah: 34px !important; }
+.lay-compact .u-shead .u-art-pair .u-art:not(.u-art-tile) { --aw: 26px !important; --ah: 40px !important; }
+.lay-compact .u-selbody > .u-shead > .u-art { --aw: 30px !important; --ah: 42px !important; }

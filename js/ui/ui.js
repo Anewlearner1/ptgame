@@ -25,6 +25,7 @@ import { layout, initLayout, computeLayout, setBMode } from './layout.js';
 import { initSheet, applySheet, syncDock } from './sheet.js';
 import { initPwa } from './pwa.js';
 import { initCtxMenu } from './ctxmenu.js';
+import { initArtDom } from './artdom.js';
 
 const MOUNTS = { build: mountBuild, operate: mountOperate, clinic: mountClinic, overview: mountOverview, map: mountMap, system: mountSystem };
 const TITLES = { build: '🔨 建造', operate: '🔬 運作', clinic: '🏥 診所', overview: '📋 一覽', map: '🗺 地圖', system: '⚙ 系統' };
@@ -45,6 +46,7 @@ export function initUI(state, ui) {
   stageEl = document.getElementById('stage');
 
   initLayout();
+  initArtDom();
   initPwa();
   initTooltip();
   initToast();
