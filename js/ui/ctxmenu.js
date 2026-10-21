@@ -1,12 +1,13 @@
 // Long-press context popover for placed objects. Bus 'object:context' {id, x, y}  (x,y = viewport/client px).
-// Entries: 資訊 (select -> selection card), 旋轉 (re-orient in place when the footprint still fits), 拆除 (sell, with confirm).
+// Entries: 資訊 (select -> selection card), 移動 (pick up -> ghost + confirm bar), 旋轉 (re-orient in place when the footprint still fits), 拆除 (sell, with confirm).
 import { bus } from '../core/bus.js';
 import { BUILDABLES } from '../data/buildables.js';
-import { canPlace, removeAt } from '../sim/build.js';
+import { removeAt, rotateObject, relocationCost } from '../sim/build.js';
 import { h, clear } from './dom.js';
 import { money } from './fmt.js';
 import { confirmDialog, isModalOpen } from './modal.js';
 import { hideTooltip } from './tooltip.js';
+import { layout, setBMode } from './layout.js';
 
 let menu = null, timer = 0;
 
@@ -26,18 +27,18 @@ function hide() { if (menu && !menu.hidden) { menu.hidden = true; clear(menu); }
 
 function rotateInPlace(state, ui, o) {
   const d = BUILDABLES[o.defId];
-  if (o.usedBy || o.busy) { bus.emit('toast', { text: `「${d.name}」使用中，等一下再旋轉`, kind: 'bad' }); return; }
-  const nr = (o.rot || 0) ^ 1;
-  // test the new footprint with the object itself lifted out of the way
-  const idx = state.objects.indexOf(o), m = state.money;
-  state.objects.splice(idx, 1); state.money = Infinity;
-  let r;
-  try { r = canPlace(state, o.defId, o.x, o.y, nr); } finally { state.money = m; state.objects.splice(idx, 0, o); }
-  if (!r.ok) { bus.emit('toast', { text: `無法旋轉：${r.reason}`, kind: 'bad' }); return; }
-  o.rot = nr;
-  ui.dirtyOcc = true;
-  bus.emit('map:changed', {});
+  const r = rotateObject(state, o.id);
+  if (!r.ok) { bus.emit('toast', { text: `無法旋轉：${r.reason}（可改用「移動」放到別處）`, kind: 'bad' }); return; }
   bus.emit('toast', { text: `已旋轉「${d.name}」`, kind: 'good' });
+}
+
+// Pick the object up: input.js shows the ghost + ✔/✖/⟳ bar. Phones: get the sheet / tray out of the way first.
+function startMove(ui, o) {
+  if (layout.mobile) {
+    if (ui.panel === 'build') setBMode(layout.portrait ? 'tray' : 'strip');
+    else if (ui.panel) ui.panel = null;
+  }
+  bus.emit('object:move', { id: o.id });
 }
 
 function show(state, ui, stage, p) {
@@ -52,6 +53,7 @@ function show(state, ui, stage, p) {
   menu.append(
     h('div', { class: 'u-ctx-title' }, `${d.glyph || '📦'} ${d.name || o.defId}`),
     item('ℹ️', '資訊', () => { ui.selected = { type: 'object', id: o.id }; bus.emit('select:changed', { selected: ui.selected }); }),
+    item('✥', `移動（NT$ ${relocationCost(o.defId).toLocaleString('en-US')}）`, () => startMove(ui, o)),
     item('🔄', '旋轉', () => rotateInPlace(state, ui, o)),
     item('🧨', '拆除', () => confirmDialog({
       title: '出售設備', text: `確定拆除「${d.name}」？將退回約 ${money(Math.floor((d.cost || 0) / 2))}。`, okLabel: '拆除', danger: true,

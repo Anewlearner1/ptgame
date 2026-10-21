@@ -2,8 +2,8 @@
 import { bus } from '../core/bus.js';
 import { MAP_W, MAP_H } from '../core/constants.js';
 import { BUILDABLES } from '../data/buildables.js';
-import { canPlace, placeObject, paintFloor, removeAt } from '../sim/build.js';
-import { objectAt } from '../core/grid.js';
+import { canPlace, placeObject, paintFloor, removeAt, canMove, moveObject } from '../sim/build.js';
+import { objectAt, sizeOf } from '../core/grid.js';
 import { tileAt, placementOrigin, hooks } from './iso.js';
 import { pickAt } from './renderer.js';
 import { didPan, panBy, zoomAt, markCamManual, recenter } from './camera.js';
@@ -39,8 +39,35 @@ function validFor(tx, ty) {
     }
     if (tool.mode === 'paint' && tool.defId) return !!canPlace(S, tool.defId, tx, ty, 0).ok;
     if (tool.mode === 'demolish') return !!objectAt(S, tx, ty) || !!(S.map.floor[ty] && S.map.floor[ty][tx]);
+    if (tool.mode === 'move') return validMove(tx, ty);
   } catch (err) { return false; }
   return true;
+}
+
+// Move tool. Not carrying: hover.pickId = the object a click would pick up. Carrying: validity of dropping it at the cursor.
+function objAtScreen(px, py, radius) {
+  if (px != null) {
+    const r = pickAt(S, UI, px, py, radius || 0);
+    if (r && r.type === 'object') return S.objects.find(q => q.id === r.id) || null;
+  }
+  return null;
+}
+function validMove(tx, ty) {
+  const tool = UI.tool, h = UI.hover;
+  h.pickId = null; h.fee = 0; h.reason = '';
+  if (!tool.carry) {
+    const o = (!T.touch && lastPos ? objAtScreen(lastPos.x, lastPos.y, 0) : null) || objectAt(S, tx, ty);
+    h.pickId = o ? o.id : null;
+    return !!o;
+  }
+  const o = S.objects.find(q => q.id === tool.carry);
+  if (!o) return false;
+  const rot = tool.rot ? 1 : 0;
+  const org = placementOrigin(BUILDABLES[o.defId], rot, tx, ty);
+  h.ox = org.x; h.oy = org.y;
+  const r = canMove(S, o.id, org.x, org.y, rot);
+  h.fee = r.fee || 0; h.reason = r.reason || '';
+  return !!r.ok;
 }
 
 export function refreshHover() {
@@ -56,6 +83,65 @@ export function refreshHover() {
 }
 
 function toast(text) { bus.emit('toast', { text, kind: 'bad' }); }
+
+const SAME_SPOT = '位置沒有改變';
+
+// Move tool: pick an object up (mouse click / touch tap / selection card / long-press menu).
+function beginCarry(id) {
+  const o = S.objects.find(q => q.id === id);
+  if (!o) return false;
+  if (UI.tool.mode !== 'move') UI.tool = { mode: 'move', defId: null, rot: 0, cat: null, keep: false, carry: null };
+  const tool = UI.tool;
+  tool.defId = null; tool.carry = id; tool.carryDef = o.defId; tool.rot = o.rot ? 1 : 0;
+  toolKey = tool.mode + '|' + tool.defId + '|' + tool.carry;
+  T.keepToggle = !!tool.keep && !shiftHeld; T.ctx = null; T.demoTarget = null;
+  if (T.touch) {
+    // phones: the ghost starts exactly where the object is; the finger then drags it
+    const { w, h } = sizeOf(BUILDABLES[o.defId], tool.rot);
+    T.ghostSet = true;
+    T.tile = { x: o.x + Math.floor((w - 1) / 2), y: o.y + Math.floor((h - 1) / 2) };
+  } else { T.ghostSet = false; T.tile = null; }
+  if (UI.selected) select(null);
+  refreshHover();
+  bus.emit('tool:changed', { mode: 'move' });
+  return true;
+}
+
+function dropCarry() {            // put the object back untouched, stay in move mode
+  UI.tool.carry = null; UI.tool.carryDef = null; toolKey = 'move|null|null';
+  T.ghostSet = false; T.tile = null;
+  UI.hover.pickId = null;
+  refreshHover();
+  bus.emit('tool:changed', { mode: 'move' });
+}
+
+function doMove(e) {
+  const tool = UI.tool, h = UI.hover;
+  if (!tool.carry) {
+    if (h.x < 0) return;
+    if (h.pickId != null) beginCarry(h.pickId);
+    else toast('點選要搬移的設備');
+    return;
+  }
+  const o = S.objects.find(q => q.id === tool.carry);
+  if (!o) { dropCarry(); return; }
+  if (h.x < 0 || (T.touch && !T.ghostSet)) return;
+  const rot = tool.rot ? 1 : 0;
+  const org = placementOrigin(BUILDABLES[o.defId], rot, h.x, h.y);
+  const res = canMove(S, o.id, org.x, org.y, rot);
+  if (!res.ok) {
+    if (res.reason === SAME_SPOT) dropCarry();         // dropped back where it was: nothing to do
+    else toast(res.reason || '無法搬移');
+    return;
+  }
+  const name = BUILDABLES[o.defId].name;
+  if (moveObject(S, o.id, org.x, org.y, rot)) {
+    bus.emit('toast', { text: res.fee > 0 ? `已搬移「${name}」（搬移費 NT$ ${res.fee.toLocaleString('en-US')}）` : `已旋轉「${name}」`, kind: 'good' });
+    if ((e && e.shiftKey) || tool.keep) dropCarry(); else { endTool(); refreshHover(); }
+  }
+}
+
+export function startMoveObject(id) { return beginCarry(id); }
 
 function doPlace(e) {
   const tool = UI.tool;
@@ -113,6 +199,7 @@ function onDown(e) {
 function act(e) {
   const tool = UI.tool, h = UI.hover;
   if (tool.mode === 'place') doPlace(e);
+  else if (tool.mode === 'move') doMove(e);
   else if (tool.mode === 'paint' || tool.mode === 'demolish') {
     dragging = true; dragMode = tool.mode; toastedThisDrag = false;
     lastTx = h.x; lastTy = h.y;
@@ -143,7 +230,10 @@ function onMove(e) {
 function onUp(e) {
   if (e.pointerType === 'touch') { touchUp(e, false); return; }
   if (e.button === 0) dragging = false;
-  if (e.button === 2 && !didPan() && UI.tool.mode !== 'none') { UI.tool.mode = 'none'; UI.tool.defId = null; refreshHover(); }
+  if (e.button === 2 && !didPan() && UI.tool.mode !== 'none') {
+    if (UI.tool.mode === 'move' && UI.tool.carry) dropCarry();      // first right-click puts the object back, the next leaves the tool
+    else { UI.tool.mode = 'none'; UI.tool.defId = null; refreshHover(); }
+  }
 }
 
 
@@ -155,7 +245,8 @@ let toolKey = '';
 function frameTick(now) {
   if (!UI) return;
   const t = UI.tool;
-  const key = t.mode + '|' + t.defId;
+  if (t.mode === 'move' && t.carry && !S.objects.some(o => o.id === t.carry)) { t.carry = null; t.carryDef = null; }      // carried object vanished (load / demolish)
+  const key = t.mode + '|' + t.defId + '|' + (t.carry || null);
   if (key !== toolKey) {
     toolKey = key;
     T.ghostSet = false; T.demoTarget = null; T.tile = null; T.ctx = null;
@@ -171,7 +262,7 @@ function frameTick(now) {
 
 function touchHover() {
   const h = UI.hover, t = T.tile;
-  if (!t || !inMap(t.x, t.y) || (UI.tool.mode === 'place' && !T.ghostSet)) { h.x = -1; h.y = -1; h.valid = false; return; }
+  if (!t || !inMap(t.x, t.y) || ((UI.tool.mode === 'place' || (UI.tool.mode === 'move' && UI.tool.carry)) && !T.ghostSet)) { h.x = -1; h.y = -1; h.valid = false; return; }
   h.x = t.x; h.y = t.y; h.ox = t.x; h.oy = t.y;
   h.valid = validFor(t.x, t.y);
 }
@@ -257,7 +348,7 @@ function touchMove(e) {
     if (Math.hypot(p.x - g.x0, p.y - g.y0) <= (UI.tool.mode === 'paint' ? PAINT_SLOP : TAP_SLOP)) return;
     g.moved = true; cancelLP();
     const m = UI.tool.mode;
-    if (m === 'place') { g.kind = 'ghost'; T.dragging = true; setGhostFromFinger(p.x, p.y); }
+    if (m === 'place' || (m === 'move' && UI.tool.carry)) { g.kind = 'ghost'; T.dragging = true; setGhostFromFinger(p.x, p.y); }
     else if (m === 'paint') {
       g.kind = 'paint'; dragging = true; dragMode = 'paint'; toastedThisDrag = false;
       const t0 = tileAt(g.x0, g.y0, UI.cam);
@@ -317,6 +408,17 @@ function touchTap(p) {
     if (T.ghostSet && UI.hover.valid && box && p.x >= box.x0 && p.x <= box.x1 && p.y >= box.y0 && p.y <= box.y1) { doPlace(null); return; }   // second tap on the ghost = place
     T.ghostSet = inMap(tt.x, tt.y);
     setTile(tt.x, tt.y);
+  } else if (tool.mode === 'move') {
+    if (!tool.carry) {
+      const hit = objAtScreen(p.x, p.y, FINGER_R) || (inMap(tt.x, tt.y) ? objectAt(S, tt.x, tt.y) : null);
+      if (hit) beginCarry(hit.id);
+      else { if (inMap(tt.x, tt.y)) setTile(tt.x, tt.y); toast('點選要搬移的設備'); }
+      return;
+    }
+    const box = targetBox(UI);
+    if (T.ghostSet && UI.hover.valid && box && p.x >= box.x0 && p.x <= box.x1 && p.y >= box.y0 && p.y <= box.y1) { doMove(null); return; }   // second tap on the ghost = drop
+    T.ghostSet = inMap(tt.x, tt.y);
+    setTile(tt.x, tt.y);
   } else if (tool.mode === 'paint') {
     if (!inMap(tt.x, tt.y)) return;
     dragMode = 'paint'; toastedThisDrag = false; applyAt(tt.x, tt.y); dragMode = null;
@@ -332,7 +434,7 @@ function touchTap(p) {
 }
 
 function endTool() {
-  UI.tool.mode = 'none'; UI.tool.defId = null;
+  UI.tool.mode = 'none'; UI.tool.defId = null; UI.tool.carry = null; UI.tool.carryDef = null;
   T.ghostSet = false; T.demoTarget = null; T.tile = null;
   UI.hover.x = -1; UI.hover.y = -1; UI.hover.valid = false;
   bus.emit('tool:changed', { mode: 'none' });
@@ -343,6 +445,7 @@ function barAction(id) {
   if (T.ctx) {
     const c = T.ctx; T.ctx = null;
     if (id === 'demo') startDemolishObject(c.id);
+    else if (id === 'move') beginCarry(c.id);
     return;
   }
   if (id === 'cancel') { endTool(); return; }
@@ -350,6 +453,7 @@ function barAction(id) {
   if (id === 'keep') { T.keepToggle = !T.keepToggle; tool.keep = T.keepToggle || shiftHeld; keepWritten = tool.keep; return; }
   if (id === 'ok') {
     if (tool.mode === 'place') doPlace(null);
+    else if (tool.mode === 'move') doMove(null);
     else if (tool.mode === 'demolish' && T.demoTarget) {
       const d = T.demoTarget;
       removeAt(S, d.x, d.y);
@@ -364,7 +468,7 @@ export function startDemolishObject(id) {
   const o = S.objects.find(q => q.id === id);
   if (!o) return false;
   UI.tool = { mode: 'demolish', defId: null, rot: 0, cat: null, keep: false };
-  toolKey = 'demolish|null';
+  toolKey = 'demolish|null|null';
   T.keepToggle = false;
   T.touch = true; T.ctx = null;
   T.demoTarget = { x: o.x, y: o.y };
@@ -385,8 +489,14 @@ function onKey(e) {
   if (e.ctrlKey || e.metaKey || editable(e.target)) return;
   const k = e.key;
   if (k === 'r' || k === 'R') {
-    if (UI.tool.mode === 'place') { UI.tool.rot = (UI.tool.rot ? 0 : 1); refreshHover(); }
+    if (UI.tool.mode === 'place' || (UI.tool.mode === 'move' && UI.tool.carry)) { UI.tool.rot = (UI.tool.rot ? 0 : 1); refreshHover(); }
+  } else if (k === 'm' || k === 'M') {
+    if (document.querySelector('#modal-root .modal')) return;
+    if (UI.tool.mode === 'move') { UI.tool.mode = 'none'; UI.tool.carry = null; UI.tool.carryDef = null; UI.tool.defId = null; refreshHover(); }
+    else UI.tool = { mode: 'move', defId: null, rot: 0, cat: null, keep: false, carry: null };
+    bus.emit('tool:changed', { mode: UI.tool.mode });
   } else if (k === 'Escape') {
+    if (UI.tool.mode === 'move' && UI.tool.carry) { dropCarry(); return; }       // Esc #1: put the object back, Esc #2: leave the tool
     bus.emit('ui:escape', {});
     if (UI.tool.mode !== 'none') { UI.tool.mode = 'none'; UI.tool.defId = null; refreshHover(); }
   } else if (k === 'g' || k === 'G') {
@@ -436,7 +546,7 @@ export function initInput(cv, state, ui) {
   canvas.addEventListener('wheel', e => {
     if (!e.altKey) return;
     e.preventDefault();
-    if (UI.tool.mode === 'place') { UI.tool.rot = (UI.tool.rot ? 0 : 1); refreshHover(); }
+    if (UI.tool.mode === 'place' || (UI.tool.mode === 'move' && UI.tool.carry)) { UI.tool.rot = (UI.tool.rot ? 0 : 1); refreshHover(); }
   }, { passive: false });
   window.addEventListener('keydown', onKey);
   window.addEventListener('keyup', e => { if (e.key === 'Shift') shiftHeld = false; });
@@ -444,5 +554,6 @@ export function initInput(cv, state, ui) {
   document.addEventListener('visibilitychange', () => { if (document.hidden) resetTouch(); });
   window.addEventListener('pointerup', () => { dragging = false; });
   bus.on('map:changed', () => refreshHover());
+  bus.on('object:move', ({ id }) => beginCarry(id));
   bus.on('speed:set', ({ speed }) => { if (speed > 0) lastSpeed = speed; });
 }

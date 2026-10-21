@@ -47,8 +47,14 @@ export function safeRect(ui, W, H) {
 
 function buttonsFor(ui) {
   const tool = ui.tool || { mode: 'none' };
-  if (T.ctx) return [{ id: 'demo', glyph: '🗑', col: '#d64545' }, { id: 'close', glyph: '✖', col: '#5d6872' }];
+  if (T.ctx) return [{ id: 'move', glyph: '✥', col: '#3b82c4' }, { id: 'demo', glyph: '🗑', col: '#d64545' }, { id: 'close', glyph: '✖', col: '#5d6872' }];
   if (tool.mode === 'place') {
+    const ok = T.ghostSet && ui.hover && ui.hover.x >= 0;
+    return [{ id: 'ok', glyph: '✔', col: ok && ui.hover.valid ? '#27a862' : '#7b6a45', dis: !ok }, { id: 'cancel', glyph: '✖', col: '#d64545' },
+      { id: 'rot', glyph: '⟳', col: '#3b82c4' }, { id: 'keep', glyph: '📌', col: tool.keep ? '#e0a82e' : '#4a5560', on: !!tool.keep }];
+  }
+  if (tool.mode === 'move') {
+    if (!tool.carry) return [{ id: 'cancel', glyph: '✖', col: '#d64545' }, { id: 'keep', glyph: '📌', col: tool.keep ? '#e0a82e' : '#4a5560', on: !!tool.keep }];
     const ok = T.ghostSet && ui.hover && ui.hover.x >= 0;
     return [{ id: 'ok', glyph: '✔', col: ok && ui.hover.valid ? '#27a862' : '#7b6a45', dis: !ok }, { id: 'cancel', glyph: '✖', col: '#d64545' },
       { id: 'rot', glyph: '⟳', col: '#3b82c4' }, { id: 'keep', glyph: '📌', col: tool.keep ? '#e0a82e' : '#4a5560', on: !!tool.keep }];
@@ -70,6 +76,13 @@ export function targetBox(ui) {
   if (tool.mode === 'place' && T.ghostSet && h && h.x >= 0 && BUILDABLES[tool.defId]) {
     const def = BUILDABLES[tool.defId], { w, h: hh } = sizeOf(def, tool.rot ? 1 : 0);
     return tileBox(cam, h.ox != null ? h.ox : h.x, h.oy != null ? h.oy : h.y, w, hh, def.height || 24);
+  }
+  if (tool.mode === 'move' && tool.carry && T.ghostSet && h && h.x >= 0) {
+    const def = BUILDABLES[tool.carryDef];
+    if (def) {
+      const { w, h: hh } = sizeOf(def, tool.rot ? 1 : 0);
+      return tileBox(cam, h.ox != null ? h.ox : h.x, h.oy != null ? h.oy : h.y, w, hh, def.height || 24);
+    }
   }
   if (tool.mode === 'demolish' && T.demoTarget) return tileBox(cam, T.demoTarget.x, T.demoTarget.y, 1, 1, 30);
   return null;

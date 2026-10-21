@@ -503,6 +503,24 @@ function releaseChat(c, p) {
   p.chat = null;
 }
 
+// An object is being moved / rotated (build.moveObject): everybody using, reserving, seated at or queueing for it
+// is released gracefully (treatment cancelled, patient keeps waiting, staff go idle) before it changes place.
+export function releaseObjectUsers(state, objId) {
+  const c = buildCtx(state, 0);
+  for (const p of state.patients) {
+    if (p.stage === 'gone') continue;
+    if (p.targetObj === objId) dropAssignment(c, p);
+    if (p.seat && p.seat.objId === objId) { p.seat = null; p.needSpot = true; p.path = []; p.dest = null; }
+    if (p.qRec === objId && p.stage === 'to_reception' && !p.targetObj && p.spot) { p.spot = null; p.needSpot = true; p.path = []; p.dest = null; }
+  }
+  for (const s of state.staff) {
+    if (s.task && s.task.objId === objId && s.task.treatmentId !== '__chat') releaseStaff(state, s);
+    if (s.restObj === objId) { s.restObj = null; if (s.state === 'resting') s.state = 'idle'; s.path = []; }
+  }
+  const o = c.objById.get(objId);
+  if (o) { o.busy = false; o.usedBy = null; o.staffId = null; }
+}
+
 // ================= reconcile (objects demolished, staff fired, stale flags) =================
 function reconcile(c) {
   const st = c.state;

@@ -8,7 +8,7 @@ import { sizeOf } from '../core/grid.js';
 import { bus } from '../core/bus.js';
 import { badgeIcons } from '../sim/achievements.js';
 import { isoX, isoY, placementOrigin, hooks } from './iso.js';
-import { drawTouchOverlay } from './touchui.js';
+import { drawTouchOverlay, layoutBar, safeRect, T as TOUCH } from './touchui.js';
 import { COARSE } from './camera.js';
 import {
   getObjectSprite, getFloorSprite, getGroundSprite, getPersonSprite, getIconSprite, getShadowSprite,
@@ -347,19 +347,20 @@ function getBubble(text, kind) {
   if (c) return c;
   const d = view.dpr;
   const g0 = document.createElement('canvas').getContext('2d');
-  const fs = kind === 'tag' ? 11 : 12;
-  g0.font = (kind === 'tag' ? '700 ' : '') + fs + 'px ' + FONT;
+  const dark = kind === 'tag' || kind === 'bad';
+  const fs = dark ? 11 : 12;
+  g0.font = (dark ? '700 ' : '') + fs + 'px ' + FONT;
   const tw = Math.ceil(g0.measureText(text).width);
-  const padX = 7, h = fs + 10, w = tw + padX * 2, tail = kind === 'tag' ? 0 : 5;
+  const padX = 7, h = fs + 10, w = tw + padX * 2, tail = dark ? 0 : 5;
   c = document.createElement('canvas');
   c.width = Math.ceil(w * d) + 2; c.height = Math.ceil((h + tail) * d) + 2;
   const g = c.getContext('2d');
   g.scale(d, d);
-  g.font = (kind === 'tag' ? '700 ' : '') + fs + 'px ' + FONT;
+  g.font = (dark ? '700 ' : '') + fs + 'px ' + FONT;
   g.textBaseline = 'middle'; g.textAlign = 'center';
   const rr = (x, y, ww, hh, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + ww, y, x + ww, y + hh, r); g.arcTo(x + ww, y + hh, x, y + hh, r); g.arcTo(x, y + hh, x, y, r); g.arcTo(x, y, x + ww, y, r); g.closePath(); };
-  const fill = kind === 'tag' ? '#243b4a' : kind === 'zone' ? 'rgba(255,248,214,0.96)' : '#ffffff';
-  const stroke = kind === 'tag' ? '#9fe0d8' : kind === 'zone' ? '#d9a21b' : '#2a2233';
+  const fill = kind === 'bad' ? '#6d1d1d' : kind === 'tag' ? '#243b4a' : kind === 'zone' ? 'rgba(255,248,214,0.96)' : '#ffffff';
+  const stroke = kind === 'bad' ? '#ff9a9a' : kind === 'tag' ? '#9fe0d8' : kind === 'zone' ? '#d9a21b' : '#2a2233';
   g.fillStyle = fill; g.strokeStyle = stroke; g.lineWidth = 1.5;
   rr(0.75, 0.75, w - 1.5, h - 1.5, 5); g.fill(); g.stroke();
   if (tail) {
@@ -367,7 +368,7 @@ function getBubble(text, kind) {
     g.beginPath(); g.moveTo(w / 2 - 4, h - 0.75); g.lineTo(w / 2, h + tail - 0.5); g.lineTo(w / 2 + 4, h - 0.75); g.strokeStyle = stroke; g.stroke();
     g.fillStyle = fill; g.fillRect(w / 2 - 3, h - 2, 6, 3);
   }
-  g.fillStyle = kind === 'tag' ? '#ffffff' : '#2a2233';
+  g.fillStyle = dark ? '#ffffff' : '#2a2233';
   g.fillText(text, w / 2, h / 2 + 0.5);
   c.cw = w; c.ch = h + tail;
   if (bubbleCache.size > 300) bubbleCache.clear();
@@ -613,6 +614,11 @@ export function render(state, ui, now) {
   const tool = ui.tool || { mode: 'none' };
   const hov = ui.hover || { x: -1, y: -1 };
   const tNow = now / 1000;
+  const carryRec = tool.mode === 'move' && tool.carry ? recById.get(tool.carry) || null : null;
+  if (carryRec) {          // where the carried object came from: dimmed footprint with a dashed outline
+    ctx.fillStyle = 'rgba(255,255,255,0.10)'; rectPath(ctx, carryRec.x0, carryRec.y0, carryRec.w, carryRec.h); ctx.fill();
+    ctx.setLineDash([5, 4]); ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
+  }
 
   // 1-second sparkle over the signboard when an achievement unlocks (optional flourish, §5.5)
   {
@@ -667,6 +673,22 @@ export function render(state, ui, now) {
       rectPath(ctx, o.x, o.y, w, h); ctx.fill();
       ghostO = { def, rot, o, ok, w, h };
       tint.on = true; tint.x = o.x; tint.y = o.y; tint.w = w; tint.h = h; tint.col = ok ? 'rgba(80,230,120,0.18)' : 'rgba(240,70,70,0.22)';
+    } else if (tool.mode === 'move' && carryRec) {
+      const def = carryRec.def, rot = tool.rot ? 1 : 0;
+      const o = placementOrigin(def, rot, hx, hy);
+      const { w, h } = sizeOf(def, rot);
+      const ok = !!hov.valid;
+      ctx.fillStyle = ok ? 'rgba(80,230,120,0.35)' : 'rgba(240,70,70,0.40)';
+      rectPath(ctx, o.x, o.y, w, h); ctx.fill();
+      ghostO = { def, rot, o, ok, w, h };
+      tint.on = true; tint.x = o.x; tint.y = o.y; tint.w = w; tint.h = h; tint.col = ok ? 'rgba(80,230,120,0.18)' : 'rgba(240,70,70,0.22)';
+    } else if (tool.mode === 'move') {
+      const pr = hov.pickId != null ? recById.get(hov.pickId) : null;
+      if (pr) {
+        ctx.fillStyle = 'rgba(80,160,255,0.42)'; rectPath(ctx, pr.x0, pr.y0, pr.w, pr.h); ctx.fill();
+        ctx.strokeStyle = '#7cc0ff'; ctx.lineWidth = 2; ctx.stroke();
+        if (pr.def.blocks !== false) { tint.on = true; tint.x = pr.x0; tint.y = pr.y0; tint.w = pr.w; tint.h = pr.h; tint.col = 'rgba(80,160,255,0.22)'; }
+      } else fillTile(ctx, hx, hy, 'rgba(255,255,255,0.12)');
     } else if (tool.mode === 'paint' && tool.defId) {
       fillTile(ctx, hx, hy, hov.valid ? 'rgba(80,230,120,0.45)' : 'rgba(240,70,70,0.45)');
     } else if (tool.mode === 'demolish') {
@@ -700,7 +722,7 @@ export function render(state, ui, now) {
   // flat objects
   for (let i = 0; i < flatRecs.length; i++) {
     const r = flatRecs[i];
-    ctx.drawImage(r.spr, r.px, r.py);
+    if (r === carryRec) { ctx.globalAlpha = 0.3; ctx.drawImage(r.spr, r.px, r.py); ctx.globalAlpha = 1; } else ctx.drawImage(r.spr, r.px, r.py);
   }
 
   // ── entities ──
@@ -730,7 +752,7 @@ export function render(state, ui, now) {
     }
     if (si < nR) {
       const r = recs[si];
-      ctx.drawImage(r.spr, r.px, r.py);
+      if (r === carryRec) { ctx.globalAlpha = 0.3; ctx.drawImage(r.spr, r.px, r.py); ctx.globalAlpha = 1; } else ctx.drawImage(r.spr, r.px, r.py);
     }
   }
 
@@ -775,6 +797,21 @@ export function render(state, ui, now) {
     (ovRect[nRect] || (ovRect[nRect] = [0, 0, 0, 0]));
     const r = ovRect[nRect++]; r[0] = bx; r[1] = by; r[2] = bw; r[3] = bh;
     ctx.drawImage(c, bx, by, bw, bh);
+  }
+  // move tool: relocation fee / reason label under the ghost
+  if (ghostO && tool.mode === 'move') {
+    const same = hov.reason === '位置沒有改變';
+    const txt = same ? '放回原位' : hov.valid ? (hov.fee > 0 ? '搬移費 NT$ ' + hov.fee.toLocaleString('en-US') : '旋轉（免費）') : '✖ ' + (hov.reason || '無法搬移');
+    const c = getBubble(txt, hov.valid || same ? 'tag' : 'bad');
+    const go = ghostO.o;
+    let lx = isoX(go.x + ghostO.w / 2, go.y + ghostO.h / 2) * z + cam.x - c.cw / 2;
+    let ly = isoY(go.x + ghostO.w, go.y + ghostO.h) * z + cam.y + 8;
+    const bar = TOUCH.touch ? layoutBar(ui, view.w, view.h) : null;
+    if (bar && ly + c.ch > bar.y - 2 && ly < bar.y + bar.h + 2) ly = bar.y + bar.h + 8;     // bar sits below the footprint: label goes under it
+    const sr = safeRect(ui, view.w, view.h);
+    lx = Math.max(sr.x + 4, Math.min(sr.x + sr.w - c.cw - 4, lx));
+    ly = Math.max(sr.y + 4, Math.min(sr.y + sr.h - c.ch - 4, ly));
+    ctx.drawImage(c, Math.round(lx) - 1, Math.round(ly) - 1, c.width / dpr, c.height / dpr);
   }
   // zone labels
   if (zones && zones.length) {

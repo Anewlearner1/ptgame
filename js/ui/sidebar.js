@@ -6,7 +6,7 @@ export const PANELS = [
   { id: 'operate', label: '運作', ico: '🔬', key: 'O' },
   { id: 'clinic', label: '診所', ico: '🏥', key: 'C' },
   { id: 'overview', label: '一覽', ico: '📋', key: 'V' },
-  { id: 'map', label: '地圖', ico: '🗺', key: 'M' },
+  { id: 'map', label: '地圖', ico: '🗺', key: 'P' },
   { id: 'system', label: '系統', ico: '⚙', key: 'Y' },
 ];
 const btns = {};

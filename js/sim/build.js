@@ -10,16 +10,26 @@ import { spend } from './economy.js';
 import { isBuildableUnlocked } from './research.js';
 import { recomputeZones } from './synergy.js';
 import { recomputeMods } from './modifiers.js';
+import { releaseObjectUsers } from './patients.js';
 
 // ---- tuning constants ----
 export const REFUND_FRAC = 0.5;            // demolition refund
 export const STARTER_CHARGE_FRAC = 0.4;    // share of the starter objects' list price deducted from the start money
+export const RELOCATE_MIN = 500;           // minimum relocation fee (NT$)
+export const RELOCATE_FRAC = 0.10;         // relocation fee = max(RELOCATE_MIN, 10% of the build cost)
 export const STARTER_SKILL = 5;            // skill of the three pre-hired staff
 export const STARTER_CHARM = 5;
 
 export function placementCost(defId) {
   const d = BUILDABLES[defId];
   return d ? d.cost || 0 : 0;
+}
+
+// Fee for picking an object up and putting it down elsewhere (a pure rotation in place is free, see canMove).
+export function relocationCost(defId) {
+  const d = BUILDABLES[defId];
+  if (!d || d.layer === 'floor') return 0;
+  return Math.max(RELOCATE_MIN, Math.round((d.cost || 0) * RELOCATE_FRAC));
 }
 
 export function isUnlocked(state, defId) {
@@ -60,15 +70,6 @@ function accessMap(state, blockers, entry) {
   return res;
 }
 
-function blockingList(state) {
-  const out = [];
-  for (const o of state.objects) {
-    const d = BUILDABLES[o.defId];
-    if (d && d.blocks !== false) out.push({ id: o.id, cells: footprint(o) });
-  }
-  return out;
-}
-
 export function canPlace(state, defId, x, y, rot) {
   const def = BUILDABLES[defId];
   if (!def) return { ok: false, reason: '未知的建築' };
@@ -82,20 +83,33 @@ export function canPlace(state, defId, x, y, rot) {
     return { ok: true, reason: '' };
   }
 
+  const geo = checkObjectCells(state, def, x, y, rot, 0);
+  if (!geo.ok) return geo;
+  if (state.money < def.cost) return { ok: false, reason: '資金不足' };
+  return { ok: true, reason: '' };
+}
+
+// Geometry rules shared by placing and moving: inside the lot, not the entry tile, no overlap, nothing walled in.
+// `ignoreId` = an object whose old footprint is treated as empty (the one being moved).
+function checkObjectCells(state, def, x, y, rot, ignoreId) {
   const cells = cellsFor(def, x, y, rot);
   const entry = entryTile(state);
   for (const c of cells) {
     if (!inLot(state, c.x, c.y)) return { ok: false, reason: '必須完全在診所範圍內' };
     if (c.x === entry.x && c.y === entry.y) return { ok: false, reason: '不能擋住入口' };
   }
+  const others = state.objects.filter(o => o.id !== ignoreId);
   const taken = new Set();
-  for (const o of state.objects) for (const c of footprint(o)) taken.add(c.x + ',' + c.y);
+  for (const o of others) for (const c of footprint(o)) taken.add(c.x + ',' + c.y);
   for (const c of cells) if (taken.has(c.x + ',' + c.y)) return { ok: false, reason: '該位置已被佔用' };
-  if (state.money < def.cost) return { ok: false, reason: '資金不足' };
 
   if (def.blocks !== false) {
     // do not wall anything in: every blocking object must keep a walkable neighbour reachable from the entry
-    const before = blockingList(state);
+    const before = [];
+    for (const o of others) {
+      const d = BUILDABLES[o.defId];
+      if (d && d.blocks !== false) before.push({ id: o.id, cells: footprint(o) });
+    }
     const hadAccess = accessMap(state, before, entry);
     const after = before.concat([{ id: -1, cells }]);
     const now = accessMap(state, after, entry);
@@ -103,6 +117,38 @@ export function canPlace(state, defId, x, y, rot) {
     for (const b of before) if (hadAccess.get(b.id) && !now.get(b.id)) return { ok: false, reason: '會擋住其他設施的通道' };
   }
   return { ok: true, reason: '' };
+}
+
+// Can the placed object `objId` go to (x,y) with orientation rot? Same rules as canPlace but its own old footprint is free.
+// Returns {ok, reason, fee}; a pure rotation in place costs nothing, any change of position costs relocationCost().
+export function canMove(state, objId, x, y, rot) {
+  const o = state.objects.find(q => q.id === objId);
+  if (!o) return { ok: false, reason: '找不到這個設備', fee: 0 };
+  const def = BUILDABLES[o.defId];
+  if (!def || def.layer === 'floor') return { ok: false, reason: '地板無法搬移（直接鋪設新地板即可）', fee: 0 };
+  rot = rot ? 1 : 0;
+  const samePos = o.x === x && o.y === y;
+  if (samePos && (o.rot ? 1 : 0) === rot) return { ok: false, reason: '位置沒有改變', fee: 0 };
+  const fee = samePos ? 0 : relocationCost(o.defId);
+  const geo = checkObjectCells(state, def, x, y, rot, o.id);
+  if (!geo.ok) return { ok: false, reason: geo.reason, fee };
+  if (state.money < fee) return { ok: false, reason: `資金不足（搬移費 NT$ ${fee.toLocaleString('en-US')}）`, fee };
+  return { ok: true, reason: '', fee };
+}
+
+// Move / rotate a placed object. Keeps id, wear and everything else; whoever was using it is released
+// (treatment cancelled, patient goes back to waiting, staff go idle) so nothing is left pointing at the old spot.
+export function moveObject(state, objId, x, y, rot) {
+  const chk = canMove(state, objId, x, y, rot);
+  if (!chk.ok) return false;
+  const o = state.objects.find(q => q.id === objId);
+  if (chk.fee > 0 && !spend(state, chk.fee, 'build')) return false;
+  releaseObjectUsers(state, o.id);
+  o.x = x; o.y = y; o.rot = rot ? 1 : 0;
+  o.busy = false; o.usedBy = null; o.staffId = null;
+  afterChange(state, true);
+  bus.emit('object:moved', { id: o.id });
+  return true;
 }
 
 function afterChange(state, objectsChanged) {
@@ -132,6 +178,15 @@ export function paintFloor(state, floorId, x, y) {
   state.map.floor[y][x] = floorId;
   afterChange(state, false);
   return true;
+}
+
+// Turn a placed object 90 degrees where it stands (free). Returns {ok, reason}.
+export function rotateObject(state, objId) {
+  const o = state.objects.find(q => q.id === objId);
+  if (!o) return { ok: false, reason: '找不到這個設備' };
+  const r = canMove(state, objId, o.x, o.y, o.rot ? 0 : 1);
+  if (!r.ok) return r;
+  return { ok: moveObject(state, objId, o.x, o.y, o.rot ? 0 : 1), reason: '' };
 }
 
 function refund(state, amount) {

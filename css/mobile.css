@@ -101,6 +101,8 @@ img, canvas { -webkit-user-drag: none; }
 .lay-mobile .tabs.u-subtabs { margin-bottom: 8px; }
 .tab.u-demotab { display: none; }
 .lay-mobile .tab.u-demotab { display: inline-flex; margin-left: auto; }
+.lay-mobile .tab.u-movetab { margin-left: auto; }
+.lay-mobile .tab.u-movetab + .tab.u-demotab { margin-left: 4px; }
 .lay-mobile .u-toolbar { display: none; }
 .lay-mobile .u-buildgrid { grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 8px; }
 .lay-mobile .u-item { padding: 8px 4px; }

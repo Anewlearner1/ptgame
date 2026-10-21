@@ -244,7 +244,7 @@ function updateChip(ui) {
   if (chipEl.hidden === show) chipEl.hidden = !show;
   if (show) {
     const d = ui.tool.defId && BUILDABLES[ui.tool.defId];
-    const t = '🔨 ' + (d ? d.name : ui.tool.mode === 'demolish' ? '拆除' : '建造');
+    const t = '🔨 ' + (d ? d.name : ui.tool.mode === 'demolish' ? '拆除' : ui.tool.mode === 'move' ? '移動' : '建造');
     if (chipEl._t !== t) { chipEl._t = t; chipEl.textContent = t; }
   }
 }

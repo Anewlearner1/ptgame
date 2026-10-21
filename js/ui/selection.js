@@ -4,10 +4,11 @@ import { BUILDABLES } from '../data/buildables.js';
 import { PATIENT_TYPES } from '../data/patients.js';
 import { TREATMENTS } from '../data/treatments.js';
 import { STAFF_ROLES, TRAITS } from '../data/staffdefs.js';
-import { removeAt } from '../sim/build.js';
+import { removeAt, rotateObject, relocationCost } from '../sim/build.js';
 import { h, clear, setText, bar, setBar, toneOf, setClass, append } from './dom.js';
 import { STAGE_LABELS, STAFF_STATE_LABELS, TYPE_ICONS, ROLE_ICONS, money } from './fmt.js';
 import { confirmDialog } from './modal.js';
+import { layout, setBMode } from './layout.js';
 
 let card = null, body = null, key = null, refs = null;
 
@@ -106,7 +107,16 @@ function buildObject(state, ui, e) {
     h('div', { class: 'muted u-p' }, d.desc || ''),
     row('耗損', refs.wear),
     row('維護費', h('span', null, `${money(d.upkeep || 0)} / 月`)),
-    h('div', { class: 'row' }, h('button', {
+    h('div', { class: 'row' },
+      h('button', { class: 'btn small', type: 'button', tip: `移動（M）：搬移費 ${money(relocationCost(e.defId))}`, onclick: () => {
+        if (layout.mobile) { if (ui.panel === 'build') setBMode(layout.portrait ? 'tray' : 'strip'); else if (ui.panel) ui.panel = null; }
+        bus.emit('object:move', { id: e.id });
+      } }, '✥ 移動'),
+      h('button', { class: 'btn small', type: 'button', tip: '原地旋轉（免費）', onclick: () => {
+        const r = rotateObject(state, e.id);
+        bus.emit('toast', r.ok ? { text: `已旋轉「${d.name}」`, kind: 'good' } : { text: `無法旋轉：${r.reason}（可改用「移動」放到別處）`, kind: 'bad' });
+      } }, '🔄 旋轉'),
+      h('button', {
       class: 'btn small danger', type: 'button', onclick: () => {
         confirmDialog({
           title: '出售設備', text: `確定拆除「${d.name}」？將退回約 ${money(Math.floor((d.cost || 0) / 2))}。`, okLabel: '拆除', danger: true,

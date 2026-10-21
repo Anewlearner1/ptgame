@@ -219,7 +219,7 @@ async function suite(W, H) {
   // built-in chip is the fallback when the UI layer does not claim the event (handled / ui.contextUI)
   const claimed = await G(() => !!__game.ui.contextUI);
   if (ctxEv && !claimed) console.log('     (UI layer did not claim object:context: built-in chip active; set e.handled=true or ui.contextUI)');
-  await G(() => { __game.ui.selected = null; });
+  await G(() => { __game.ui.selected = null; const m = document.querySelector('.u-ctx'); if (m) m.hidden = true; });   // the popover would sit on top of the bar
   // demolish route for a specific object (also what the chip / UI context menu calls)
   const vid = await G(async (id) => { const m = await import('/js/render/input.js'); return m.startDemolishObject(id); }, target.id);
   ok(vid && (await tool()).mode === 'demolish', 'startDemolishObject arms the demolish tool on the object');
@@ -228,6 +228,94 @@ async function suite(W, H) {
   await touch.tap(bar.btns.find(b => b.id === 'ok').x, bar.btns.find(b => b.id === 'ok').y); await page.waitForTimeout(150);
   ok((await nObj()) === ndx - 1, 'context -> demolish -> OK removes the long-pressed object');
   await setTool({ mode: 'none' });
+
+  // ---- MOVE an object on touch: long-press -> 移動 -> drag the ghost -> ✔ (and ✖ / ⟳ / tray collapse / bar inside freeRect)
+  {
+    await G(() => { __game.state.money = 500000; __game.ui.selected = null; __game.ui.panel = null; });
+    await G(async () => { const cam = await import('/js/render/camera.js'); __game.ui.freeRect = null; cam.fitLotInRect(__game.state, document.getElementById('game'), null, __game.ui); });
+    await page.waitForTimeout(400);
+    const mvObj = () => G(() => { const o = __game.state.objects.find(o => o.defId === 'heatbox'); return { id: o.id, x: o.x, y: o.y, rot: o.rot }; });
+    // a valid destination origin (>= 3 tiles from the old spot), the fee, and the finger point that puts the ghost there
+    const dest = await G(async () => {
+      const b = await import('/js/sim/build.js'), { state } = __game, o = state.objects.find(o => o.defId === 'heatbox'), l = state.lot;
+      for (let y = l.y0 + 1; y < l.y0 + l.h - 1; y++) for (let x = l.x0 + 1; x < l.x0 + l.w - 1; x++)
+        if (Math.abs(x - o.x) + Math.abs(y - o.y) >= 3 && b.canMove(state, o.id, x, y, 0).ok) return { x, y, fee: b.relocationCost('heatbox') };
+      return null;
+    });
+    ok(dest && dest.fee >= 500, `a valid move destination exists (fee NT$ ${dest && dest.fee})`);
+    const longPressMove = async (id) => {
+      const o = await G(id => { const o = __game.state.objects.find(o => o.id === id); return { x: o.x, y: o.y }; }, id);
+      const pp = await tileXY(page, o.x, o.y);
+      await touch.hold(pp.x, pp.y - 8, 700);
+      const mb = await page.locator('.u-ctx .u-ctx-btn', { hasText: '移動' }).boundingBox();
+      if (!mb) return false;
+      await touch.tap(mb.x + mb.width / 2, mb.y + mb.height / 2); await page.waitForTimeout(250);
+      return true;
+    };
+    const fingerFor = async d => { const q = await tileXY(page, d.x, d.y); return { x: q.x, y: q.y + 40 }; };   // ghost is lifted ~40px above the finger
+    const m0 = await money();
+    let ob = await mvObj();
+    ok(await longPressMove(ob.id), 'long-press menu offers 移動');
+    let tl = await tool();
+    ok(tl.mode === 'move' && tl.carry === ob.id, 'choosing 移動 picks the object up (ui.tool.mode=move, carry=id)');
+    let bar2 = await barButtons(page);
+    ok(bar2 && ['ok', 'cancel', 'rot', 'keep'].every(id => bar2.btns.some(b => b.id === id)), 'move shows the ✔/✖/⟳/📌 confirm bar');
+    await shot('move_1_picked');
+    // drag the ghost from an empty canvas spot (not on the bar) to the destination
+    const sp = await cpt(0.5, 0.82);
+    const ff = await fingerFor(dest);
+    await touch.path([sp, { x: (sp.x + ff.x) / 2, y: (sp.y + ff.y) / 2 }, ff], 120);
+    await page.waitForTimeout(150);
+    const hv = await G(() => ({ ...__game.ui.hover }));
+    ok(hv.valid && hv.ox === dest.x && hv.oy === dest.y, `dragging moves the ghost to the destination (${hv.ox},${hv.oy}) valid=${hv.valid}`);
+    ob = await mvObj();
+    ok(!(ob.x === dest.x && ob.y === dest.y), 'object does not move until ✔');
+    await shot('move_2_dragged');
+    bar2 = await barButtons(page);
+    ok(bar2 && bar2.x >= cr.x - 1 && bar2.x + bar2.w <= cr.x + cr.w + 1 && bar2.y >= cr.y - 1 && bar2.y + bar2.h <= cr.y + cr.h + 1, 'confirm bar is on screen');
+    const okb = bar2.btns.find(b => b.id === 'ok');
+    await touch.tap(okb.x, okb.y); await page.waitForTimeout(200);
+    ob = await mvObj();
+    ok(ob.x === dest.x && ob.y === dest.y, `✔ drops the object at the destination (${ob.x},${ob.y})`);
+    ok((await money()) === m0 - dest.fee, `relocation fee charged exactly once (NT$ ${dest.fee})`);
+    ok((await tool()).mode === 'none', 'tool ends after the drop');
+    const old = { x: dest.x, y: dest.y };
+
+    // cancel: ✖ leaves the object and the money untouched
+    const m1 = await money();
+    ok(await longPressMove(ob.id), 'second long-press -> 移動');
+    const dest2 = await G(async () => { const b = await import('/js/sim/build.js'), { state } = __game, o = state.objects.find(o => o.defId === 'heatbox'), l = state.lot;
+      for (let y = l.y0 + 1; y < l.y0 + l.h - 1; y++) for (let x = l.x0 + 1; x < l.x0 + l.w - 1; x++) if (Math.abs(x - o.x) + Math.abs(y - o.y) >= 3 && b.canMove(state, o.id, x, y, 0).ok) return { x, y }; return null; });
+    const sp2 = await cpt(0.5, 0.82), ff2 = await fingerFor(dest2);
+    await touch.path([sp2, ff2], 80); await page.waitForTimeout(120);
+    const rot0 = (await tool()).rot;
+    bar2 = await barButtons(page);
+    const rb = bar2.btns.find(b => b.id === 'rot'); await touch.tap(rb.x, rb.y); await page.waitForTimeout(120);
+    ok((await tool()).rot !== rot0, '⟳ rotates the carried ghost');
+    bar2 = await barButtons(page);
+    const cb = bar2.btns.find(b => b.id === 'cancel'); await touch.tap(cb.x, cb.y); await page.waitForTimeout(200);
+    ob = await mvObj();
+    ok(ob.x === old.x && ob.y === old.y && (await money()) === m1 && (await tool()).mode === 'none', '✖ cancels: position and money untouched');
+
+    // with the build panel open: tray collapses and the bar stays inside ui.freeRect
+    await G(() => { __game.ui.panel = 'build'; });
+    await page.waitForTimeout(600);
+    ok(await longPressMove(ob.id), 'long-press -> 移動 with the build panel open');
+    await page.waitForTimeout(500);
+    const bm = await G(() => document.getElementById('stage').dataset.bmode);
+    ok(bm === (W < H ? 'tray' : 'strip'), `build panel collapses to its ${W < H ? 'tray' : 'strip'} while carrying (bmode ${bm})`);
+    const fr = await G(() => __game.ui.freeRect && { ...__game.ui.freeRect });
+    bar2 = await barButtons(page);
+    ok(bar2 && (!fr || (bar2.y >= cr.y + fr.y - 1 && bar2.y + bar2.h <= cr.y + fr.y + fr.h + 1 && bar2.x >= cr.x + fr.x - 1 && bar2.x + bar2.w <= cr.x + fr.x + fr.w + 1)), `move bar stays inside ui.freeRect ${JSON.stringify(fr)}`);
+    await shot('move_3_tray');
+    bar2 = await barButtons(page);
+    const cb2 = bar2.btns.find(b => b.id === 'cancel'); await touch.tap(cb2.x, cb2.y); await page.waitForTimeout(200);
+    ok((await tool()).mode === 'none', '✖ ends the move tool');
+    await G(() => { __game.ui.panel = null; });
+    await page.waitForTimeout(500);
+    await G(async () => { const cam = await import('/js/render/camera.js'); __game.ui.freeRect = null; cam.fitLotInRect(__game.state, document.getElementById('game'), null, __game.ui); });
+    await page.waitForTimeout(250);
+  }
 
   // ---- bar is clamped to a UI-provided free rect (bottom sheet / tab bar)
   const free = { x: 0, y: Math.round(H * 0.1), w: W, h: Math.round(H * 0.55) };
