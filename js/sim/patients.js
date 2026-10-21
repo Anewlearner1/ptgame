@@ -101,6 +101,8 @@ function getMeta(state) {
 }
 
 function lotDefOf(state) { return LOTS[state.lotLevel || 0] || LOTS[0]; }
+// concurrent patients on the floor: lots.js maxPatients (the biggest lot needs a bigger crowd), never below the global TUNE.MAX_PATIENTS
+export function maxPatientsOf(state) { const m = lotDefOf(state).maxPatients; return Math.max(TUNE.MAX_PATIENTS, typeof m === 'number' ? m : 0); }
 
 // ================= speech =================
 export function say(p, key, force) {
@@ -422,7 +424,7 @@ function runArrivals(c, meta, dt) {
   const clock = state.time.clock;
   if (clock < OPEN_MIN || clock >= CLOSE_MIN - TUNE.STOP_SPAWN_BEFORE_CLOSE) return;
   const cap = lotDefOf(state).maxPatientsPerWeek || 20;
-  if (state.patients.length >= TUNE.MAX_PATIENTS) return;
+  if (state.patients.length >= maxPatientsOf(state)) return;
   const wk = weekIdx(state);
 
   // returning patients first
@@ -430,7 +432,7 @@ function runArrivals(c, meta, dt) {
     for (let i = meta.returning.length - 1; i >= 0; i--) {
       const r = meta.returning[i];
       if (r.at == null || r.at > clock || r.due > wk) continue;
-      if (meta.spawned >= cap || state.patients.length >= TUNE.MAX_PATIENTS) break;
+      if (meta.spawned >= cap || state.patients.length >= maxPatientsOf(state)) break;
       meta.returning.splice(i, 1);
       spawnPatient(state, r.type, r);
       meta.spawned++;
@@ -460,7 +462,7 @@ function runArrivals(c, meta, dt) {
     const mu = lambda * discount * capScale * share * densityOf(P, clock) * dt;
     const n = poisson(mu);
     for (let i = 0; i < n; i++) {
-      if (meta.spawned >= cap || state.patients.length >= TUNE.MAX_PATIENTS) return;
+      if (meta.spawned >= cap || state.patients.length >= maxPatientsOf(state)) return;
       spawnPatient(state, P.id);
       meta.spawned++;
     }

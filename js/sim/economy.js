@@ -15,6 +15,8 @@ export const PV_MAX = PV_BASE;                      // legacy alias
 //   NHI income = points * pointValue * PATIENT_WEIGHT, self-pay = real price * priceMult * mods * PATIENT_WEIGHT, copay = 50 * PATIENT_WEIGHT.
 // Salaries / rent / build costs / event money / inspection rewards are plain NT$ (never multiplied). Balance knob (docs/ARCHITECTURE.md §2).
 export const PATIENT_WEIGHT = 15;
+// Per-lot override: lots.js `patientWeight` (the biggest lot is capped by the same on-screen crowd, so each simulated patient there stands for more).
+export function patientWeight(state) { const w = lotDef(state).patientWeight; return typeof w === 'number' && w > 0 ? w : PATIENT_WEIGHT; }
 export const BANKRUPT_LIMIT = -300000;      // money below this at month end -> game over
 export const DEFAULT_UPKEEP = 0;            // object upkeep when def.upkeep is missing
 export const HISTORY_MAX = 240;             // months of history kept
@@ -101,7 +103,7 @@ export function getPointValue(state) {
 
 // NT$ the NHI points banked so far this month are worth at the current (diluted) point value, weighted. UI may show this.
 export function projectedNhiIncome(state) {
-  return Math.round(((state.nhi && state.nhi.monthPoints) || 0) * getPointValue(state) * PATIENT_WEIGHT);
+  return Math.round(((state.nhi && state.nhi.monthPoints) || 0) * getPointValue(state) * patientWeight(state));
 }
 
 // ---- NHI claim rules (real, docs/FEE_RESEARCH.md) ----
@@ -173,9 +175,9 @@ function onTreatmentDone(state, e) {
   let pay = 0;
   if (typeof e.selfPay === 'number') pay = e.selfPay;
   else if (e.selfPay) pay = selfPayPrice(state, e.treatmentId);   // boolean flag: price it ourselves
-  if (pay > 0) earn(state, pay * PATIENT_WEIGHT, 'self');
+  if (pay > 0) earn(state, pay * patientWeight(state), 'self');
   const cp = Number(e.copay) || 0;
-  if (cp > 0) earn(state, cp * PATIENT_WEIGHT, 'copay');
+  if (cp > 0) earn(state, cp * patientWeight(state), 'copay');
 }
 
 function onWeekEnd(state) {
@@ -210,7 +212,7 @@ export function settleMonth(state) {
   const l = ensureLedger(state);
   const points = state.nhi.monthPoints || 0;
   const pv = getPointValue(state);
-  const nhiIncome = Math.round(points * pv * PATIENT_WEIGHT);
+  const nhiIncome = Math.round(points * pv * patientWeight(state));
   earn(state, nhiIncome, 'nhi');
 
   const c = monthlyCosts(state);
@@ -231,7 +233,7 @@ export function settleMonth(state) {
   }
 
   const record = {
-    points, pointValue: pv, income, expense, net, nhiIncome, patientWeight: PATIENT_WEIGHT, basePointValue: PV_BASE,
+    points, pointValue: pv, income, expense, net, nhiIncome, patientWeight: patientWeight(state), basePointValue: PV_BASE,
     selfIncome: l.income.self, copayIncome: l.income.copay, otherIncome: l.income.other,
     salary: l.expense.salary, rent: l.expense.rent, maintain: l.expense.maintain, build: l.expense.build, otherExpense: l.expense.other,
     cap: nhiCap(state), diluted: pv < PV_BASE - 1e-9,

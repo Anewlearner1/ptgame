@@ -54,6 +54,8 @@ export const LOTS = [
     nhiCap: 82000,
     maxPatientsPerWeek: 100,
     maxStaff: 22,
+    maxPatients: 100,        // concurrent patients on the floor (others use patients.js TUNE.MAX_PATIENTS 60)
+    patientWeight: 20,       // each simulated patient stands for this many real ones (others: economy.PATIENT_WEIGHT 15)
     expandCost: 6000000,
     requires: {
       minReputation: 320, minYear: 3, minStaff: 11, minAvgSat: 72, needRamp: true, minSeats: 6, research: 'rs_expand',

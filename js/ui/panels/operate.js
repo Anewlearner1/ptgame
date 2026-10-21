@@ -7,7 +7,7 @@ import { PATIENT_TYPES } from '../../data/patients.js';
 import { COMMUNITY } from '../../data/events.js';
 import { LOTS } from '../../data/lots.js';
 import { TREATMENT_FEES, EXAM_FEE_TIERS, PT_TIERS, COPAY_NTD, NHI_POINT_VALUE, FEES_AS_OF, SINGLE_CLAIM_NOTE } from '../../data/fees.js';
-import { PATIENT_WEIGHT } from '../../sim/economy.js';
+import { patientWeight } from '../../sim/economy.js';
 import * as RS from '../../sim/research.js';
 import * as EV from '../../sim/events.js';
 import { h, setClass, setText, tabbed, bar, setBar } from '../dom.js';
@@ -153,6 +153,7 @@ function nhiRulesCard() {
 }
 
 function buildPricing(body, state) {
+  const PATIENT_WEIGHT = patientWeight(state);   // per-lot (lots.js patientWeight, default economy.PATIENT_WEIGHT)
   body.append(h('div', { class: 'card u-note' },
     h('b', null, `⚖ 每位模擬病患代表 ${PATIENT_WEIGHT} 位真實病患`),
     h('p', { class: 'muted u-small' }, `下列售價都是真實的「每次」自費價格（市場行情資料截至 ${FEES_AS_OF}）。入帳時會乘以 ${PATIENT_WEIGHT}（健保給付、部分負擔也一樣），薪資與房租則不乘。`)));

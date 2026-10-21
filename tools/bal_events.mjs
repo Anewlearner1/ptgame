@@ -178,7 +178,8 @@ const monthRows = [];
 let mTreat = {};
 bus.on('treatment:done', (e) => {
   const pv = Eco.getPointValue(state);
-  const rev = (e.nhiPoints || 0) * pv * NTD_PER_PT + ((e.selfPay || 0) + (e.copay || 0)) * Eco.PATIENT_WEIGHT;
+  const W = Eco.patientWeight(state);
+  const rev = (e.nhiPoints || 0) * pv * W + ((e.selfPay || 0) + (e.copay || 0)) * W;
   mTreat[e.treatmentId] = mTreat[e.treatmentId] || { n: 0, rev: 0 };
   mTreat[e.treatmentId].n++; mTreat[e.treatmentId].rev += rev;
 });

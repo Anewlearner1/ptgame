@@ -161,7 +161,7 @@ function invariants() {
   for (const k of ['patientsToday', 'patientsMonth', 'patientsTotal', 'cured', 'angry', 'satN']) must(state.stats[k] >= 0, 'stats.' + k + ' negative ' + state.stats[k]);
   must(state.history.length <= Eco.HISTORY_MAX, 'history too long');
   must(state.events.log.length <= Ev.EVENT_LOG_MAX, 'event log too long');
-  must(state.patients.length <= P.TUNE.MAX_PATIENTS + 5, 'too many patients ' + state.patients.length);
+  must(state.patients.length <= P.maxPatientsOf(state) + 5, 'too many patients ' + state.patients.length);
   must(state.hirePool.length <= 6, 'hirePool too big');
   must(state.staff.length <= Res.maxStaffOf(state), 'staff over cap ' + state.staff.length + '/' + Res.maxStaffOf(state));
   const ids = new Set();
@@ -387,6 +387,19 @@ function featuresSection() {
       Eco.earn(state, 7777, 'other');
       check('events/other money stays plain NT$ (earn other = 7777 -> 7777)', state.ledger.income.other === 7777);
       state.ledger.income.other = 0;
+    }
+
+    // per-lot weight + crowd cap (lots.js patientWeight / maxPatients): L0-L2 use the global constants, the top tier a bigger one
+    {
+      fresh(); state.ledger = { income: { nhi: 0, self: 0, copay: 0, other: 0 }, expense: { salary: 0, rent: 0, build: 0, maintain: 0, other: 0 } };
+      const W0 = Eco.PATIENT_WEIGHT;
+      check('lot weight: L0-L2 use PATIENT_WEIGHT, L3 has its own larger weight', [0, 1, 2].every(l => { state.lotLevel = l; return Eco.patientWeight(state) === W0; }) && (state.lotLevel = 3, Eco.patientWeight(state) === LOTS[3].patientWeight && LOTS[3].patientWeight > W0));
+      state.lotLevel = 3; const m0 = state.money;
+      bus.emit('treatment:done', { patient: {}, treatmentId: 'shockwave', nhiPoints: 0, selfPay: Eco.selfPayPrice(state, 'shockwave'), copay: 0, staffId: null });
+      check('lot weight: self-pay at L3 is banked x the L3 weight', state.money === m0 + 2500 * LOTS[3].patientWeight, `${state.money - m0}`);
+      state.ledger.income.self = 0; state.lotLevel = 0;
+      check('crowd cap: L0-L2 keep TUNE.MAX_PATIENTS, L3 allows more', [0, 1, 2].every(l => { state.lotLevel = l; return P.maxPatientsOf(state) === P.TUNE.MAX_PATIENTS; }) && (state.lotLevel = 3, P.maxPatientsOf(state) === LOTS[3].maxPatients && LOTS[3].maxPatients > P.TUNE.MAX_PATIENTS));
+      state.lotLevel = 0;
     }
 
     // copay: flat NT$50 per RETURNING visit (visit >= 1), first visit free, collected once per visit
