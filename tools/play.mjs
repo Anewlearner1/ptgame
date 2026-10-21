@@ -19,6 +19,7 @@ const money = () => G(() => __game.state.money);
 const nObj = () => G(() => __game.state.objects.length);
 const closeModals = () => G(() => { for (let i = 0; i < 5; i++) document.querySelector('.modal .btn.primary, .modal .btn')?.click(); });
 
+await G(async () => { (await import('/js/sim/events.js')).EVENT_TUNE.CHANCE = 0; });   // random events are tested explicitly (triggerEvent) - keep this scripted run deterministic
 await G(() => { __game.bus.emit('speed:set', { speed: 0 }); __game.state.points = { medical: 5000, device: 5000, service: 5000 }; });
 
 // --- build / paint / rotate / demolish

@@ -64,3 +64,8 @@ Choice = { label, result,                       // result = 選後顯示的一�
 
 ## 7. 事件數量與分工
 目標 58 個事件全部上線；不需新機制的 16 個、M1 即可的 10 個、M5/M10 的 8 個、M3/M2/M4 等其餘依本規格實作。每個事件必須在 headless 測試中被強制觸發、四種情境（各選項、`chance` 的 win/lose）都能套用且不拋錯。
+
+## 8. 實作狀態（已上線）
+- 事件池 = 既有 15 隨機事件 + EXT_A 30 + EXT_B 28（共 73），含 12 個醫病溝通兩難（另走 dilemma 流程）。引擎在 `js/sim/events.js`，設備耗損在 `js/sim/equipment.js`，士氣/離職在 `js/sim/staff.js`，審查風險/網路評價在 `js/sim/economy.js`。
+- 與本規格的差異：`wear <= -100` 同時清除 `broken`；全診所 `sat` 另轉成 1 週 `satShift` buff；員工體力打擊延到下一個營業日（`staminaCarry`）；`chance` 在決策視窗開啟時預擲（存檔重載不會重擲）。
+- 測試：`node tools/audit.mjs --only events`（強制觸發 73 事件 × 全部選項 × win/lose）；平衡：`tools/bal_events.mjs`。

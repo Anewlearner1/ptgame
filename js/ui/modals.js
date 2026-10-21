@@ -141,7 +141,7 @@ export function showPending(raw) {
   d.choices.forEach((c, i) => {
     const poor = !choiceAffordable(state, c);
     const note = [];
-    if (c.chance) note.push(h('span', { class: 'tag u-odds', tip: '擲骰決定結果：成功與失敗的後果不同' }, `🎲 成功率 ${Math.round((c.chance.p || 0) * 100)}%`));
+    if (c.chance) note.push(h('span', { class: 'tag u-odds', tip: '擲骰決定結果：成功與失敗的後果不同' }, `成功率 ${Math.round((c.chance.p || 0) * 100)}%`));
     if (c.requires && c.requires.money) note.push(h('span', { class: 'tag u-costnote' + (poor ? ' lack' : '') }, `需 ${money(c.requires.money)}`));
     list.appendChild(h('button', {
       class: 'btn u-choice' + (c.chance ? ' u-chance' : '') + (poor ? ' u-poor' : ''), type: 'button', disabled: poor,

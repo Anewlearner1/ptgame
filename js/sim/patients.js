@@ -345,7 +345,7 @@ export function spawnPatient(state, typeId, ret) {
     cureScale: clamp(P.cureNeeded / (course * sum), 0.05, 1.6),
     age: 0, stun: 0, hold: false, chat: null, chatCd: 20 + rnd() * 60, cmf: 0, rel: 0, cmfT: 0,
     waitStart: 0, spot: null, stand: null, dest: null, dir: 1, moving: false,
-    treated: 0, noPath: {}, qT: 0, needSpot: false,
+    treated: 0, noPath: {}, qT: 0, needSpot: false, remaining: 0, total: 0,
   };
   const e = entryTile(state);
   p.path = findPath(state, p.x, p.y, e.x, e.y) || [];

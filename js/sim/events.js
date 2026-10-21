@@ -25,7 +25,7 @@ import * as ST from './staff.js';
 
 // ---- tuning constants ----
 export const WEATHER_STICKY = 0.35;          // chance the weather simply continues next week (if still valid for the month)
-export const EVENT_CHANCE_PER_WEEK = 0.40;   // random event roll at each week:start
+export const EVENT_CHANCE_PER_WEEK = 0.30;   // random event roll at each week:start
 export const EVENT_GRACE_WEEKS = 6;          // no random events during the first weeks
 export const EVENT_MIN_GAP_WEEKS = 1;        // min weeks between two random events
 // live-tunable copy of the three pacing constants above (balance harnesses poke this)
@@ -179,8 +179,10 @@ export function condMet(state, cond) {
   if (c.moraleBelow != null && !(state.staff || []).some(s => ST.moraleOf(s) < c.moraleBelow)) return false;
   if (c.reviewBelow != null && !(reviewOf(state) < c.reviewBelow)) return false;
   if (c.monthPointsOverCapPct != null) {
+    // events roll at week:start, when the new month's counter is still ~0: in week 1 the month that just closed counts too
     const cap = nhiCap(state);
-    if (!(cap > 0 && ((state.nhi.monthPoints || 0) / cap) * 100 >= c.monthPointsOverCapPct)) return false;
+    const pts = Math.max(state.nhi.monthPoints || 0, state.time.week === 1 ? ((state.nhi.lastSettlement && state.nhi.lastSettlement.points) || 0) : 0);
+    if (!(cap > 0 && (pts / cap) * 100 >= c.monthPointsOverCapPct)) return false;
   }
   if (c.minPatientsTotal != null && ((state.stats && state.stats.patientsTotal) || 0) < c.minPatientsTotal) return false;
   return true;
@@ -353,7 +355,7 @@ function onWeekStart(state) {
 
   // 3. equipment wear / breakdowns (M2) and staff morale (M4)
   const broke = EQ.weeklyWear(state);
-  for (const o of broke) logLine(state, `${EQ.defName(o.defId)}故障了`);
+  broke.forEach((o, i) => { if (i === 0) logLine(state, `${EQ.defName(o.defId)}故障了`); else note(state, `🔧 ${EQ.defName(o.defId)}故障了，到〈一覽〉→〈設備維護〉叫修`, 'bad'); });
   ST.weeklyMorale(state);
   if (changed) refreshMods(state);
 

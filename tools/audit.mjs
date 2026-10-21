@@ -1104,7 +1104,9 @@ function longRun(policy, years, seed) {
   const startHist = state.history.length;
   let weekNo = 0, lastWeek = state.time.week;
   const stats = { maxPatients: 0, maxSize: 0, sizes: [], minMoney: Infinity, maxMoney: -Infinity, gameOver: 0, bad: [], inspections: 0, expansions: 0, researched: 0, events: 0, maxRet: 0 };
-  const offs = [bus.on('game:over', () => stats.gameOver++), bus.on('inspection:result', () => stats.inspections++), bus.on('lot:expanded', () => stats.expansions++)];
+  const bigByMonth = new Map(); stats.bigMax = 0;
+  const offs = [bus.on('game:over', () => stats.gameOver++), bus.on('inspection:result', () => stats.inspections++), bus.on('lot:expanded', () => stats.expansions++),
+    bus.on('event:show', (e) => { const d = Ev.eventById(e.event.id); if (d && d.big) { const k = state.time.year * 12 + state.time.month; const n = (bigByMonth.get(k) || 0) + 1; bigByMonth.set(k, n); stats.bigMax = Math.max(stats.bigMax, n); } })];
   const t0 = Date.now();
   while (monthsPassed() < months) {
     if (state.events.pendingDilemma) stats.events++;
@@ -1135,6 +1137,8 @@ function longrunSection() {
     const fin = invariants();
     console.log(`  ${pol.padEnd(8)} ${(st.ms / 1000).toFixed(1)}s money ${Math.round(state.money / 1000)}k [min ${Math.round(st.minMoney / 1000)}k max ${Math.round(st.maxMoney / 1000)}k] rep ${Math.round(state.reputation)} L${state.lotLevel} staff ${state.staff.length} objs ${state.objects.length} research ${st.researched}/${Object.keys(RESEARCH).length} hist ${state.history.length} peak-pat ${st.maxPatients} returning<=${st.maxRet} save ${(jsonSize() / 1024).toFixed(0)}KB nextId ${state.nextId} insp ${st.inspections} exp ${st.expansions} gameOver ${st.gameOver} events ${st.events}`);
     check(`longrun ${pol}: no invariant violations during ${YEARS}y`, st.bad.length === 0, st.bad.slice(0, 3).join(' || '));
+    if (pol !== 'chaos') check(`longrun ${pol}: at most one big event per month`, st.bigMax <= 1, String(st.bigMax));   // (chaos reloads saves, so months repeat)
+    if (pol !== 'chaos') check(`longrun ${pol}: about one decision every 1-3.5 game weeks (${(YEARS * 48 / Math.max(1, st.events)).toFixed(1)}w)`, st.events / (YEARS * 48) >= 1 / 3.5 && st.events / (YEARS * 48) <= 1, String(st.events));
     check(`longrun ${pol}: final invariants`, fin.length === 0, fin.slice(0, 4).join('; '));
     check(`longrun ${pol}: history length == simulated months`, state.history.length === Math.min(Eco.HISTORY_MAX, YEARS * 12), String(state.history.length));
     if (flag('monthly')) console.log('   ' + state.history.map(h => `${h.year}.${h.month}:${Math.round(h.net / 1000)}k/${h.patients}p`).join(' '));
@@ -1494,6 +1498,11 @@ function eventsSection() {
     const cap = Eco.nhiCap(state);
     state.nhi.monthPoints = cap * 0.95;
     check('cond.monthPointsOverCapPct', cm({ monthPointsOverCapPct: 90 }) && !cm({ monthPointsOverCapPct: 100 }));
+    { const keep = { ...state.nhi.lastSettlement }, wk = state.time.week;
+      state.nhi.monthPoints = 0; state.nhi.lastSettlement = { points: cap * 0.95, pointValue: 1, income: 0 };
+      state.time.week = 1; const w1 = cm({ monthPointsOverCapPct: 90 }); state.time.week = 2; const w2 = cm({ monthPointsOverCapPct: 90 });
+      check('cond.monthPointsOverCapPct: in week 1 the month that just closed counts (the counter has just been reset)', w1 && !w2);
+      state.time.week = wk; state.nhi.lastSettlement = keep.points === undefined ? null : keep; state.nhi.monthPoints = cap * 0.95; }
     state.stats.patientsTotal = 120;
     check('cond.minPatientsTotal', cm({ minPatientsTotal: 100 }) && !cm({ minPatientsTotal: 121 }));
     check('cond: keys combine with AND', cm({ months: [5], minYear: 3, hasObject: ['tens'], flag: 'seen_x' }) && !cm({ months: [5], minYear: 3, hasObject: ['tens'], flag: 'nope' }));
@@ -1828,7 +1837,7 @@ function eventsSection() {
     // ---- a broken machine is never used; breakdown mid-treatment is released gracefully; repair resumes work
     fresh(); wire(); Ev.EVENT_TUNE.CHANCE = 0;      // (random events could repair it behind our back)
     state.money = 2e6; state.reputation = 120;
-    state.objects = state.objects.filter(o => !['heatbox'].includes(o.defId)); refresh();
+    state.objects = state.objects.filter(o => !['heatbox', 'tens'].includes(o.defId)); refresh();
     const tn = putAnywhere('tens'); refresh();
     for (let i = 0; i < 40; i++) { P.spawnPatient(state, 'elder'); }
     let doneTens = 0; const offT = bus.on('treatment:done', e => { if (e.treatmentId === 'tens') doneTens++; });
@@ -1902,6 +1911,8 @@ function eventsSection() {
     check('morale: +1 more with a rest room (+2/week)', state.staff.every(s => s.morale === 53));
     pt[0].tiredAcc = S.MORALE.TIRED_MIN; S.weeklyMorale(state);
     check('morale: exhausted staff lose 3 net of the +2', near(pt[0].morale, 53 + 2 - 3) && near(pt[1].morale, 55) && pt[0].tiredAcc === 0);
+    pt[1].workAcc = S.MORALE.OVERTIME_UTIL * K.CLOSE_MIN - S.MORALE.OVERTIME_UTIL * K.OPEN_MIN + 1; const mBefore = pt[1].morale; S.weeklyMorale(state);
+    check('morale: -2 for 超時 (working >= 60% of the opening hours in the week), workAcc resets', near(pt[1].morale, mBefore + 2 - 2) && pt[1].workAcc === 0, String(pt[1].morale));
     for (const s of state.staff) s.morale = 99; S.weeklyMorale(state);
     check('morale: clamped at 100', state.staff.every(s => s.morale === 100));
     S.addMorale(state, 'pt', -200);

@@ -246,8 +246,12 @@ async function suite(W, H) {
     const longPressMove = async (id) => {
       const o = await G(id => { const o = __game.state.objects.find(o => o.id === id); return { x: o.x, y: o.y }; }, id);
       const pp = await tileXY(page, o.x, o.y);
+      // freeze the sim and park every agent in the street so nobody stands on the target (a walking agent
+      // within 24px would be picked instead of the object: that made this step flaky)
+      await G(() => { const { state } = __game; for (const a of [...state.patients, ...state.staff]) { a.x = state.door.x + 0.5; a.y = state.door.y + 5.5; a.path = []; } state.time.paused = true; });
       await touch.hold(pp.x, pp.y - 8, 700);
       const mb = await page.locator('.u-ctx .u-ctx-btn', { hasText: '移動' }).boundingBox();
+      await G(() => { __game.state.time.paused = false; });
       if (!mb) return false;
       await touch.tap(mb.x + mb.width / 2, mb.y + mb.height / 2); await page.waitForTimeout(250);
       return true;

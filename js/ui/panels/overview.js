@@ -247,10 +247,10 @@ function buildEquip(body, state, ui) {
     const key = (o.broken ? 'B' : '') + (wearable && w >= EQ.WEAR_TUNE.OLD_AT ? 'O' : '') + (maint > 0 ? 'M' + maint : '');
     if (r.badges._k !== key) {
       r.badges._k = key;
-      r.badges.replaceChildren(
+      r.badges.replaceChildren(...[
         o.broken ? h('span', { class: 'tag u-eqb bad' }, '故障') : null,
         !o.broken && wearable && w >= EQ.WEAR_TUNE.OLD_AT ? h('span', { class: 'tag u-eqb warn' }, '老舊') : null,
-        maint > 0 ? h('span', { class: 'tag u-eqb good', tip: '保養合約中：耗損速度減半' }, `合約 ${maint} 週`) : null);
+        maint > 0 ? h('span', { class: 'tag u-eqb good', tip: '保養合約中：耗損速度減半' }, `合約 ${maint} 週`) : null].filter(Boolean));
     }
     setClass(tr, 'u-broken', !!o.broken);
     r.repair.hidden = !o.broken;

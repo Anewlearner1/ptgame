@@ -3,7 +3,7 @@
 // everything about the staff member as a person (movement, stamina, resting, wandering).
 import { bus } from '../core/bus.js';
 import { newId } from '../core/state.js';
-import { WALK_TILES_PER_MIN } from '../core/constants.js';
+import { WALK_TILES_PER_MIN, DAY_GAME_MIN } from '../core/constants.js';
 import { adjacentTiles, entryTile } from '../core/grid.js';
 import { BUILDABLES } from '../data/buildables.js';
 import { TREATMENTS } from '../data/treatments.js';
@@ -40,6 +40,8 @@ export const MORALE = {
   TIRED_PENALTY: 3,            // weeks in which stamina stayed under TIRED_FRAC for at least TIRED_MIN game-minutes
   TIRED_MIN: 120,
   REST_BONUS: 1,               // a rest room (def.restRecovery) in the clinic
+  OVERTIME_UTIL: 0.6,          // 超時: working for this share of the opening hours in a week ...
+  OVERTIME_PENALTY: 2,         // ... costs this much morale
   RESIGN_BELOW: 25,            // morale under this: weekly RESIGN_P chance of the resignation event
   RESIGN_P: 0.08,
   RESIGN_ROLES: ['doctor', 'pt', 'ot', 'st'],
@@ -139,7 +141,7 @@ export function createStaff(state, role, cand, tx, ty) {
   return {
     id: newId(state), role, name: c.name, skill: c.skill, charm: c.charm,
     stamina: max, staminaMax: max, salary: c.salary, trait: c.trait || null, level: 1,
-    morale: MORALE.START, tiredAcc: 0,
+    morale: MORALE.START, tiredAcc: 0, workAcc: 0,
     x: tx + 0.5, y: ty + 0.5, path: [], state: 'idle', task: null, wait: 2 + rnd() * 6,
     dir: 1, moving: false, bubble: null, restObj: null, wantRest: false, tired: false,
   };
@@ -212,7 +214,8 @@ export function weeklyMorale(state) {
   for (const s of state.staff) {
     let m = moraleOf(s) + MORALE.WEEK_RECOVER + (rest ? MORALE.REST_BONUS : 0);
     if ((s.tiredAcc || 0) >= MORALE.TIRED_MIN) m -= MORALE.TIRED_PENALTY;
-    s.tiredAcc = 0;
+    if ((s.workAcc || 0) >= MORALE.OVERTIME_UTIL * DAY_GAME_MIN) m -= MORALE.OVERTIME_PENALTY;
+    s.tiredAcc = 0; s.workAcc = 0;
     s.morale = clamp(m, MORALE.MIN, MORALE.MAX);
   }
 }
@@ -426,6 +429,7 @@ export function updateStaff(state, dtMin) {
     if (s.restCd > 0) s.restCd -= dtMin;
     s.tired = s.stamina < max * TUNE.TIRED_FRAC;
     if (s.tired) s.tiredAcc = (s.tiredAcc || 0) + dtMin;
+    if (s.state === 'working') s.workAcc = (s.workAcc || 0) + dtMin;
     // low stamina: ask for a rest room slot; the request only bites BETWEEN tasks (isStaffAvailable is false meanwhile),
     // so the current patient is always finished first
     if (!s.wantRest && !s.restObj && s.state !== 'resting' && s.stamina <= max * TUNE.REST_BELOW && !(s.restCd > 0) && freeRooms > flagged) {

@@ -204,6 +204,7 @@ function sanitize(m) {
     s.level = Math.max(1, Math.floor(num(s.level, 1)));
     if (s.morale !== undefined) s.morale = clampN(s.morale, 0, 100, 70);
     if (s.tiredAcc !== undefined) s.tiredAcc = Math.max(0, num(s.tiredAcc, 0));
+    if (s.workAcc !== undefined) s.workAcc = Math.max(0, num(s.workAcc, 0));
     if (Number.isFinite(s.staminaCarry) && s.staminaCarry !== 0) s.staminaCarry = clampN(s.staminaCarry, -100, 100, 0); else delete s.staminaCarry;
     // runtime fields: only fill what is missing (a valid in-flight task / path survives the round trip)
     if (!Array.isArray(s.path)) s.path = [];
