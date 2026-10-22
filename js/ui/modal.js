@@ -79,11 +79,19 @@ function render(opts) {
   return backdrop;
 }
 
+// FIFO, except opts.rank (default 0): a higher rank always waits behind every lower-ranked modal (year review 20, career ending 30)
+function enqueue(opts) {
+  const r = opts.rank || 0;
+  let i = queue.length;
+  while (i > 0 && (queue[i - 1].rank || 0) > r) i--;
+  queue.splice(i, 0, opts);
+}
+
 export function showModal(opts) {
   if (!root) root = document.getElementById('modal-root');
   if (current) {
     if (opts.replace) closeModal(true);
-    else { queue.push(opts); return; }
+    else { enqueue(opts); return; }
   }
   hideTooltip();
   pauseSim(opts);
