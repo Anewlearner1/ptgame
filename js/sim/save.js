@@ -19,6 +19,8 @@ import { FOCUS } from '../data/patients.js';
 import { WEATHER, BOARDS, COMMUNITY } from '../data/events.js';
 import { ACHIEVEMENTS, MAX_BADGES } from '../data/achievements.js';
 import { POINT_KEYS } from '../core/constants.js';
+import { ONBOARDING, CORE_GOALS, BONUS_GOALS, ENDINGS, GRADES } from '../data/goals.js';
+import { TREATMENTS } from '../data/treatments.js';
 
 export const SAVE_SLOTS = ['1', '2', '3'];      // manual slots; 'auto' is the autosave slot
 const NESTED_KEYS = ['time', 'points', 'weather', 'lot', 'door', 'policy', 'research', 'nhi', 'ledger', 'stats', 'events', 'inspections', 'flags'];
@@ -65,6 +67,12 @@ export const MIGRATIONS = {
     const c = st.achv.counters && typeof st.achv.counters === 'object' ? st.achv.counters : (st.achv.counters = {});
     // periods already running cannot be tracked retroactively (trackMonth/trackYear stay undefined -> achievements.ensure() sets null)
     if (c.selfPayEver === undefined) c.selfPayEver = !!(st.ledger && st.ledger.income && st.ledger.income.self > 0);
+    return st;
+  },
+  // v2 -> v3: goals & ending. Adds state.career (not yet initialised); career.ensureCareer() runs on 'state:loaded', silently marks the
+  // already-satisfied onboarding tasks done WITHOUT rewards, builds this year's goals, and turns year > 10 saves into endless mode.
+  2: (st) => {
+    if (!st.career || typeof st.career !== 'object' || Array.isArray(st.career)) st.career = { startedYear: 1, onboarding: { done: {}, hidden: false }, goals: { year: 0, list: [] }, reviews: [], ending: null, endless: false, inited: false, counters: {}, shares: [], doneOnce: [], prevBonus: [], prevCore: '' };
     return st;
   },
 };
@@ -236,6 +244,7 @@ function sanitize(m) {
   }
   m.queue = m.queue.filter(id => pids.has(id));
   sanitizeAchv(m);
+  sanitizeCareer(m);
   return m;
 }
 
@@ -275,6 +284,66 @@ function sanitizeAchv(m) {
   }
   const td = typeof a.title === 'string' ? defs.get(a.title) : null;
   m.achv = { unlocked, counters: c, title: td && td.title && unlocked[td.id] ? td.id : null, badges };
+}
+// career (docs/GOALS_AND_ENDING.md §7): unknown goal / ending ids dropped, numbers clamped, reviews <= 40, ending shape validated
+const GOAL_KIND = new Map([...CORE_GOALS.map(g => [g.id, 'core']), ...BONUS_GOALS.map(g => [g.id, 'bonus'])]);
+const ONB_IDS = new Set(ONBOARDING.map(t => t.id));
+const BONUS_IDS = new Set(BONUS_GOALS.map(g => g.id));
+const END_IDS = new Set(ENDINGS.map(e => e.id));
+const GRADE_IDS = new Set(GRADES.map(g => g.grade));
+const DIM_KEYS = ['fin', 'rep', 'care', 'team', 'local'];
+function sanitizeCareer(m) {
+  const a = m.career && typeof m.career === 'object' && !Array.isArray(m.career) ? m.career : {};
+  const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+  const str = (v, n = 200) => (typeof v === 'string' ? v.slice(0, n) : '');
+  const done = {};
+  for (const [id, v] of Object.entries(obj(obj(a.onboarding).done))) if (ONB_IDS.has(id) && v) done[id] = true;
+  const goals = [];
+  const g0 = obj(a.goals);
+  for (const e of Array.isArray(g0.list) ? g0.list : []) {
+    if (!e || typeof e !== 'object' || !GOAL_KIND.has(e.id) || goals.length >= 3 || goals.some(x => x.id === e.id)) continue;
+    const done2 = !!e.done;
+    goals.push({ id: e.id, kind: GOAL_KIND.get(e.id), progress: clampN(e.progress, -1e12, 1e12, 0), target: clampN(e.target, -1e12, 1e12, 0), done: done2, claimed: done2 && !!e.claimed,
+      lot: clampN(Math.floor(num(e.lot, 0)), 0, LOTS.length - 1, 0), vi: clampN(Math.floor(num(e.vi, -1)), -1, 3, -1) });
+  }
+  const counters = {};
+  let nk = 0;
+  for (const [k, v] of Object.entries(obj(a.counters))) {
+    if (nk >= 80 || !/^[A-Za-z0-9_]{1,40}$/.test(k) || typeof v !== 'number' || !Number.isFinite(v)) continue;
+    if (k.startsWith('tx_') && !TREATMENTS[k.slice(3)]) continue;
+    counters[k] = clampN(v, k === 'moneyStart' ? -1e13 : 0, 1e13, 0); nk++;
+  }
+  const reviews = [];
+  for (const r of Array.isArray(a.reviews) ? a.reviews : []) {
+    if (!r || typeof r !== 'object' || !GRADE_IDS.has(r.grade)) continue;
+    const dims = {};
+    for (const k of DIM_KEYS) dims[k] = clampN(obj(r.dims)[k], 0, 100, 0);
+    const stats = {};
+    for (const [k, v] of Object.entries(obj(r.stats))) if (/^[A-Za-z0-9_]{1,30}$/.test(k) && typeof v === 'number' && Number.isFinite(v)) stats[k] = v;
+    const gl = (Array.isArray(r.goals) ? r.goals : []).filter(x => x && typeof x === 'object' && GOAL_KIND.has(x.id)).slice(0, 3).map(x => ({ id: x.id, name: str(x.name, 40), done: !!x.done }));
+    const rv = { year: Math.max(1, Math.floor(num(r.year, 1))), grade: r.grade, score: clampN(r.score, 0, 100, 0), dims, stats, goals: gl, line: str(r.line, 400) };
+    if (typeof r.weakLine === 'string') rv.weakLine = str(r.weakLine, 400);
+    if (DIM_KEYS.includes(r.strongest)) rv.strongest = r.strongest;
+    if (DIM_KEYS.includes(r.weakest)) rv.weakest = r.weakest;
+    if (typeof r.journal === 'string') rv.journal = str(r.journal, 600);
+    if (!reviews.some(x => x.year === rv.year)) reviews.push(rv);
+  }
+  reviews.sort((x, y) => x.year - y.year);
+  if (reviews.length > 40) reviews.splice(0, reviews.length - 40);
+  let ending = null;
+  const e0 = a.ending;
+  if (e0 && typeof e0 === 'object' && END_IDS.has(e0.id)) ending = { id: e0.id, score: clampN(e0.score, 0, 200, 0), year: Math.max(1, Math.floor(num(e0.year, 10))), at: Math.max(0, Math.floor(num(e0.at, 0))) };
+  m.career = {
+    startedYear: Math.max(1, Math.floor(num(a.startedYear, 1))), onboarding: { done, hidden: !!obj(a.onboarding).hidden },
+    goals: { year: Math.max(0, Math.floor(num(g0.year, 0))), list: goals }, reviews, ending, endless: !!a.endless,
+  };
+  // fields career.ensureCareer() adds: only kept when present (a state that was never ensured round-trips unchanged)
+  if (a.inited !== undefined) m.career.inited = !!a.inited;
+  if (a.counters !== undefined) m.career.counters = counters;
+  if (a.shares !== undefined) m.career.shares = (Array.isArray(a.shares) ? a.shares : []).filter(v => typeof v === 'number' && Number.isFinite(v)).map(v => Math.max(0, Math.min(1, v))).slice(-24);
+  if (a.doneOnce !== undefined) m.career.doneOnce = [...new Set((Array.isArray(a.doneOnce) ? a.doneOnce : []).filter(id => BONUS_IDS.has(id)))];
+  if (a.prevBonus !== undefined) m.career.prevBonus = [...new Set((Array.isArray(a.prevBonus) ? a.prevBonus : []).filter(id => BONUS_IDS.has(id)))].slice(0, 3);
+  if (a.prevCore !== undefined) m.career.prevCore = typeof a.prevCore === 'string' && GOAL_KIND.get(a.prevCore) === 'core' ? a.prevCore : '';
 }
 // M3 risk, M7 review score, M10 flags / follow-ups, M5 buffs (docs/EVENTS_EXT.md): repair whatever a hand-edited or older save has wrong
 function sanitizeEventsExt(m) {

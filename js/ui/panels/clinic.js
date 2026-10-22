@@ -15,7 +15,10 @@ import { h, setClass, setText, tabbed, bar, setBar } from '../dom.js';
 import { money, fmt, TYPE_ICONS } from '../fmt.js';
 import { chipList, section, boardsSection } from './common.js';
 import { confirmDialog } from '../modal.js';
+import { ctx } from '../ctx.js';
 import { titleFor } from '../topbar.js';
+import * as CAR from '../../sim/career.js';
+import { mountGoalsTab, setGoalsOpener } from '../career.js';
 
 const store = { tab: 'policy' };
 
@@ -72,6 +75,7 @@ function buildBoards(body, state) {
 
 // ---- expansion
 function buildExpand(body, state) {
+  try { if (CAR.markExpandTabOpened) CAR.markExpandTabOpened(state); } catch (e) { console.error(e); }   // 新手任務 #10
   const info = h('div'), list = h('div', { class: 'u-list2' }), btn = h('button', { class: 'btn primary', type: 'button' }, '擴建');
   const note = h('div', { class: 'bad u-small' });
   let rowsKey = '', rowEls = [];
@@ -377,14 +381,25 @@ function buildStatus(state) {
   };
 }
 
+let liveTabs = null;
+// 診所 panel -> 🎯 目標 tab (year-review 「看生涯進度」, career card); works whether or not the panel is already open
+setGoalsOpener(() => {
+  const ui = ctx.ui;
+  store.tab = 'goals';
+  if (ui && ui.panel === 'clinic' && liveTabs) liveTabs.select('goals');
+  else if (ui) ui.panel = 'clinic';
+});
+
 export function mountClinic(root, state, ui) {
   const status = buildStatus(state);
   const t = tabbed([
+    { id: 'goals', label: '🎯 目標', build: b => mountGoalsTab(b, state) },
     { id: 'policy', label: '🧭 經營方針', build: b => buildPolicy(b, state) },
     { id: 'boards', label: '📌 衛教看板', build: b => buildBoards(b, state) },
     { id: 'expand', label: '🏗 擴建', build: b => buildExpand(b, state) },
     { id: 'title', label: '🎖 稱號與徽章', build: b => buildTitle(b, state) },
   ], store);
+  liveTabs = t;
   root.append(status.el, t.el);
   status.update();
   return { update() { status.update(); t.update(); } };

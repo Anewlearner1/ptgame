@@ -10,6 +10,10 @@
 //   goal / metric: 累計類成就的進度條目標與來源（無則只顯示已／未解鎖）。
 
 import { RESEARCH } from './research.js';
+import { ENDINGS } from './goals.js';
+
+// 結局成就的階層（金＝國手級；專科結局銀；其餘銅）
+const ENDING_TIERS = { legend_center: 3, ltc_guardian: 2, sports_doctor: 2, peds_pioneer: 2, selfpay_brand: 2, steady_clinic: 2, struggling_shop: 1, retire_handover: 1, bankrupt: 1 };
 
 export const ACHIEVEMENTS = [
   // ---------- 經營里程碑 milestone ----------
@@ -58,6 +62,15 @@ export const ACHIEVEMENTS = [
   { id: 'h_chat', name: '聊天治百病', desc: '長輩與治療師累計聊天 50 次。', cat: 'challenge', tier: 1, hidden: true, hint: '長輩的話匣子一開，就很難關起來。', badge: '🗣️', goal: 50, metric: 'chatCount' },
   { id: 'h_comeback', name: '絕處逢生', desc: '資金曾低於 NT$ 50,000，之後回升到 NT$ 1,000,000 以上。', cat: 'challenge', tier: 2, hidden: true, hint: '錢包見底不代表結束，看看有沒有翻身的機會。', badge: '🔥', title: '不死鳥院長' },
   { id: 'h_plants', name: '叢林診所', desc: '同時擺放 10 盆綠植。', cat: 'challenge', tier: 1, hidden: true, hint: '診所裡的綠意越來越濃，快變成森林了？', badge: '🌿' },
+
+  // ---------- 院長生涯 career（docs/GOALS_AND_ENDING.md；3 個一般 + 每個結局 1 個隱藏，共 12）----------
+  { id: 'm_decade', name: '十年老店', desc: '把診所經營滿 10 年（走到十年結局）。', cat: 'milestone', tier: 3, hidden: false, badge: '🏮', title: '十年老店院長' },
+  { id: 'c_grade_s', name: '年度 S', desc: '年度總結拿到 S 等級。', cat: 'challenge', tier: 3, hidden: false, badge: '🌟', title: '年度模範院長' },
+  { id: 'm_goals_20', name: '目標達人', desc: '累計達成 20 個年度目標。', cat: 'milestone', tier: 2, hidden: false, badge: '🎯', goal: 20, metric: 'goalsDone' },
+  ...ENDINGS.map(e => ({
+    id: e.achievementId || ('e_' + e.id), name: e.title, desc: `走到十年生涯的結局「${e.title}」。`, cat: 'challenge', tier: ENDING_TIERS[e.id] || 1, hidden: true,
+    hint: '十年之後，診所會留下什麼樣的故事？', badge: e.emoji,
+  })),
 ];
 
 // Per-tier defaults. Money scaled from the design's 15k/50k/200k to 10k/35k/150k after the 5-year balance check (S-E):

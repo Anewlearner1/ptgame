@@ -40,6 +40,9 @@
 // h_coffee / h_plants   = count of 'coffee' >= 3 / 'plant' >= 10 objects currently placed.
 // h_chat                = 50 completed patient:chat events with an 'elder' patient.
 // h_comeback            = lowestMoneySeen < 50,000 (sampled at every event; seeded from history on load) and money >= 1,000,000.
+// m_decade              = a non-bankrupt ending exists (career:ending) or time.year > 10.  c_grade_s = any yearly review graded S.
+// m_goals_20            = state.career.counters.goalsDone >= 20 (yearly goals only; onboarding tasks do not count).
+// e_<ending id>         = hidden; career:ending with that id (or state.career.ending.id on load).
 // Rewards: ACHIEVEMENT_TIERS[tier] (+ def.reward.money / rep / points overrides); points go to def.reward.pointKey (tier 3 always
 // 'service', default 'service'). If more than 5 unlock in one evaluateAll() a single summary toast replaces the individual ones.
 import { bus } from '../core/bus.js';
@@ -51,6 +54,7 @@ import { ACHIEVEMENTS, ACHIEVEMENT_TIERS, BADGE_MILESTONES, MAX_BADGES } from '.
 import { RESEARCH } from '../data/research.js';
 import { COMMUNITY } from '../data/events.js';
 import { TITLES } from '../data/texts.js';
+import { ENDINGS } from '../data/goals.js';
 
 export const SUMMARY_TOAST_THRESHOLD = 5;
 export const DILEMMA_KINDS = ['painkiller', 'skip_doctor', 'overtreat', 'complain'];
@@ -113,6 +117,9 @@ const dilemmaTotal = (state) => DILEMMA_KINDS.reduce((s, k) => s + (state.achv.c
 const fullHouseNeed = (state) => Math.ceil(0.9 * ((lotDef(state).maxPatientsPerWeek) || 20));
 const researchTotal = () => Object.keys(RESEARCH).length;
 const cnt = (state) => state.achv.counters;
+const careerOf = (s) => s.career || {};
+const goalsDone = (s) => Number((careerOf(s).counters || {}).goalsDone) || 0;
+const endingId = (s) => (careerOf(s).ending && careerOf(s).ending.id) || null;
 
 // Event groups
 const STATE_EVENTS = ['load', 'week:end'];
@@ -178,7 +185,15 @@ const R = {
   h_chat: { on: ['patient:chat'], check: (s) => cnt(s).chatCount >= 50 },
   h_comeback: { on: [...STATE_EVENTS, 'nhi:settled'], check: (s) => cnt(s).lowestMoneySeen < 50000 && s.money >= 1000000 },
   h_plants: { on: ['map:changed', 'load', 'week:end'], check: (s) => count(s, 'plant') >= 10, prog: (s) => [Math.min(10, count(s, 'plant')), 10] },
+
+  m_decade: { on: ['career:ending', 'load', 'year:start'], check: (s, p) => { const id = p && p.ending ? p.ending.id : endingId(s); return (!!id && id !== 'bankrupt') || s.time.year > 10; } },
+  c_grade_s: { on: ['career:year-review', 'load'], check: (s, p) => (p && p.review ? p.review.grade === 'S' : (careerOf(s).reviews || []).some(r => r.grade === 'S')) },
+  m_goals_20: { on: ['career:goal-done', 'load'], check: (s) => goalsDone(s) >= 20, prog: (s) => [Math.min(20, goalsDone(s)), 20] },
 };
+for (const e of ENDINGS) {
+  const id = e.achievementId || ('e_' + e.id);
+  R[id] = { on: ['career:ending', 'load'], check: (s, p) => (p && p.ending ? p.ending.id : endingId(s)) === e.id };
+}
 
 // trigger -> [id]
 const BY_TRIGGER = new Map();
@@ -194,6 +209,7 @@ const METRICS = {
   chatCount: (s) => cnt(s).chatCount,
   communityKinds: communityKinds,
   dilemmasDone: dilemmaTotal,
+  goalsDone: goalsDone,
 };
 
 export function progressOf(state, def) {
@@ -394,6 +410,9 @@ export function initAchievements() {
     }),
     on('community:started', (s, p) => { if (p.id) cnt(s).communityDone[p.id] = (cnt(s).communityDone[p.id] || 0) + 1; }),
     on('inspection:result', (s, p) => { cnt(s).auditPassStreak = p.pass ? cnt(s).auditPassStreak + 1 : 0; }),
+    on('career:goal-done', () => {}),
+    on('career:year-review', () => {}),
+    on('career:ending', () => {}),
     on('lot:expanded', () => {}),
     on('research:done', () => {}),
     on('map:changed', () => {}),

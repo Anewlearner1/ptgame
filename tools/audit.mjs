@@ -3,9 +3,10 @@
 // Usage (from repo root; no server needed):
 //   node tools/audit.mjs                 # everything, 5 simulated years per long-run policy (a few minutes)
 //   node tools/audit.mjs --quick         # 2 years per policy (~1-2 min) - good for CI
-//   node tools/audit.mjs --only features,edge,save   # run only some sections: features | edge | save | longrun | achievements | events
+//   node tools/audit.mjs --only features,edge,save   # run only some sections: features | edge | save | longrun | achievements | events | career
 //   node tools/audit.mjs --years 3 --policies idle,chaos --seed 7 [--verbose]
-//   (events = docs/EVENTS_EXT.md: every event x every choice, cond evaluator, wear/morale/risk/review/buffs/follow-ups)
+//   (events = docs/EVENTS_EXT.md: every event x every choice, cond evaluator, wear/morale/risk/review/buffs/follow-ups;
+//    career = docs/GOALS_AND_ENDING.md: onboarding, yearly goals, rewards per lot, review order, grades, endings, endless, v2 migration)
 // Exit code 1 if any assertion fails. Prints a feature-conformance table at the end.
 //
 // The sim uses Math.random everywhere (state.seed is only informational), so the harness installs a seeded PRNG
@@ -42,6 +43,8 @@ const Sav = await imp('sim/save.js');
 const P = await imp('sim/patients.js');
 const S = await imp('sim/staff.js');
 const Ach = await imp('sim/achievements.js');
+const Car = await imp('sim/career.js');
+const GD = await imp('data/goals.js');
 const ACHD = await imp('data/achievements.js');
 const { BUILDABLES } = await imp('data/buildables.js');
 const { TREATMENTS } = await imp('data/treatments.js');
@@ -86,7 +89,7 @@ let wired = false;
 function wire() {
   if (wired) return;
   wired = true;
-  Eco.initEconomy(); Ev.initEvents(); Res.initResearch(); Ins.initInspection(); Ach.initAchievements();
+  Eco.initEconomy(); Ev.initEvents(); Res.initResearch(); Ins.initInspection(); Ach.initAchievements();   // (career is wired only inside the career section: its rewards would disturb the exact-money asserts elsewhere)
   bus.on('mods:dirty', () => Mod.recomputeMods(state));
   bus.on('map:changed', () => { ui.dirtyOcc = true; });
   bus.on('week:end', () => P.closeUp(state));
@@ -179,6 +182,16 @@ function invariants() {
       must(A.badges.length <= ACHD.MAX_BADGES && A.badges.every(id => A.unlocked[id]), 'achv badges invalid');
       must(A.title === null || !!(A.unlocked[A.title] && (ACHD.ACHIEVEMENTS.find(d => d.id === A.title) || {}).title), 'achv title invalid');
       for (const [k, v] of Object.entries(A.counters)) if (typeof v === 'number') must(Number.isFinite(v) && (k === 'lowestMoneySeen' || k === 'startMoney' || v >= 0), 'achv counter ' + k + '=' + v);
+    }
+  }
+  { // career (state.career) stays well-formed
+    const C = state.career;
+    must(C && typeof C === 'object' && C.onboarding && C.goals && Array.isArray(C.goals.list) && Array.isArray(C.reviews), 'career shape');
+    if (C && C.goals) {
+      must(C.goals.list.length <= 3 && C.reviews.length <= 40, 'career goals/reviews too long');
+      must(C.goals.list.every(g => g.claimed ? g.done : true), 'career claimed without done');
+      must(C.ending === null || (GD.ENDINGS.some(e => e.id === C.ending.id) && Number.isFinite(C.ending.score)), 'career ending malformed');
+      for (const [k, v] of Object.entries(C.counters || {})) must(Number.isFinite(v), 'career counter ' + k + '=' + v);
     }
   }
   { // M2 / M3 / M4 / M5 / M7 / M10 fields stay in range
@@ -1315,7 +1328,7 @@ function longrunSection() {
 function achievementsSection() {
   section('Achievements');
   const defs = ACHD.ACHIEVEMENTS;
-  check('achv: 41 definitions, unique ids, 4 hidden', defs.length === 41 && new Set(defs.map(d => d.id)).size === 41 && defs.filter(d => d.hidden).length === 4);
+  check('achv: 53 definitions (41 + 12 career), unique ids, 13 hidden', defs.length === 53 && new Set(defs.map(d => d.id)).size === 53 && defs.filter(d => d.hidden).length === 13);
   let unl = [], toasts = [];
   const offU = bus.on('achievement:unlocked', e => unl.push(e.id));
   const offT = bus.on('toast', t => toasts.push(t));
@@ -1364,6 +1377,11 @@ function achievementsSection() {
     h_chat: () => { for (let i = 0; i < 50; i++) bus.emit('patient:chat', { patient: pat('elder') }); },
     h_comeback: () => { state.money = 10000; weekEnd(); state.money = 1.1e6; weekEnd(); },
     h_plants: () => { for (let i = 0; i < 10; i++) add('plant', i, 2); bus.emit('map:changed', {}); },
+    // career (12): fed through the career bus events (the career section tests the real producers)
+    m_decade: () => bus.emit('career:ending', { ending: { id: 'steady_clinic' } }),
+    c_grade_s: () => bus.emit('career:year-review', { review: { year: 1, grade: 'S' } }),
+    m_goals_20: () => { Car.ensureCareer(state).counters.goalsDone = 20; bus.emit('career:goal-done', {}); },
+    ...Object.fromEntries(GD.ENDINGS.map(e => [e.achievementId, () => bus.emit('career:ending', { ending: { id: e.id } })])),
   };
   const NO_EXACT_REWARD = new Set(['t_temple', 'h_comeback', 'm_cash_2m', 'm_cash_10m', 'c_pure_nhi']);
   check('achv: a scenario exists for every definition', defs.every(d => SC[d.id]), defs.filter(d => !SC[d.id]).map(d => d.id).join(','));
@@ -1389,7 +1407,7 @@ function achievementsSection() {
     const m1 = state.money; SC[d.id](); state.events.pendingDilemma = null;
     check(`achv ${d.id}: second trigger does not unlock/pay again`, unl.filter(x => x === d.id).length === 1 && (NO_EXACT_REWARD.has(d.id) || state.money === m1));
   }
-  feature('Achievements: 41 unlock conditions', nOk === 41 ? 'OK' : 'PARTIAL', `${nOk}/41 forced via events`);
+  feature('Achievements: 53 unlock conditions (41 + 12 career)', nOk === 53 ? 'OK' : 'PARTIAL', `${nOk}/53 forced via events`);
 
   // ---- negatives ----
   FRESH(); state.weather = { kind: 'rain' }; for (let i = 0; i < 12; i++) treat(pat('office')); bus.emit('patient:slip', { patient: pat() }); weekEnd();
@@ -1422,9 +1440,9 @@ function achievementsSection() {
 
   // ---- listAchievements masking / progress ----
   FRESH(); let L = Ach.listAchievements(state);
-  check('achv: listAchievements returns 41 rows', L.length === 41);
+  check('achv: listAchievements returns 53 rows', L.length === 53);
   const hid = L.filter(x => x.def.hidden);
-  check('achv: locked hidden ones masked (name ？？？, hint shown, no progress)', hid.length === 4 && hid.every(x => x.masked && x.def.name === '？？？' && x.def.desc === x.def.hint && !x.unlocked && x.goal === 0));
+  check('achv: locked hidden ones masked (name ？？？, hint shown, no progress)', hid.length === 13 && hid.every(x => x.masked && x.def.name === '？？？' && x.def.desc === x.def.hint && !x.unlocked && x.goal === 0));
   check('achv: masked rows do not leak real names or titles', !hid.some(x => defs.some(d => d.hidden && JSON.stringify(x).includes(d.name))));
   SC.h_chat(); L = Ach.listAchievements(state); const hc = L.find(x => x.def.id === 'h_chat');
   check('achv: hidden achievement is revealed after unlock', hc.unlocked && !hc.masked && hc.def.name === '聊天治百病' && hc.at && hc.at.year === 1 && hc.progress === hc.goal && hc.goal === 50);
@@ -2177,6 +2195,421 @@ function eventsSection() {
   feature('Equipment wear / breakdown / repair / maintenance (M2)', 'works', 'wear, auto-breakdown event, 維修/保養/合約');
   feature('Staff morale + resignation (M4), NHI risk (M3), review score (M7), buffs (M5/M6)', 'works', 'weekly/monthly updates, save round-trip');
 }
+// =====================================================================================================
+// SECTION: career (docs/GOALS_AND_ENDING.md): onboarding, yearly goals, review, grades, endings, endless, migration
+// =====================================================================================================
+function careerSection() {
+  section('Career: onboarding / goals / review / ending');
+  wire(); Car.initCareer(); Car.initCareer();   // idempotent: a second call must not double every listener (checked below via reward counts)
+  const ev = [];
+  const offs = ['career:changed', 'career:goal-done', 'career:onboarding-done', 'career:year-review', 'career:ending', 'inspection:result', 'toast'].map(n => bus.on(n, p => ev.push({ n, p })));
+  const evs = (n) => ev.filter(e => e.n === n);
+  const CF = () => { fresh(SEED, true); for (const d of ACHD.ACHIEVEMENTS) state.achv.unlocked[d.id] = { year: 1, month: 1, week: 1 }; ev.length = 0; return Car.ensureCareer(state); };
+  const setLot = (L) => { state.lotLevel = L; state.lot = { ...LOTS[L].lot }; state.door = { ...LOTS[L].door }; };
+  const F = [1, 2, 4, 8];
+  const wk = () => { bus.emit('week:end', { ...state.time }); state.events.pendingDilemma = null; state.time.paused = false; };
+  const hist = (n, o = {}) => { for (let i = 0; i < n; i++) state.history.push({ year: state.time.year, month: i + 1, income: 1e6, expense: 5e5, net: 5e5, money: state.money, patients: 100, satisfaction: 75, reputation: 100, nhiPoints: 1000, pointValue: 0.95, ...o }); };
+
+  // ---- A. metric registry: every GOAL_METRICS key computes a finite number ----
+  CF();
+  const bad = Object.keys(GD.GOAL_METRICS).filter(k => !Number.isFinite(Car.metricValue(state, k)));
+  check('career: every GOAL_METRICS key computes a finite number on a fresh game', bad.length === 0, bad.join(','));
+  const used = new Set();
+  for (const t of GD.ONBOARDING) used.add(t.metric.key);
+  for (const g of [...GD.CORE_GOALS, ...GD.BONUS_GOALS]) for (const set of [g.conds, g.altConds || [], ...(g.variants || []).map(v => v.conds)]) for (const c of set) used.add(c.key);
+  check('career: every metric key used by a goal is in GOAL_METRICS', [...used].every(k => GD.GOAL_METRICS[k]), [...used].filter(k => !GD.GOAL_METRICS[k]).join(','));
+  check('career: 10 onboarding / 10 core (one per year) / 29 bonus goals, unique ids', GD.ONBOARDING.length === 10 && GD.CORE_GOALS.length === 10 && GD.CORE_GOALS.every((g, i) => g.year === i + 1) && new Set([...GD.ONBOARDING, ...GD.CORE_GOALS, ...GD.BONUS_GOALS].map(g => g.id)).size === 49);
+
+  // ---- B. onboarding: every task completes when forced, pays exactly once ----
+  const wearable = () => { state.objects.push({ id: state.nextId++, defId: 'tens', x: 1, y: 1, rot: 0, busy: false, usedBy: null, staffId: null, wear: 0 }); };
+  const FORCE_OB = {
+    treatmentsDone: () => bus.emit('treatment:done', { patient: { id: 1, type: 'office', treated: 1 }, treatmentId: 'heat', nhiPoints: 0, selfPay: 0 }),
+    seatingSet: () => { state.objects.push({ id: state.nextId++, defId: 'water', x: 1, y: 1, rot: 0 }); bus.emit('map:changed', {}); },
+    antislipTiles: () => { for (let i = 0; i < 6; i++) state.map.floor[12][12 + i] = 'floor_mat'; bus.emit('map:changed', {}); },
+    zoneActive_golden3: () => { state.zones = [{ id: 'golden3' }]; bus.emit('map:changed', {}); },
+    monthsSettled: () => { hist(1); bus.emit('nhi:settled', { year: 1, month: 1, nhiIncome: 1, selfIncome: 0, copayIncome: 0, income: 1 }); },
+    researchStartedOrDone: () => { state.research.current = 'rs_heat'; wk(); },
+    ptCount: () => { state.staff.push({ id: state.nextId++, role: 'pt', skill: 5, charm: 5, salary: 1000 }, { id: state.nextId++, role: 'pt', skill: 5, charm: 5, salary: 1000 }); wk(); },
+    priceChanged: () => { state.policy.priceMult.shockwave = 1.2; wk(); },
+    communityStarted: () => { state.achv.counters.communityDone.health_talk = 1; bus.emit('community:started', { id: 'health_talk' }); },
+    expandTabOpened: () => Car.markExpandTabOpened(state),
+  };
+  check('career: a forcer exists for every onboarding metric', GD.ONBOARDING.every(t => FORCE_OB[t.metric.key]));
+  for (const t of GD.ONBOARDING) {
+    const c = CF();
+    const m0 = state.money, p0 = { ...state.points };
+    const row0 = Car.onboardingList(state).find(x => x.id === t.id);
+    check(`onboarding ${t.id}: starts undone with target ${t.metric.target}`, row0 && !row0.done && row0.target === t.metric.target && /\S/.test(row0.rewardText));
+    FORCE_OB[t.metric.key]();
+    const row = Car.onboardingList(state).find(x => x.id === t.id);
+    check(`onboarding ${t.id}: done when forced`, row.done && c.onboarding.done[t.id] === true);
+    const dm = state.money - m0, rw = t.reward || {};
+    check(`onboarding ${t.id}: reward paid exactly (money ${rw.money || 0}, points ${JSON.stringify(rw.points || {})})`, dm === (rw.money || 0) && K.POINT_KEYS.every(k => near(state.points[k] - p0[k], (rw.points || {})[k] || 0, 1e-9)), `dm=${dm}`);
+    check(`onboarding ${t.id}: one career:onboarding-done event + one good toast`, evs('career:onboarding-done').filter(e => e.p.task.id === t.id).length === 1 && evs('toast').filter(e => e.p.kind === 'good' && e.p.text.includes(t.name)).length === 1);
+    wk(); wk();
+    check(`onboarding ${t.id}: second tick does not pay again (event count)`, evs('career:onboarding-done').filter(e => e.p.task.id === t.id).length === 1);
+  }
+
+  // ---- C. yearly goals: generation ----
+  {
+    const c = CF();
+    const gs = Car.currentGoals(state);
+    check('goals: year 1 gets 1 core + 2 bonus', gs.length === 3 && gs.filter(g => g.kind === 'core').length === 1 && gs.filter(g => g.kind === 'bonus').length === 2, gs.map(g => g.id).join(','));
+    check('goals: year 1 core is core_y1_stand with 2 conds', gs[0].id === 'core_y1_stand' && gs[0].conds.length === 2 && gs[0].conds.every(x => typeof x.label === 'string' && x.label));
+    check('goals: view fields (progress/target/pct/done/claimed/rewardText)', gs.every(g => Number.isFinite(g.progress) && Number.isFinite(g.target) && g.pct >= 0 && g.pct <= 1 && g.done === false && g.claimed === false && /NT\$/.test(g.rewardText)));
+    check('goals: no bonus goal that is already satisfied at generation', gs.filter(g => g.kind === 'bonus').every(g => !g.done));
+    const again = Car.currentGoals(state).map(g => g.id).join();
+    check('goals: ensureCareer is idempotent within a year', again === gs.map(g => g.id).join());
+    // determinism: same seed + year -> same bonus pair; different year never repeats the previous pair
+    const ids1 = gs.filter(g => g.kind === 'bonus').map(g => g.id);
+    CF(); check('goals: generation is deterministic for a seed', Car.currentGoals(state).filter(g => g.kind === 'bonus').map(g => g.id).join() === ids1.join());
+    let prev = ids1, rep = 0;
+    for (let y = 2; y <= 14; y++) {
+      state.time.year = y; Car.ensureCareer(state);
+      const cur = Car.currentGoals(state);
+      const b = cur.filter(g => g.kind === 'bonus').map(g => g.id);
+      if (b.some(id => prev.includes(id))) rep++;
+      check(`goals: year ${y} has a core goal and bonus goals`, cur.filter(g => g.kind === 'core').length === 1 && b.length >= 1);
+      prev = b;
+    }
+    check('goals: the same bonus goal never appears in consecutive years', rep === 0, 'repeats ' + rep);
+  }
+  // equipment goals never offered without machines; research-gated goals need research
+  {
+    let ever = new Set();
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) { CF(); state.seed = seed; state.objects = []; for (let y = 2; y <= 6; y++) { state.time.year = y; Car.ensureCareer(state); Car.currentGoals(state).forEach(g => ever.add(g.id)); } }
+    check('goals: no equipment/maintenance goals without machines', !['b_eq_no_breakdown', 'b_eq_wear', 'b_eq_maintenance'].some(id => ever.has(id)));
+    check('goals: research-gated bonus goals not offered without the research', !ever.has('b_biz_selfpay_25') && !ever.has('b_biz_selfpay_35'));
+    check('goals: only the current lot\'s per-lot bonus goals', ![...ever].some(id => /^b_(pat|cure)_l[123]$/.test(id)));
+  }
+
+  // ---- D. every core / bonus goal completes when forced; rewards per lot; once-only ----
+  // makes sure this year has >= n settled months (extra ones are copies of a base month), applies a patch / a mutator to all of them
+  const yrMonths = (n, patch, fn) => {
+    const y = state.time.year;
+    let mine = state.history.filter(h => h.year === y);
+    for (let i = mine.length; i < n; i++) { const base = mine[mine.length - 1]; hist(1, { month: i + 1, ...(base ? { net: base.net, satisfaction: base.satisfaction, pointValue: base.pointValue } : {}) }); mine = state.history.filter(h => h.year === y); }
+    for (const h of mine) { if (patch) Object.assign(h, patch); if (fn) fn(h); }
+  };
+  const FORCE = {
+    reputation: (t, cmp) => { state.reputation = cmp === 'lte' ? t : t + 1; },
+    money: (t) => { state.money = t + 1000; },
+    moneyGrowthPct: (t) => { const k = state.career.counters; k.moneyStart = 1000000; state.money = 1000000 * (1 + t / 100) + 1000; },
+    lotLevel: (t) => setLot(t),
+    netMonthlyAvgYear: (t) => { yrMonths(4, { net: t + 1000 }); },
+    netPositiveMonthsYear: (t) => { yrMonths(t, null, (h) => { if (!(h.net > 0)) h.net = 1000; }); },
+    selfPayShare3: (t) => { state.career.shares = [t + 0.01, t + 0.01, t + 0.01]; },
+    pvGoodMonthsYear: (t) => { yrMonths(t, { pointValue: 0.95 }); },
+    patientsYear: (t) => { state.stats.patientsMonth = t; },
+    curedYear: (t) => { state.career.counters.yrCured = t; },
+    avgSat6: (t) => { state.history = []; hist(6, { satisfaction: t + 1 }); },
+    avgSatYear: (t) => { yrMonths(4, { satisfaction: t + 1 }); },
+    slipYear: (t) => { state.career.counters.yrSlip = t; },
+    reviewScore: (t) => { state.reviewScore = Math.min(5, t + 0.1); },
+    resignYear: (t) => { state.career.counters.yrResign = t; },
+    moraleAvg: (t) => { state.staff = [{ id: 1, role: 'pt', morale: t + 1 }, { id: 2, role: 'doctor', morale: t + 1 }]; },
+    trainYear: (t) => { state.career.counters.yrTrain = t; },
+    breakdownYear: (t) => { state.career.counters.yrBreak = t; },
+    wearAvg: (t) => { state.objects.forEach(o => { if (o.defId === 'tens') o.wear = Math.max(0, t - 5); }); },
+    maintenanceActive: () => { state.objects.forEach(o => { if (o.defId === 'tens') o.maintainedUntil = 1e6; }); },
+    communityYear: (t) => { state.career.counters.yrCommunity = t; },
+    inspectionPassedYear: () => { state.inspections.lastYearResult = { year: state.time.year, pass: true, score: 80 }; },
+    dilemmasYear: (t) => { state.career.counters.yrDilemma = t; },
+    riskNow: (t) => { state.nhi.risk = t; },
+    researchDone: (t) => { state.research.done = Object.keys(RESEARCH).slice(0, t); },
+    researchYear: (t) => { state.career.counters.rdStart = 0; state.research.done = Object.keys(RESEARCH).slice(0, t); },
+  };
+  check('goals: a forcer exists for every goal metric', Object.keys(GD.GOAL_METRICS).filter(k => !GD.ONBOARDING.some(t => t.metric.key === k)).every(k => FORCE[k]), Object.keys(GD.GOAL_METRICS).filter(k => !FORCE[k] && !GD.ONBOARDING.some(t => t.metric.key === k)).join(','));
+  const goalCase = (def, kind, lot, condSet, vi = -1) => {
+    const c = CF();
+    for (const t of GD.ONBOARDING) c.onboarding.done[t.id] = true;   // onboarding rewards must not pollute the exact reward asserts
+    setLot(lot); state.time.year = kind === 'core' ? def.year : 3; Car.ensureCareer(state);
+    state.objects = []; wearable(); state.objects[0].wear = 90; state.nhi.risk = 90;
+    state.staff = [{ id: 1, role: 'pt', morale: 50 }, { id: 2, role: 'doctor', morale: 50 }];
+    state.seed = 77;
+    // initial state: nothing satisfied
+    state.reputation = 10; state.money = 900000; state.career.counters.moneyStart = 900000; state.history = [];
+    state.career.goals.list = [{ id: def.id, kind, progress: 0, target: 0, done: false, claimed: false, lot, vi }];
+    ev.length = 0;
+    const v = vi >= 0 && def.variants ? def.variants[vi] : def;
+    const conds = condSet === 'alt' ? def.altConds : v.conds;
+    // the not-yet-satisfied check (skip when a cond is "<=" and trivially true at zero)
+    wk();
+    const preDone = state.career.goals.list[0].done;
+    for (const cd of conds) {
+      const t = Array.isArray(cd.targetByLot) ? cd.targetByLot[lot] : cd.target;
+      FORCE[cd.key](t, cd.cmp);
+    }
+    const m0 = state.money, r0 = state.reputation, p0 = { ...state.points };   // baselines AFTER forcing: only the reward moves them
+    wk();
+    const finals = conds.some(cd => cd.cmp === 'lte' && ['slipYear', 'resignYear', 'breakdownYear'].includes(cd.key));
+    const e = state.career.goals.list[0];
+    const midDone = e.done;
+    if (!e.done) { const y = state.time.year; bus.emit('year:end', { year: y }); state.time.year = y + 1; bus.emit('year:start', { year: y + 1 }); }   // the real year turn: finalizes the year goals
+    return { c, e, preDone, midDone, finals, dm: state.money - m0, dr: state.reputation - r0, dp: K.POINT_KEYS.map(k => state.points[k] - p0[k]) };
+  };
+  const checkReward = (id, def, r, lot) => {
+    const rw = def.reward;
+    lot = state.lotLevel;   // the reward scale follows the lot at claim time (expanding goals pay at the new lot)
+    // inspection at year:end (if it ran) may move money / reputation: only assert exact amounts when the goal latched before year:end
+    const exact = r.midDone;
+    check(`goal ${id} (L${lot}): reward claimed once`, r.e.done && r.e.claimed && evs('career:goal-done').filter(e => e.p.goal.id === id).length === 1);
+    if (exact) {
+      check(`goal ${id} (L${lot}): money reward = ${rw.money} x ${F[lot]}`, r.dm === Math.round(rw.money * F[lot]), `${r.dm}`);
+      check(`goal ${id} (L${lot}): reputation + points reward`, near(r.dr, rw.reputation || 0, 1e-6) && K.POINT_KEYS.every((k, i) => near(r.dp[i], (rw.points || {})[k] || 0, 1e-9)), `${r.dr} ${r.dp}`);
+    }
+  };
+  for (const g of GD.CORE_GOALS) {
+    const variants = g.variants ? g.variants.map((v, i) => ({ vi: i, lots: v.lots })) : [{ vi: -1, lots: [0, 1, 2, 3] }];
+    for (const vv of variants) for (const lot of vv.lots) {
+      const r = goalCase(g, 'core', lot, 'conds', vv.vi);
+      const lotGoal = (g.conds || []).some(cd => cd.key === 'lotLevel' && lot >= cd.target) || (g.altConds || []).some(cd => cd.key === 'lotLevel' && lot >= cd.target);
+      if (!lotGoal) check(`core ${g.id}${vv.vi >= 0 ? ' v' + vv.vi : ''} (L${lot}): not done before the conditions hold`, !r.preDone);
+      check(`core ${g.id}${vv.vi >= 0 ? ' v' + vv.vi : ''} (L${lot}): completes when forced`, r.e.done);
+      if (!lotGoal && (lot === 0 || lot === 3 || g.variants)) checkReward(g.id, g, r, lot);
+      if (r.finals) check(`core ${g.id}: year-end-only condition is not latched mid-year`, !r.midDone);
+    }
+    if (g.altConds) {
+      for (const lot of [0, 2]) { const r = goalCase(g, 'core', lot, 'alt'); check(`core ${g.id}: altConds alone complete it (L${lot})`, r.e.done); }
+    }
+  }
+  // generation picks the right variant for the lot
+  for (const g of GD.CORE_GOALS.filter(x => x.variants)) {
+    CF(); setLot(0); state.time.year = g.year; Car.ensureCareer(state); const a = Car.currentGoals(state)[0];
+    CF(); setLot(3); state.time.year = g.year; Car.ensureCareer(state); const b = Car.currentGoals(state)[0];
+    check(`core ${g.id}: variant chosen by lot (L0 "${a.name}" vs L3 "${b.name}")`, a.name === g.variants[0].name && b.name === g.variants[1].name);
+  }
+  CF(); setLot(2); state.time.year = 6; Car.ensureCareer(state);
+  check('core: targetByLot resolves per lot (y6 L2 net target 900k)', Car.currentGoals(state)[0].conds.find(c => c.key === 'netMonthlyAvgYear').target === 900000);
+  for (const g of GD.BONUS_GOALS) {
+    const lot = (g.cond && g.cond.minLot != null) ? g.cond.minLot : 0;
+    const r = goalCase(g, 'bonus', lot, 'conds');
+    check(`bonus ${g.id}: completes when forced`, r.e.done);
+    if (!r.finals) checkReward(g.id, g, r, lot);
+  }
+  // reward per lot for one core goal
+  for (const lot of [0, 1, 2, 3]) {
+    const g = GD.CORE_GOALS[0];
+    const r = goalCase(g, 'core', lot, 'conds');
+    check(`reward scale L${lot}: core NT$ ${g.reward.money} x ${F[lot]}`, r.dm === g.reward.money * F[lot], `${r.dm}`);
+  }
+  {   // once-only claim + counter
+    const g = GD.CORE_GOALS[0];
+    CF(); const k = state.career.counters; state.career.goals.list = [{ id: g.id, kind: 'core', progress: 0, target: 0, done: false, claimed: false, lot: 0, vi: -1 }];
+    state.reputation = 100; state.money = 2e6; wk();
+    const m1 = state.money; wk(); wk(); bus.emit('nhi:settled', { year: 1, month: 1, nhiIncome: 1, selfIncome: 0, copayIncome: 0, income: 1 });
+    check('goals: a claimed goal is not paid again', state.money === m1 && evs('career:goal-done').length === 1 && k.goalsDone === 1);
+    state.reputation = 10; state.money = 0; wk();
+    check('goals: a done goal stays done when the metric falls back', Car.currentGoals(state)[0].done && Car.currentGoals(state)[0].claimed);
+  }
+
+  // ---- E. save / load round trip mid-year, old (v2) saves ----
+  {
+    const c = CF(); state.money = 5e6; state.reputation = 100; wk();
+    bus.emit('patient:slip', { patient: { id: 1 } }); bus.emit('community:started', { id: 'health_talk' });
+    const before = JSON.stringify(state.career);
+    check('career: mid-year state saves', Sav.saveGame(state, '2'));
+    const m = state.money, pts = JSON.stringify(state.points);
+    check('career: loadGame ok', Sav.loadGame(state, '2'));
+    check('career: save/load round trip leaves state.career identical', JSON.stringify(state.career) === before, firstDiff(JSON.parse(before), JSON.parse(JSON.stringify(state.career))).join(' ; '));
+    check('career: loading does not pay anything', state.money === m && JSON.stringify(state.points) === pts);
+    check('career: counters survive (no double count after reload)', state.career.counters.yrSlip === 1 && state.career.counters.yrCommunity === 1);
+    const imp = JSON.parse(JSON.stringify(JSON.parse(Sav.exportSave(state)).state));
+    imp.career.goals.list.push({ id: 'ghost_goal', kind: 'core' }); imp.career.reviews = Array.from({ length: 60 }, (_, i) => ({ year: i + 1, grade: 'B', score: 150, dims: { fin: 500, rep: -3, care: 1, team: 1, local: 1 }, stats: {}, goals: [], line: '' }));
+    imp.career.ending = { id: 'nonsense', score: 1 }; imp.career.onboarding.done.ghost = true; imp.career.counters.yrSlip = -5; imp.career.counters.tx_ghost = 4; imp.career.counters.bad = NaN;
+    check('career: junk career imports', Sav.importSave(state, JSON.stringify({ version: K.SAVE_VERSION, state: imp })));
+    const cc = state.career;
+    check('career sanitize: unknown goal ids dropped, ending shape validated, reviews <= 40, numbers clamped',
+      !cc.goals.list.some(g => g.id === 'ghost_goal') && cc.ending === null && cc.reviews.length === 40 && cc.reviews.every(r => r.score <= 100 && r.dims.fin <= 100 && r.dims.rep >= 0) && !cc.onboarding.done.ghost && cc.counters.yrSlip === 0 && !('tx_ghost' in cc.counters) && !('bad' in cc.counters));
+    imp.career.ending = { id: 'steady_clinic', score: 70.5, year: 10, at: 130 }; imp.career.reviews = [];
+    Sav.importSave(state, JSON.stringify({ version: K.SAVE_VERSION, state: imp }));
+    check('career sanitize: a valid ending survives', state.career.ending && state.career.ending.id === 'steady_clinic' && state.career.ending.score === 70.5);
+  }
+  {   // v2 save (no career) in the middle of year 3
+    fresh(SEED, true); state.time.year = 3; state.time.month = 5; state.money = 3e6; state.reputation = 150; state.lotLevel = 0;
+    hist(4, { year: 3 });
+    put('sofa', 10, 16); put('water', 20, 17);
+    state.staff.push(S.createStaff(state, 'pt', null, 17, 15));
+    for (const d of ACHD.ACHIEVEMENTS) state.achv.unlocked[d.id] = { year: 1, month: 1, week: 1 };
+    state.stats.patientsTotal = 500;
+    const raw = JSON.parse(JSON.stringify({ ...state, map: { floor: state.map.floor } }));
+    delete raw.career; raw.version = 2;
+    ev.length = 0;
+    const m0 = state.money, p0 = JSON.stringify(state.points), rep0 = state.reputation;
+    check('migration v2 -> v3: old save imports', Sav.importSave(state, JSON.stringify({ version: 2, savedAt: 1, label: 'x', state: raw })));
+    const c = state.career;
+    check('migration: career added, version 3', K.SAVE_VERSION === 3 && c && c.inited === true && c.goals.year === 3 && c.goals.list.length >= 2);
+    check('migration: no reward flood (money / points / reputation untouched, no onboarding events)', state.money === m0 && JSON.stringify(state.points) === p0 && state.reputation === rep0 && evs('career:onboarding-done').length === 0);
+    check('migration: already-satisfied onboarding tasks are marked done silently', c.onboarding.done.ob_seating === true && c.onboarding.done.ob_first_treat === true && c.onboarding.done.ob_first_settle === true && !c.onboarding.done.ob_expand_tab);
+    check('migration: onboardingList reflects the silent completion', Car.onboardingList(state).filter(t => t.done).length === Object.keys(c.onboarding.done).length);
+    const m1 = state.money; wk();
+    check('migration: next tick still pays nothing for pre-satisfied tasks', state.money === m1 || evs('career:onboarding-done').length === 0);
+    const raw11 = { ...raw, time: { ...raw.time, year: 12 } };
+    ev.length = 0;
+    Sav.importSave(state, JSON.stringify({ version: 2, savedAt: 1, label: 'x', state: raw11 }));
+    check('migration: a year > 10 save becomes endless silently (no ending event)', state.career.endless === true && state.career.ending === null && evs('career:ending').length === 0 && state.career.goals.year === 12);
+  }
+
+  // ---- F. year review ordering, content, grade boundaries ----
+  {
+    const B_ = [[39.9, 'D'], [40, 'C'], [59.9, 'C'], [60, 'B'], [74.9, 'B'], [75, 'A'], [89.9, 'A'], [90, 'S'], [100, 'S'], [0, 'D']];
+    check('grades: boundaries 39.9/40/59.9/60/74.9/75/89.9/90', B_.every(([v, g]) => Car.gradeOf(v) === g), B_.map(([v, g]) => v + '=' + Car.gradeOf(v)).join(' '));
+    CF();
+    // real year end: run the real calendar through the last step of year 1
+    state.money = 3e6; state.reputation = 120;
+    for (let i = 0; i < 11; i++) state.history.push({ year: 1, month: i + 1, income: 1.2e6, expense: 1e6, net: 2e5, money: 3e6, patients: 80, satisfaction: 72, reputation: 100, nhiPoints: 1, pointValue: 0.95 });
+    state.time.month = 12; state.time.week = 4; state.time.clock = K.CLOSE_MIN - 1;
+    state.career.counters.yrCured = 60; ev.length = 0;
+    step(2);
+    check('review: the calendar moved to year 2', state.time.year === 2);
+    const order = ev.filter(e => e.n === 'inspection:result' || e.n === 'career:year-review').map(e => e.n);
+    check('review: year review fires AFTER the inspection result, exactly once', order.join() === 'inspection:result,career:year-review', order.join());
+    const rv = Car.yearReviews(state);
+    check('review: stored with year/grade/score/dims/stats/goals/line', rv.length === 1 && rv[0].year === 1 && /^[SABCD]$/.test(rv[0].grade) && rv[0].score >= 0 && ['fin', 'rep', 'care', 'team', 'local'].every(k => rv[0].dims[k] >= 0 && rv[0].dims[k] <= 100) && rv[0].goals.length === 3 && rv[0].line.length > 5 && rv[0].journal && typeof rv[0].stats.net === 'number', JSON.stringify(rv[0]).slice(0, 200));
+    check('review: Y1 grade matches computeYearScore total', Car.gradeOf(rv[0].score) === rv[0].grade);
+    check('review: new year rolled the goals + reset per-year counters', state.career.goals.year === 2 && state.career.counters.yrCured === 0 && Car.currentGoals(state)[0].id === 'core_y2_expand_l1');
+    check('review: not emitted twice by later weeks', (() => { wk(); wk(); return evs('career:year-review').length === 1; })());
+    const sc = Car.computeYearScore(state, 1);
+    check('computeYearScore for a past year returns the stored review', sc.grade === rv[0].grade && sc.total === rv[0].score);
+    const live = Car.computeYearScore(state, 2);
+    check('computeYearScore for the running year has dims/total/grade', live && ['fin', 'rep', 'care', 'team', 'local'].every(k => Number.isFinite(live.dims[k])) && Number.isFinite(live.total) && /^[SABCD]$/.test(live.grade));
+    // dims respond to the right inputs
+    CF(); hist(12, { net: 0 }); const f0 = Car.computeYearScore(state, 1).dims.fin; state.history = []; hist(12, { net: 1e6 }); const f1 = Car.computeYearScore(state, 1).dims.fin;
+    check('score: fin dim 0 at zero profit, 100 at 12 x 1M on L0 (bench 150k)', f0 === 0 && f1 === 100);
+    state.reputation = 50; const r50 = Car.computeYearScore(state, 1).dims.rep; state.reputation = 100; const r100 = Car.computeYearScore(state, 1).dims.rep;
+    check('score: rep dim = reputation / curve (Y1 100)', r50 === 50 && r100 === 100);
+    state.career.counters.yrSlip = 0; const c0 = Car.computeYearScore(state, 1).dims.care; state.career.counters.yrSlip = 10; const c10 = Car.computeYearScore(state, 1).dims.care;
+    check('score: slips lower the care dim', c10 < c0);
+  }
+
+  // ---- G. endings ----
+  {
+    const sc = (ys) => ys.map((s, i) => ({ year: i + 1, grade: Car.gradeOf(s), score: s, dims: { fin: s, rep: s, care: s, team: s, local: s }, stats: {}, goals: [], line: '' }));
+    const ready = (score) => {   // a state that satisfies EVERY ending condition
+      const c = CF();
+      state.time.year = 10; Car.ensureCareer(state);
+      setLot(3); state.reputation = 650; state.career.reviews = sc(Array(10).fill(score));
+      Object.assign(state.career.counters, { fLtc: 5, fOrtho: 5, fPeds: 4, elderCured: 600, kidCured: 300, sportsServed: 2000 });
+      state.career.shares = Array(24).fill(0.5);
+      state.research.done = Object.keys(RESEARCH);
+      state.objects.push({ id: state.nextId++, defId: 'si_room', x: 1, y: 1, rot: 0 }, { id: state.nextId++, defId: 'speech_room', x: 5, y: 1, rot: 0 });
+      hist(6, { satisfaction: 80 });
+      return c;
+    };
+    const ids = GD.ENDINGS.filter(e => e.id !== 'bankrupt').sort((a, b) => a.order - b.order).map(e => e.id);
+    ready(95);
+    let e = Car.computeEnding(state, { bankrupt: false });
+    check('ending: everything satisfied -> legend_center (priority 1)', e.id === 'legend_center' && e.stats && e.thanks.length >= 2 && e.title && e.emoji && e.grade === 'S', e.id + ' ' + e.score);
+    check('ending: stats block (income/patients/cured/events/achievements/peak rep/lot/top treatment)', ['totalIncome', 'totalPatients', 'totalCured', 'eventsHandled', 'achievementsDone', 'peakReputation', 'finalLot', 'topTreatment'].every(k => k in e.stats));
+    // peel the winners one by one
+    const peel = {
+      legend_center: () => { setLot(2); },
+      ltc_guardian: () => { state.career.counters.fLtc = 4; },
+      sports_doctor: () => { state.career.counters.sportsServed = 10; },
+      peds_pioneer: () => { state.career.counters.kidCured = 10; },
+      selfpay_brand: () => { state.career.shares = Array(24).fill(0.1); },
+    };
+    for (let i = 0; i < ids.length - 1; i++) {
+      const cur = Car.computeEnding(state, { bankrupt: false }).id;
+      check(`ending priority: ${ids[i]} chosen at step ${i + 1}`, cur === ids[i], cur);
+      if (peel[ids[i]]) peel[ids[i]]();
+      else if (ids[i] === 'steady_clinic') state.career.reviews = sc(Array(10).fill(30));
+      else if (ids[i] === 'struggling_shop') state.career.reviews = sc(Array(10).fill(0));
+    }
+    state.achv.unlocked = {}; state.lotLevel = 0;
+    check('ending: retire_handover when nothing else holds', Car.computeEnding(state, { bankrupt: false }).id === 'retire_handover');
+    // score thresholds, weights
+    ready(0); setLot(0); state.career.counters.fLtc = 0; state.career.counters.fOrtho = 0; state.career.counters.fPeds = 0; state.career.shares = []; state.achv.unlocked = {};
+    state.career.reviews = sc(Array(10).fill(60)); check('ending: score 60 -> steady_clinic', Car.computeEnding(state).id === 'steady_clinic');
+    state.career.reviews = sc(Array(10).fill(59)); check('ending: score 59 -> struggling_shop', Car.computeEnding(state).id === 'struggling_shop');
+    state.career.reviews = sc(Array(10).fill(40)); check('ending: score 40 -> struggling_shop', Car.computeEnding(state).id === 'struggling_shop');
+    state.career.reviews = sc(Array(10).fill(39)); check('ending: score 39 -> retire_handover', Car.computeEnding(state).id === 'retire_handover');
+    state.career.reviews = sc([100, 100, 100, 100, 100, 0, 0, 0, 0, 0]); const early = Car.careerScore(state);
+    state.career.reviews = sc([0, 0, 0, 0, 0, 100, 100, 100, 100, 100]); const late = Car.careerScore(state);
+    check('career score: later 5 years weigh x1.5 (50 -> 40 / 60)', near(early, 40, 0.11) && near(late, 60, 0.11), `${early} ${late}`);
+    state.lotLevel = 0; state.career.reviews = sc(Array(10).fill(50)); const s0 = Car.careerScore(state); setLot(3); const s3 = Car.careerScore(state);
+    check('career score: lot bonus L3 = +12', near(s3 - s0, 12, 0.11), `${s3 - s0}`);
+    state.achv.unlocked = Object.fromEntries(ACHD.ACHIEVEMENTS.map(d => [d.id, { year: 1, month: 1, week: 1 }])); const s4 = Car.careerScore(state);
+    check('career score: all achievements = +10', near(s4 - s3, 10, 0.11), `${s4 - s3}`);
+
+    // real events: the year-10 end emits the ending once, after the review; unlocks the ending achievements
+    ready(80); setLot(2); state.reputation = 300; state.career.reviews = sc(Array(9).fill(80));
+    for (const k of ['fLtc', 'fOrtho', 'fPeds']) state.career.counters[k] = 0;
+    state.career.shares = Array(24).fill(0.1);
+    for (let i = 0; i < 11; i++) state.history.push({ year: 10, month: i + 1, income: 1e6, expense: 5e5, net: 5e5, money: 5e6, patients: 100, satisfaction: 75, reputation: 100, nhiPoints: 1, pointValue: 0.95 });
+    state.time.month = 12; state.time.week = 4; state.time.clock = K.CLOSE_MIN - 1; ev.length = 0;
+    state.achv.unlocked = {};
+    step(2);
+    const kinds = ev.filter(x => x.n === 'inspection:result' || x.n === 'career:year-review' || x.n === 'career:ending').map(x => x.n);
+    check('ending: year 10 end -> inspection, then review, then ending (once)', kinds.join() === 'inspection:result,career:year-review,career:ending', kinds.join());
+    const en = evs('career:ending')[0].p.ending;
+    check('ending: stored in state.career.ending {id,score,year,at}', state.career.ending && state.career.ending.id === en.id && state.career.ending.year === 10 && Number.isFinite(state.career.ending.score) && Number.isFinite(state.career.ending.at));
+    check('ending: matching ending achievement + 十年老店 unlocked', Ach.isUnlocked(state, 'e_' + en.id) && Ach.isUnlocked(state, 'm_decade'), en.id);
+    check('ending: only the matching ending achievement unlocked', ACHD.ACHIEVEMENTS.filter(d => /^e_/.test(d.id) && Ach.isUnlocked(state, d.id)).length === 1);
+    const sm = Car.careerSummary(state);
+    check('careerSummary: ending shape {id,title,emoji}, endless false', sm.ending && sm.ending.id === en.id && sm.ending.title && sm.endless === false && sm.year === 11);
+    // no double ending
+    bus.emit('year:end', { year: 11 }); bus.emit('game:over', { reason: 'x' }); bus.emit('year:end', { year: 12 });
+    check('ending: no second ending after the first (also not on game:over)', evs('career:ending').length === 1 && state.career.ending.id === en.id);
+    // endless
+    Car.setEndless(state, true); check('endless: setEndless(true)', Car.careerSummary(state).endless === true);
+    // bankruptcy
+    CF(); ev.length = 0; state.flags.gameOver = true; bus.emit('game:over', { reason: 'broke' });
+    const eb = evs('career:ending');
+    check('ending: bankruptcy -> bankrupt ending, once', eb.length === 1 && eb[0].p.ending.id === 'bankrupt' && state.career.ending.id === 'bankrupt');
+    bus.emit('game:over', { reason: 'again' });
+    check('ending: second game:over does not add another ending', evs('career:ending').length === 1);
+    // bankrupt ending via real settleMonth
+    CF(); ev.length = 0; state.money = -2e6; state.time.month = 3; state.time.week = 4; state.time.clock = K.CLOSE_MIN - 1; step(2);
+    check('ending: real settleMonth bankruptcy emits the bankrupt ending', evs('career:ending').length === 1 && evs('career:ending')[0].p.ending.id === 'bankrupt');
+    // endless continues goals, no ending
+    CF(); state.time.year = 10; Car.ensureCareer(state); Car.setEndless(state, true);
+    for (let i = 0; i < 11; i++) state.history.push({ year: 10, month: i + 1, income: 1e6, expense: 5e5, net: 5e5, money: 5e6, patients: 100, satisfaction: 75, reputation: 100, nhiPoints: 1, pointValue: 0.95 });
+    state.time.month = 12; state.time.week = 4; state.time.clock = K.CLOSE_MIN - 1; ev.length = 0; step(2);
+    check('endless: year 10 end emits a review but no ending', evs('career:year-review').length === 1 && evs('career:ending').length === 0 && state.career.ending === null);
+    check('endless: year 11 still gets 1 core + bonus goals', state.time.year === 11 && Car.currentGoals(state).filter(g => g.kind === 'core').length === 1 && Car.currentGoals(state).filter(g => g.kind === 'bonus').length >= 1);
+    let y11 = 0;
+    for (let y = 12; y < 30; y++) { state.time.year = y; Car.ensureCareer(state); if (Car.currentGoals(state).length >= 2) y11++; }
+    check('endless: goals keep cycling for years 12..29', y11 === 18);
+    // projected + card
+    CF(); state.career.reviews = sc([70, 70, 70]);
+    const s1 = Car.careerSummary(state);
+    check('careerSummary: projected ending + avgGrade + yearsLeft', s1.projected && s1.projected.id && s1.avgGrade === 'B' && s1.yearsLeft === 10 && s1.year === 1 && s1.ending === null && Number.isFinite(s1.scoreSoFar));
+    const card = Car.careerCardText(state);
+    check('careerCardText: multi-line plain text with title, ending, grade, stats', typeof card === 'string' && card.split('\n').length >= 8 && /院長稱號/.test(card) && /結局|估算/.test(card) && /等級/.test(card) && /十年營收/.test(card) && !/undefined|NaN/.test(card), card);
+    state.career.ending = { id: 'steady_clinic', score: 66, year: 10, at: 1 };
+    check('careerCardText: shows the ending title once reached', Car.careerCardText(state).includes('穩健的社區診所'));
+  }
+
+  // ---- H. counters / integration through real events ----
+  {
+    CF();
+    const k = state.career.counters;
+    const pt = (type, o = {}) => ({ id: state.nextId++, type, treated: 2, cured: false, ...o });
+    bus.emit('patient:left', { patient: pt('elder', { cured: true }), satisfaction: 80, cured: true, reason: 'done' });
+    bus.emit('patient:left', { patient: pt('kid', { cured: true }), satisfaction: 80, cured: true, reason: 'done' });
+    bus.emit('patient:left', { patient: pt('sports'), satisfaction: 80, cured: false, reason: 'done' });
+    bus.emit('treatment:done', { patient: pt('kid'), treatmentId: 'heat', nhiPoints: 0 }); bus.emit('treatment:done', { patient: pt('kid'), treatmentId: 'heat', nhiPoints: 0 }); bus.emit('treatment:done', { patient: pt('kid'), treatmentId: 'tens', nhiPoints: 0 });
+    check('counters: cured / elder / kid / sports served', k.yrCured === 2 && k.elderCured === 1 && k.kidCured === 1 && k.sportsServed === 1);
+    check('counters: treatments per id (top treatment source)', k.tx_heat === 2 && k.tx_tens === 1 && k.treat === 3);
+    bus.emit('staff:resigned', { id: 1 }); bus.emit('equipment:broken', { id: 1 }); bus.emit('patient:slip', {}); bus.emit('dilemma:resolved', { kind: 'dilemma' }); bus.emit('dilemma:resolved', { kind: 'event' });
+    check('counters: resign / breakdown / slip / dilemma(only kind dilemma) / events', k.yrResign === 1 && k.yrBreak === 1 && k.yrSlip === 1 && k.yrDilemma === 1 && k.events === 2);
+    state.staff.push(S.createStaff(state, 'pt', null, 17, 15));
+    wk(); state.staff[state.staff.length - 1].level = 3; wk(); wk();
+    check('counters: training detected through staff.level (no double count)', k.yrTrain === 2 && Car.metricValue(state, 'trainYear') === 2, k.yrTrain);
+    bus.emit('nhi:settled', { year: 1, month: 1, nhiIncome: 600000, selfIncome: 300000, copayIncome: 100000, income: 1e6 });
+    check('counters: selfPay share ring + income total', near(state.career.shares[0], 0.3, 1e-9) && k.incomeTotal === 1e6);
+    for (let i = 0; i < 3; i++) bus.emit('nhi:settled', { year: 1, month: 1, nhiIncome: 700000, selfIncome: 300000, copayIncome: 0, income: 1e6 });
+    check('metric: selfPayShare3 = min of the last 3 months', near(Car.metricValue(state, 'selfPayShare3'), 0.3, 1e-9));
+    state.career.shares.push(0.1);
+    check('metric: one weak month drops selfPayShare3', near(Car.metricValue(state, 'selfPayShare3'), 0.1, 1e-9));
+    check('invariants hold with a live career', invariants().length === 0, invariants().join(';'));
+  }
+  for (const o of offs) o();
+  feature('Career: onboarding / yearly goals / grades / endings / endless / v2 migration', 'OK', `${GD.ONBOARDING.length} onboarding + ${GD.CORE_GOALS.length} core + ${GD.BONUS_GOALS.length} bonus forced; ${GD.ENDINGS.length} endings`);
+  Car.stopCareer();
+}
+
 const MULT_FLOOR = { spawnMult: 0.1, patience: 0.1, slipRisk: 0.1, walkSpeed: 0.1, nhiTurnover: 0.1, selfPayPrice: 0.1, researchGain: 0.1, staffStamina: 0.1, rentMult: 0.1, wageMult: 0.1 };
 
 // =====================================================================================================
@@ -2186,6 +2619,7 @@ if (want('save')) saveSection();
 if (want('achievements')) achievementsSection();
 if (want('events')) eventsSection();
 if (want('longrun')) longrunSection();
+if (want('career')) careerSection();
 
 if (FEATURES.length) {
   section('Feature conformance');

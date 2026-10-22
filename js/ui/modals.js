@@ -14,6 +14,8 @@ import { monthlyCosts, PATIENT_WEIGHT, PV_BASE } from '../sim/economy.js';
 import { SINGLE_CLAIM_NOTE, COPAY_NTD } from '../data/fees.js';
 import { resolveDilemma, eventById, choiceAffordable } from '../sim/events.js';
 import { newGame, loadGame, listSaves } from '../sim/save.js';
+import * as CAR from '../sim/career.js';
+import { initCareerUI, careerYears, gradeName, gradeKey, gradeMood, gradeBadge, yearReviewBody, gradeStrip, endingStatsCard, endingInfo, quoteBox, cardText, copyText, openGoalsTab, ct } from './career.js';
 
 // ---- ledger snapshot: the ledger is reset inside settleMonth, so keep the last pre-reset copy ----
 const snap = { income: {}, expense: {}, year: 1, month: 1 };
@@ -234,6 +236,127 @@ export function showGameOver(p) {
   showModal({ title: '遊戲結束', body, buttons, dismissable: false, tag: 'gameover', replace: true });
 }
 
+// ---------------------------------------------------------------- career: year review + ending (docs/GOALS_AND_ENDING.md §5 / §6)
+const MOOD_EMOJI = { happy: '😄', normal: '🙂', tired: '😓' };
+const careerShown = { reviews: new Set(), ending: '' };
+function careerReviews(state) { try { return CAR.yearReviews(state) || []; } catch (e) { return []; } }
+
+export function showYearReview(review) {
+  const state = ctx.state;
+  if (!review || review.year == null) return;
+  if (careerShown.reviews.has(review.year)) return;
+  careerShown.reviews.add(review.year);
+  const prev = careerReviews(state).find(r => r.year === review.year - 1) || null;
+  const g = gradeKey(review.grade);
+  const mood = gradeMood(g);
+  const bust = h('span', { class: 'u-rv-bust u-artonly' },
+    artEl(doctorFace(mood), { size: 64, cls: 'u-bust u-bust-card', title: '診所醫師', fallback: MOOD_EMOJI[mood], fbCls: 'u-rv-fb' }));
+  const { hero, rest } = yearReviewBody(review, prev, bust);
+  const body = h('div', { class: 'u-review', dataset: { grade: g, mood, year: review.year } },
+    artBanner('scene.clinic', { title: '診所一景', maxVh: 14, cls: 'u-banner-sm' }), hero, rest);
+  const last = review.year >= careerYears() && !(state.career && state.career.endless);
+  showModal({
+    title: h('span', null, artEl('role.record', { size: 28, fallback: '📊', cls: 'u-art-ico u-modal-ico', title: '年度總結' }), `第 ${review.year} 年 ${ct('yearReview.title', '年度總結')}`),
+    body, cls: 'u-wide u-rvmodal', tag: 'yearreview', rank: 20,
+    buttons: [
+      { label: ct('yearReview.viewCareer', '看生涯進度'), onClick: () => { setTimeout(openGoalsTab, 0); } },
+      { label: last ? '看生涯結局' : ct('yearReview.next', '下一年'), primary: true },
+    ],
+  });
+}
+
+export function showCareerEnding(ending, o = {}) {
+  const state = ctx.state;
+  if (!ending) return;
+  const bankrupt = ending.id === 'bankrupt' || !!o.bankrupt;
+  if (careerShown.ending === (bankrupt ? 'bankrupt' : ending.id) && !o.force) return;
+  careerShown.ending = bankrupt ? 'bankrupt' : (ending.id || 'ending');
+  const info = endingInfo(ending);
+  const g = gradeKey(ending.grade);
+  const mood = bankrupt ? 'tired' : (g ? gradeMood(g) : 'happy');
+  const bust = h('span', { class: 'u-rv-bust u-artonly' },
+    artEl(doctorFace(mood), { size: 64, cls: 'u-bust u-bust-card', title: '診所醫師', fallback: MOOD_EMOJI[mood], fbCls: 'u-rv-fb' }));
+  const reviews = careerReviews(state);
+  const reason = bankrupt ? (o.reason || (state.flags && state.flags.gameOverReason) || '資金見底，無力繼續經營。') : '';
+  const card = h('div', { class: 'u-endcard' });
+  const body = h('div', { class: 'u-ending', dataset: { ending: ending.id || '', bankrupt: bankrupt ? '1' : '0' } },
+    artBanner('scene.clinic', { title: '診所一景', maxVh: 14, cls: 'u-banner-sm' }),
+    h('div', { class: 'u-end-hero' },
+      h('div', { class: 'u-end-emoji', 'aria-hidden': 'true' }, info.emoji),
+      h('div', { class: 'u-end-titles' },
+        h('div', { class: 'u-end-kicker' }, bankrupt ? '診所經營結束' : ct('careerEnd.title', '生涯結算')),
+        h('div', { class: 'u-end-title' }, info.title),
+        info.desc ? h('div', { class: 'u-small muted u-end-desc' }, info.desc) : null)),
+    g || ending.score != null ? h('div', { class: 'u-rv-hero u-end-grade' }, bust, g ? gradeBadge(g, 'u-grade-xl u-grade-pop') : null,
+      h('div', { class: 'u-rv-heroT' }, h('div', { class: 'u-small muted' }, '生涯總評'), ending.score != null ? h('div', { class: 'u-rv-score' }, h('b', null, Math.round(ending.score)), ' 分') : null,
+        g && gradeName(g) ? h('div', { class: 'u-small muted' }, `等級 ${g}・${gradeName(g)}`) : null)) : null,
+    reason ? h('p', { class: 'u-p u-end-reason' }, reason) : null,
+    quoteBox(info.thanks, ct('careerEnd.quote', '院長感言')),
+    endingStatsCard(ending.stats) ? [h('div', { class: 'u-sec u-sec-sm' }, ct('careerEnd.statsTitle', '十年統計')), endingStatsCard(ending.stats)] : null,
+    h('div', { class: 'u-sec u-sec-sm' }, '十年歷程'), gradeStrip(reviews, 0),
+    bankrupt ? null : h('div', { class: 'u-note u-end-note' }, h('b', null, '♾ 無盡模式'),
+      h('p', null, ct('careerEnd.endlessNote', '選「繼續經營」可以接著玩：年度計畫照常循環、獎勵照發，但不會再出現結局。想重看成績，隨時到診所面板的「目標」分頁。'))),
+    card);
+
+  const showCopyFallback = text => {
+    card.replaceChildren(h('textarea', { class: 'u-ta u-endcard-ta', readOnly: true, rows: 6, value: text }));
+    const ta = card.firstChild;
+    setTimeout(() => { try { ta.focus(); ta.select(); } catch (e) { /* ignore */ } }, 0);
+  };
+  const doCopy = async () => {
+    const text = cardText(state, ending);
+    const ok = await copyText(text);
+    if (ok) bus.emit('toast', { text: '✅ ' + ct('careerEnd.copied', '已複製到剪貼簿') + '，可以貼給朋友囉', kind: 'good' });
+    else { bus.emit('toast', { text: ct('careerEnd.copyFailed', '複製失敗，請手動選取文字。'), kind: 'bad' }); showCopyFallback(text); }
+  };
+  let armed = null;
+  const restartLabel = bankrupt ? '重新開業' : ct('careerEnd.restart', '重新開始');   // bankrupt: same label / single click as the old game-over modal
+  const buttons = [];
+  let hasAuto = false;
+  if (bankrupt) { try { hasAuto = listSaves().some(s => s.slot === 'auto'); } catch (e) { /* ignore */ } }
+  if (hasAuto) buttons.push({ label: '讀取自動存檔', onClick: () => { loadGame(state, 'auto'); } });
+  buttons.push({ label: bankrupt ? ct('earlyClose.copyCard', '複製生涯卡') : ct('careerEnd.copyCard', '複製生涯卡'), onClick: () => { doCopy(); return false; } });
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    buttons.push({ label: ct('careerEnd.shareCard', '分享生涯卡'), onClick: () => {
+      const text = cardText(state, ending);
+      navigator.share({ title: '復健科診所物語 生涯卡', text }).then(() => bus.emit('toast', { text: '已分享生涯卡', kind: 'good' })).catch(() => { /* cancelled */ });
+      return false;
+    } });
+  }
+  buttons.push({
+    label: restartLabel, primary: bankrupt, onClick: el => {
+      if (!armed && !bankrupt) {
+        armed = setTimeout(() => { armed = null; el.textContent = restartLabel; el.classList.remove('danger'); }, 4500);
+        el.textContent = '再按一次：放棄並重來'; el.classList.add('danger');
+        return false;
+      }
+      clearTimeout(armed); armed = null;
+      careerShown.reviews.clear(); careerShown.ending = '';
+      try { newGame(state); } catch (e) { console.error(e); }
+    },
+  });
+  if (!bankrupt) {
+    buttons.push({ label: ct('careerEnd.continue', '繼續經營'), primary: true, onClick: () => {
+      try { CAR.setEndless(state, true); } catch (e) { console.error(e); }
+      bus.emit('toast', { text: '♾ 進入無盡模式：年度計畫照常，不再出現結局', kind: 'good' });
+    } });
+  }
+  showModal({
+    title: h('span', null, artEl('role.record', { size: 28, fallback: info.emoji, cls: 'u-art-ico u-modal-ico', title: '生涯結局' }), bankrupt ? '遊戲結束・' + ct('earlyClose.title', '提早收攤') : ct('careerEnd.title', '生涯結算')),
+    body, cls: 'u-wide u-endmodal', tag: bankrupt ? 'gameover' : 'ending', rank: 30, dismissable: false, replace: bankrupt, buttons,
+  });
+}
+
+// bankruptcy: the career "bankrupt" ending replaces the plain game-over text when the career module can produce it
+function onGameOver(p) {
+  const state = ctx.state;
+  if (careerShown.ending === 'bankrupt') return;
+  let ending = null;
+  try { ending = CAR.computeEnding && CAR.computeEnding(state, { bankrupt: true }); } catch (e) { ending = null; }
+  if (ending && ending.id) showCareerEnding(ending, { bankrupt: true, reason: p && p.reason });
+  else showGameOver(p);
+}
+
 // ---------------------------------------------------------------- tutorial
 export function showTutorial(force) {
   const state = ctx.state;
@@ -244,13 +367,15 @@ export function showTutorial(force) {
   if (!steps.length) return;
   let i = 0;
   const textEl = h('p', { class: 'u-p u-intro-text' });
+  const goalHint = h('p', { class: 'u-intro-goal' }, '🎯 到診所面板的『目標』分頁看新手任務');
   const dots = h('div', { class: 'u-dots' });
   const head = h('div', { class: 'u-intro-head' });
-  const body = h('div', null, artBanner('scene.clinic', { title: '診所一景' }), head, textEl, dots);
+  const body = h('div', null, artBanner('scene.clinic', { title: '診所一景' }), head, textEl, goalHint, dots);
   function fill() {
     const s = steps[i];
     head.textContent = `${s.title ? s.title + '　' : ''}${i + 1} / ${steps.length}`;
     textEl.textContent = s.text || s.body || '';
+    goalHint.classList.toggle('on', i === steps.length - 1);
     dots.replaceChildren(...steps.map((_, k) => h('i', { class: k === i ? 'on' : '' })));
   }
   fill();
@@ -297,7 +422,11 @@ export function initModals() {
   bus.on('inspection:result', p => showInspection(p || {}));
   bus.on('dilemma:show', p => showPending(p && (p.dilemma || p.event)));
   bus.on('event:show', p => showPending(p && (p.event || p.dilemma)));
-  bus.on('game:over', p => showGameOver(p));
+  bus.on('game:over', p => onGameOver(p));
+  initCareerUI(ctx.state);
+  // order: the sim emits inspection -> review -> ending in that order; defer one macrotask and let modal ranks sort any stragglers
+  bus.on('career:year-review', p => { const r = p && p.review; if (r) setTimeout(() => showYearReview(r), 0); });
+  bus.on('career:ending', p => { const e = p && p.ending; if (e) setTimeout(() => showCareerEnding(e, { bankrupt: e.id === 'bankrupt' }), 0); });
   bus.on('week:end', () => snapshotLedger(ctx.state));
-  bus.on('state:loaded', () => { shownKey = null; });
+  bus.on('state:loaded', () => { shownKey = null; careerShown.reviews.clear(); careerShown.ending = ''; });
 }

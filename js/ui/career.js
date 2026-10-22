@@ -14,10 +14,16 @@ let DATA = null;
 import('../data/goals.js').then(m => { DATA = m; bus.emit('career:ui-data', {}); }).catch(() => { /* optional table */ });
 
 export function careerData() { return DATA; }
+// CAREER_TEXT lookup by dotted path ('yearReview.title'); fallback when the table / key is missing
 export function ct(key, fallback) {
-  const t = DATA && DATA.CAREER_TEXT;
-  const v = t && t[key];
+  let v = DATA && DATA.CAREER_TEXT;
+  for (const k of String(key).split('.')) v = v && typeof v === 'object' ? v[k] : undefined;
   return typeof v === 'string' && v ? v : fallback;
+}
+export function tpl(key, fallback, vars) {
+  let s = ct(key, fallback);
+  for (const k of Object.keys(vars || {})) s = s.split('{' + k + '}').join(vars[k]);
+  return s;
 }
 export const careerYears = () => (typeof CAR.CAREER_YEARS === 'number' ? CAR.CAREER_YEARS : 10);
 
@@ -27,7 +33,8 @@ function safe(fn, fb) { try { const v = fn(); return v === undefined ? fb : v; }
 export const GRADE_KEYS = ['S', 'A', 'B', 'C', 'D'];
 const GRADE_NAME = { S: '傑出', A: '優良', B: '穩健', C: '吃力', D: '艱困' };
 export function gradeName(g) {
-  const info = DATA && DATA.GRADES && DATA.GRADES[g];
+  const G = DATA && DATA.GRADES;
+  const info = Array.isArray(G) ? G.find(x => x && x.grade === g) : (G && G[g]);
   const lab = info && typeof info === 'object' ? (info.label || info.name || info.title) : (typeof info === 'string' ? info : '');
   return typeof lab === 'string' && lab ? lab : (GRADE_NAME[g] || '');
 }
@@ -63,28 +70,47 @@ export function nv(v) {
   if (a >= 100 || Number.isInteger(v)) return String(Math.round(v));
   return String(+v.toFixed(2));
 }
-const CMP = { '>=': '≥', '<=': '≤', '>': '>', '<': '<', '==': '＝', '=': '＝', '===': '＝' };
+const CMP = { '>=': '≥', '<=': '≤', '>': '>', '<': '<', '==': '＝', '=': '＝', '===': '＝', gte: '≥', lte: '≤', gt: '>', lt: '<', eq: '＝' };
 export const cmpSym = c => CMP[c] || (typeof c === 'string' && c) || '≥';
-const signedMoney = v => (v > 0 ? '+' : v < 0 ? '-' : '') + money(Math.abs(v));
+// NT$ in the Taiwanese 萬 unit once it gets big ("NT$ 25 萬"), plain below 10,000
+export function moneyShort(v) {
+  const a = Math.abs(Math.round(v || 0));
+  const body = a >= 10000 ? `NT$ ${+(a / 10000).toFixed(a >= 1000000 ? 0 : 1)} 萬` : 'NT$ ' + fmt(a);
+  return (v < 0 ? '-' : '') + body;
+}
+const signedMoney = v => (v > 0 ? '+' : '') + moneyShort(v);
 const signedNum = v => (v > 0 ? '+' : v < 0 ? '-' : '') + fmt(Math.abs(v));
+// goal-condition value by the unit declared in GOAL_METRICS
+export function metricText(key, v) {
+  const m = DATA && DATA.GOAL_METRICS && DATA.GOAL_METRICS[key];
+  const unit = m && m.unit;
+  if (typeof v !== 'number') return nv(v);
+  if (unit === 'NT$') return moneyShort(v);
+  if (unit === '0/1') return v >= 1 ? '成立' : '未成立';
+  if (unit === '%') return nv(v) + '%';
+  if (unit && unit !== '點') return nv(v) + unit;
+  return nv(v);
+}
 
-// review.stats keys -> [label, formatter]; unknown keys are ignored. Several aliases per slot (first present wins).
+// review.stats keys -> label / formatter, in display order (the sim's keys: js/sim/career.js buildReview). Unknown keys are ignored.
+// `low`: lower is better (delta colours flip); `money`: deltas shown in 萬.
 const STAT_SLOTS = [
-  { keys: ['moneyDelta', 'moneyChange', 'cashDelta', 'netProfit', 'profit', 'net'], label: '資金變化', f: signedMoney, good: true },
-  { keys: ['income', 'revenue', 'totalIncome', 'yearIncome'], label: '全年營收', f: money },
-  { keys: ['patients', 'patientsYear', 'patientsServed', 'served', 'patientsTotal'], label: '看診病患', f: v => fmt(v) + ' 人' },
-  { keys: ['repDelta', 'reputationDelta', 'repChange'], label: '聲譽變化', f: signedNum, good: true },
-  { keys: ['reputation', 'rep', 'repEnd', 'endReputation'], label: '年底聲譽', f: fmt },
-  { keys: ['cured', 'curedYear', 'curedTotal'], label: '治癒人數', f: v => fmt(v) + ' 人' },
+  { keys: ['moneyDelta', 'moneyChange', 'cashDelta', 'netProfit', 'net'], label: '資金變化', f: signedMoney, tone: true, money: true },
+  { keys: ['patients', 'patientsYear', 'patientsServed', 'served'], label: '看診病患', f: v => fmt(v) + ' 人' },
+  { keys: ['repDelta', 'reputationDelta', 'repChange'], label: '聲譽變化', f: signedNum, tone: true },
+  { keys: ['cured', 'curedYear'], label: '治癒人數', f: v => fmt(v) + ' 人' },
   { keys: ['events', 'eventsHandled', 'eventCount'], label: '處理事件', f: v => fmt(v) + ' 件' },
-  { keys: ['avgSat', 'satisfaction', 'avgSatisfaction', 'sat'], label: '平均滿意度', f: v => nv(v) },
-  { keys: ['lotName', 'lot', 'lotLevel', 'expandLevel'], label: '診所規模', f: lotLabel },
-  { keys: ['selfPayShare', 'selfShare', 'selfPayRatio'], label: '自費占比', f: v => (v <= 1 ? Math.round(v * 100) : Math.round(v)) + '%' },
+  { keys: ['reputation', 'rep', 'repEnd'], label: '年底聲譽', f: fmt },
+  { keys: ['income', 'revenue', 'yearIncome'], label: '全年營收', f: money, money: true },
+  { keys: ['lot', 'lotName', 'lotLevel'], label: '診所規模', f: lotLabel, expanded: true },
   { keys: ['community', 'communityCount', 'outreach'], label: '社區活動', f: v => fmt(v) + ' 次' },
-  { keys: ['achievements', 'achievementsDone', 'achv'], label: '成就', f: v => fmt(v) + ' 個' },
-  { keys: ['slips', 'slipCount'], label: '滑倒事故', f: v => fmt(v) + ' 次' },
   { keys: ['research', 'researchDone'], label: '完成研發', f: v => fmt(v) + ' 項' },
-  { keys: ['staff', 'staffCount'], label: '員工人數', f: v => fmt(v) + ' 人' },
+  { keys: ['slip', 'slips', 'slipCount'], label: '滑倒事故', f: v => fmt(v) + ' 次', low: true },
+  { keys: ['resign', 'resigns'], label: '員工離職', f: v => fmt(v) + ' 人', low: true },
+  { keys: ['breakdown', 'breakdowns'], label: '設備故障', f: v => fmt(v) + ' 次', low: true },
+  { keys: ['morale'], label: '平均士氣', f: v => nv(v) },
+  { keys: ['avgSat', 'satisfaction', 'avgSatisfaction'], label: '平均滿意度', f: v => nv(v) },
+  { keys: ['selfPayShare', 'selfShare'], label: '自費占比', f: v => (v <= 1 ? Math.round(v * 100) : Math.round(v)) + '%' },
 ];
 function lotLabel(v) {
   if (typeof v === 'string' && !/^L?\d$/i.test(v)) return v;
@@ -92,34 +118,47 @@ function lotLabel(v) {
   return (LOTS[i] && LOTS[i].name) || String(v);
 }
 // -> [{key,label,text,raw,numeric}]
-export function statRows(stats) {
+export function statRows(stats, max = 99) {
   const out = [];
   if (!stats || typeof stats !== 'object') return out;
   for (const s of STAT_SLOTS) {
     const k = s.keys.find(x => stats[x] != null && (typeof stats[x] === 'number' ? isFinite(stats[x]) : typeof stats[x] === 'string'));
     if (!k) continue;
     const raw = stats[k];
-    out.push({ key: k, label: s.label, text: s.f(raw), raw, numeric: typeof raw === 'number', good: !!s.good });
+    let text = s.f(raw);
+    if (s.expanded && stats.expanded) text += ' ⬆';
+    out.push({ key: k, label: s.label, text, raw, numeric: typeof raw === 'number' && !s.expanded, tone: !!s.tone, low: !!s.low, money: !!s.money });
+    if (out.length >= max) break;
   }
   return out;
 }
 
-function deltaEl(cur, prev, { unit = '', cls = '' } = {}) {
+function deltaEl(cur, prev, { unit = '', cls = '', low = false, money: isMoney = false } = {}) {
   if (typeof cur !== 'number' || typeof prev !== 'number') return h('span', { class: 'u-dl u-dl-none' });
   const d = Math.round((cur - prev) * 100) / 100;
   if (!d) return h('span', { class: 'u-dl u-dl-eq' + (cls ? ' ' + cls : '') }, '＝');
-  const txt = (d > 0 ? '↑' : '↓') + (Math.abs(d) >= 1000 ? fmt(Math.abs(d)) : nv(Math.abs(d))) + unit;
-  return h('span', { class: 'u-dl ' + (d > 0 ? 'u-dl-up' : 'u-dl-dn') + (cls ? ' ' + cls : '') }, txt);
+  const ad = Math.abs(d);
+  const body = isMoney ? moneyShort(ad).replace('NT$ ', '') : (ad >= 1000 ? fmt(ad) : nv(ad));
+  const good = low ? d < 0 : d > 0;
+  return h('span', { class: 'u-dl ' + (good ? 'u-dl-up' : 'u-dl-dn') + (cls ? ' ' + cls : ''), dataset: { dir: d > 0 ? 'up' : 'down' } }, (d > 0 ? '↑' : '↓') + body + unit);
 }
 
 // ---------------------------------------------------------------- review pieces (modal + 目標 tab)
 function reviewLine(review) {
   if (review && typeof review.line === 'string' && review.line) return review.line;
   const L = DATA && DATA.GRADE_LINES && DATA.GRADE_LINES[gradeKey(review && review.grade)];
+  const pick = a => (Array.isArray(a) && a.length ? String(a[(review.year || 0) % a.length]) : '');
   if (typeof L === 'string') return L;
-  if (Array.isArray(L) && L.length) return String(L[(review.year || 0) % L.length]);
-  if (L && typeof L === 'object') return String(L.line || L.text || '');
+  if (Array.isArray(L)) return pick(L);
+  if (L && typeof L === 'object') return pick(L[review.strongest]) || pick(L[Object.keys(L)[0]]) || String(L.line || L.text || '');
   return '';
+}
+function reviewQuote(review) {
+  const line = reviewLine(review);
+  if (!line) return null;
+  const q = quoteBox(line);
+  if (review.weakLine) q.appendChild(h('div', { class: 'u-quote-w' }, '👉 ' + review.weakLine));
+  return q;
 }
 
 // five dimension bars; strongest / weakest highlighted; delta vs the previous review
@@ -132,7 +171,7 @@ export function dimBars(review, prev) {
   const best = mixed ? keys.find(k => dims[k] === hi) : null, worst = mixed ? keys.find(k => dims[k] === lo) : null;
   const rows = keys.map(k => {
     const d = dimInfo(k), v = dims[k];
-    const tone = k === worst ? 'bad' : v < 50 ? 'warn' : '';
+    const tone = v < 40 ? 'bad' : v < 60 ? 'warn' : '';
     const b = bar(v / 100, tone);
     return h('div', { class: 'u-dim' + (k === best ? ' best' : '') + (k === worst ? ' worst' : ''), dataset: { dim: k } },
       h('span', { class: 'u-dim-lab' }, h('span', { class: 'u-dim-emo' }, d.emoji), d.label),
@@ -141,21 +180,21 @@ export function dimBars(review, prev) {
       deltaEl(v, prev && prev.dims && prev.dims[k]));
   });
   const note = best && worst ? h('div', { class: 'u-small u-dim-note' },
-    h('span', { class: 'good' }, `最強：${dimInfo(best).emoji}${dimInfo(best).label}`), '　',
-    h('span', { class: 'u-warn' }, `待加強：${dimInfo(worst).emoji}${dimInfo(worst).label}`)) : null;
+    h('span', { class: 'good' }, tpl('yearReview.strongest', '最強面向：{dim}', { dim: `${dimInfo(best).emoji}${dimInfo(best).label}` })), '　',
+    h('span', { class: 'u-warn' }, tpl('yearReview.weakest', '待加強：{dim}', { dim: `${dimInfo(worst).emoji}${dimInfo(worst).label}` }))) : null;
   return h('div', { class: 'u-dims' }, rows, note);
 }
 
-export function statGrid(review, prev) {
-  const rows = statRows(review && review.stats);
+export function statGrid(review, prev, max = 9) {
+  const rows = statRows(review && review.stats, max);
   const prevRows = statRows(prev && prev.stats);
   if (!rows.length) return null;
   return h('div', { class: 'u-rv-stats' }, rows.map(r => {
     const p = prevRows.find(x => x.label === r.label);
     return h('div', { class: 'u-rv-stat', dataset: { stat: r.key } },
       h('span', { class: 'u-rv-sl' }, r.label),
-      h('b', { class: r.numeric && r.good ? (r.raw > 0 ? 'good' : r.raw < 0 ? 'bad' : '') : '' }, r.text),
-      p && r.numeric && p.numeric ? deltaEl(r.raw, p.raw) : null);
+      h('b', { class: r.numeric && r.tone ? (r.raw > 0 ? 'good' : r.raw < 0 ? 'bad' : '') : '' }, r.text),
+      p && r.numeric && p.numeric ? deltaEl(r.raw, p.raw, { low: r.low, money: r.money }) : null);
   }));
 }
 
@@ -174,32 +213,32 @@ export function quoteBox(text, label) {
 // compact summary of one review (used by the 歷年總結 list); the year-review modal composes the same pieces plus a hero
 export function reviewSummary(review, prev) {
   return h('div', { class: 'u-rv-sum' },
-    quoteBox(reviewLine(review)),
+    reviewQuote(review),
     h('div', { class: 'u-sec u-sec-sm' }, '五大面向'), dimBars(review, prev),
-    statGrid(review, prev) ? [h('div', { class: 'u-sec u-sec-sm' }, '本年重點'), statGrid(review, prev)] : null,
-    goalResults(review) ? [h('div', { class: 'u-sec u-sec-sm' }, '本年計畫'), goalResults(review)] : null,
-    review && review.journal ? quoteBox(review.journal, '📖 院長日誌') : null);
+    statGrid(review, prev, 16) ? [h('div', { class: 'u-sec u-sec-sm' }, ct('yearReview.highlights', '本年重點')), statGrid(review, prev, 16)] : null,
+    goalResults(review) ? [h('div', { class: 'u-sec u-sec-sm' }, ct('yearReview.plan', '年度計畫')), goalResults(review)] : null,
+    review && review.journal ? quoteBox(review.journal, ct('milestoneJournal', '📖 院長日誌')) : null);
 }
 
 export function yearReviewBody(review, prev, moodArt) {
   const score = Math.round(review.score || 0);
   const yr = review.year || 0;
   const sdelta = prev && typeof prev.score === 'number' ? deltaEl(review.score, prev.score, { cls: 'u-dl-lg' }) : null;
-  const title = ct('reviewTitle', '年度總結');
+  const title = ct('yearReview.title', '年度總結');
   const hero = h('div', { class: 'u-rv-hero' },
     moodArt,
     gradeBadge(review.grade, 'u-grade-xl u-grade-pop'),
     h('div', { class: 'u-rv-heroT' },
       h('div', { class: 'u-rv-year' }, `第 ${yr} 年 ${title}`),
       h('div', { class: 'u-rv-score' }, h('b', null, score), ' 分', sdelta ? [' ', sdelta] : null),
-      h('div', { class: 'u-small muted' }, gradeName(gradeKey(review.grade)) ? `評等 ${gradeKey(review.grade)}・${gradeName(gradeKey(review.grade))}` : '')));
+      h('div', { class: 'u-small muted' }, gradeName(gradeKey(review.grade)) ? `${ct('yearReview.gradeLabel', '年度等級')} ${gradeKey(review.grade)}・${gradeName(gradeKey(review.grade))}` : '')));
   const sg = statGrid(review, prev), gr = goalResults(review);
   return { hero, rest: [
-    quoteBox(reviewLine(review)),
-    sg ? [h('div', { class: 'u-sec u-sec-sm' }, '本年重點'), sg] : null,
-    h('div', { class: 'u-sec u-sec-sm' }, '五大面向'), dimBars(review, prev),
-    gr ? [h('div', { class: 'u-sec u-sec-sm' }, '本年計畫'), gr] : null,
-    review.journal ? quoteBox(review.journal, '📖 院長日誌') : null,
+    reviewQuote(review),
+    h('div', { class: 'u-sec u-sec-sm' }, '五大面向' + (prev ? '（↑↓ 與去年相比）' : '')), dimBars(review, prev),
+    sg ? [h('div', { class: 'u-sec u-sec-sm' }, ct('yearReview.highlights', '本年重點')), sg] : null,
+    gr ? [h('div', { class: 'u-sec u-sec-sm' }, ct('yearReview.plan', '年度計畫')), gr] : null,
+    review.journal ? quoteBox(review.journal, ct('milestoneJournal', '📖 院長日誌')) : null,
   ] };
 }
 
@@ -240,10 +279,11 @@ const END_STATS = [
 export function endingStatRows(stats) {
   const out = [];
   if (!stats || typeof stats !== 'object') return out;
+  const L = (DATA && DATA.CAREER_TEXT && DATA.CAREER_TEXT.statLabels) || {};
   for (const [k, label, f] of END_STATS) {
     const v = stats[k];
     if (v == null || (typeof v === 'number' && !isFinite(v)) || v === '') continue;
-    out.push({ key: k, label, text: f(v) });
+    out.push({ key: k, label: typeof L[k] === 'string' ? L[k] : label, text: f(v) });
   }
   return out;
 }
@@ -253,13 +293,15 @@ export function endingStatsCard(stats) {
   return h('div', { class: 'u-end-stats' }, rows.map(r => h('div', { class: 'u-end-stat', dataset: { stat: r.key } }, h('span', { class: 'u-rv-sl' }, r.label), h('b', null, r.text))));
 }
 export function endingInfo(ending) {
-  const E = DATA && DATA.ENDINGS && ending && DATA.ENDINGS[ending.id];
+  const EL = DATA && DATA.ENDINGS;
+  const E = Array.isArray(EL) ? EL.find(x => x && x.id === (ending && ending.id)) : (EL && ending && EL[ending.id]);
   const e = E && typeof E === 'object' ? E : {};
+  const th = ending.thanksText || ending.thanks || e.thanks || '';
   return {
     emoji: ending.emoji || e.emoji || '🏁',
     title: ending.title || e.title || '生涯結局',
     desc: ending.desc || e.desc || '',
-    thanks: ending.thanks || e.thanks || '',
+    thanks: Array.isArray(th) ? th.join('\n\n') : String(th),
   };
 }
 // plain-text career card (fallback when the sim gives none)
@@ -370,14 +412,14 @@ function onGoalDone(p) {
   if (!p) return;
   const name = goalName(p.goal);
   const rw = p.rewardText || (p.goal && p.goal.rewardText) || '';
-  toastOnce([name, '目標達成'], `🎯 ${ct('toastGoal', '目標達成')}：${name}${rw ? '　' + rw : ''}`);
+  toastOnce([name, '目標達成'], tpl('toastGoalDone', '🎯 目標達成：{name}　{reward}', { name, reward: rw }).trim());
   refreshDot(ctx.state);
 }
 function onOnboardDone(p) {
   if (!p) return;
   const name = goalName(p.task);
   const rw = p.rewardText || (p.task && p.task.rewardText) || '';
-  toastOnce([name, '新手任務'], `✅ ${ct('toastOnboarding', '新手任務完成')}：${name}${rw ? '　' + rw : ''}`);
+  toastOnce([name, '新手任務'], tpl('toastOnboardingDone', '✅ 新手任務完成：{name}　{reward}', { name, reward: rw }).trim());
   refreshDot(ctx.state);
 }
 
@@ -427,10 +469,10 @@ export function mountGoalsTab(body, state) {
   const obDoneBox = h('details', { class: 'u-ob-donebox' }, h('summary', { class: 'u-small muted' }));
   const obDoneList = h('div', { class: 'u-list2 u-ob-list' });
   obDoneBox.appendChild(obDoneList);
-  const obAllDone = h('div', { class: 'u-ob-alldone good' }, '🎉 新手任務全部完成！');
+  const obAllDone = h('div', { class: 'u-ob-alldone good' }, '🎉 ' + ct('onboardingDoneAll', '新手任務全部完成！'));
   const obShow = h('button', { class: 'btn small u-ob-show', type: 'button' }, '顯示新手任務');
   const obBox = h('div', { class: 'u-ob' }, obAllDone, obTodo, obDoneBox);
-  const obHead = sectionHead(ct('onboardingTitle', '新手任務'), h('span', { class: 'u-career-right' }, obCount, obHideBtn));
+  const obHead = sectionHead(ct('onboardingHeader', '新手任務'), h('span', { class: 'u-career-right' }, obCount, obHideBtn));
   const obRows = new Map();
   obHideBtn.addEventListener('click', () => {
     if (state.career && state.career.onboarding) state.career.onboarding.hidden = true;
@@ -447,7 +489,7 @@ export function mountGoalsTab(body, state) {
     const prog = h('div', { class: 'u-ob-prog' }, pb, ptxt);
     const rew = h('span', { class: 'tag u-chip good u-ob-rew' });
     const el = h('div', { class: 'card u-obtask', dataset: { task: t.id } },
-      mark, h('div', { class: 'u-grow u-ob-main' }, h('div', { class: 'u-ob-head' }, name, rew), desc, hint, prog));
+      mark, h('div', { class: 'u-grow u-ob-main' }, h('div', { class: 'u-ob-head' }, name), desc, prog, h('div', { class: 'u-ob-foot' }, hint, rew)));
     return { el, mark, name, desc, hint, pb, ptxt, prog, rew };
   }
   function updateTasks(list) {
@@ -467,7 +509,7 @@ export function mountGoalsTab(body, state) {
       if (showProg) { setBar(r.pb, (t.progress || 0) / t.target); setText(r.ptxt, `${nv(Math.min(t.progress || 0, t.target))} / ${nv(t.target)}`); }
       const rt = t.rewardText || '';
       r.rew.hidden = !rt;
-      setText(r.rew, t.done ? `已領 ${rt}` : `獎勵 ${rt}`);
+      setText(r.rew, t.done ? `✔ 已領 ${rt}` : `🎁 ${rt}`);
       const want = t.done ? obDoneList : obTodo;
       if (r.el.parentNode !== want) want.appendChild(r.el);
     }
@@ -484,7 +526,7 @@ export function mountGoalsTab(body, state) {
   // ---- 本年目標
   const goalHint = h('span', { class: 'u-small muted u-career-right' });
   const goalList = h('div', { class: 'u-list2 u-goals' });
-  const goalEmpty = h('div', { class: 'u-small muted u-empty' }, '本年目標準備中…');
+  const goalEmpty = h('div', { class: 'u-small muted u-empty' }, ct('emptyYearly', '本年目標準備中…'));
   const goalRows = new Map();
   function makeGoal(g) {
     const kind = h('span', { class: 'tag u-gkind' });
@@ -507,14 +549,14 @@ export function mountGoalsTab(body, state) {
       if (!r) { r = makeGoal(g); goalRows.set(g.id, r); goalList.appendChild(r.el); }
       const core = g.kind === 'core';
       setClass(r.el, 'core', core); setClass(r.el, 'u-done', !!g.done);
-      setText(r.kind, core ? '主要目標' : '加分目標');
+      setText(r.kind, core ? ct('coreLabel', '主要目標') : ct('bonusLabel', '加分目標'));
       setText(r.name, g.name || g.id);
-      setText(r.stat, g.done ? (g.claimed ? '🎁 已領獎' : '✔ 已達成') : '進行中');
+      setText(r.stat, g.done ? (g.claimed ? '🎁 ' + ct('claimed', '已領取') : '✔ 已達成') : '進行中');
       setClass(r.stat, 'u-ok', !!g.done);
       setText(r.desc, g.desc || '');
-      const ratio = g.target > 0 ? (g.progress || 0) / g.target : (g.pct > 1 ? g.pct / 100 : g.pct || 0);
+      const ratio = typeof g.pct === 'number' && isFinite(g.pct) ? (g.pct > 1 ? g.pct / 100 : g.pct) : (g.target > 0 ? (g.progress || 0) / g.target : 0);
       setBar(r.pb, g.done ? 1 : ratio);
-      setText(r.ptxt, g.done ? '完成' : (g.target > 0 && !(g.conds && g.conds.length > 1) ? `${nv(g.progress || 0)} / ${nv(g.target)}` : `${Math.round(Math.min(1, ratio) * 100)}%`));
+      setText(r.ptxt, g.done ? '完成' : `${Math.round(Math.min(1, Math.max(0, ratio)) * 100)}%`);
       const cs = Array.isArray(g.conds) ? g.conds : [];
       const sig = cs.map(c => c.key).join('|');
       if (sig !== r.condSig) {
@@ -529,11 +571,12 @@ export function mountGoalsTab(body, state) {
         setText(x.mark, c.ok ? '✔' : '✘');
         x.mark.parentNode.className = 'u-cond ' + (c.ok ? 'ok' : 'no');
         setText(x.label, c.label || c.key);
-        setText(x.val, c.target != null ? `${nv(c.value)} / ${cmpSym(c.cmp)}${nv(c.target)}` : nv(c.value));
+        const bin = (DATA && DATA.GOAL_METRICS && DATA.GOAL_METRICS[c.key] && DATA.GOAL_METRICS[c.key].unit) === '0/1';
+        setText(x.val, bin ? metricText(c.key, c.value) : c.target != null ? `${metricText(c.key, c.value)} / ${cmpSym(c.cmp)}${metricText(c.key, c.target)}` : metricText(c.key, c.value));
       });
       r.conds.hidden = !cs.length;
       const rt = g.rewardText || '';
-      setText(r.rew, rt ? (g.claimed ? `🎁 已領取：${rt}` : `🎁 獎勵：${rt}`) : '');
+      setText(r.rew, rt ? (g.claimed ? `🎁 ${ct('claimed', '已領取')}：${rt}` : `🎁 獎勵：${rt}`) : '');
       r.rew.hidden = !rt;
       setClass(r.rew, 'u-got', !!g.claimed);
     }
@@ -558,7 +601,7 @@ export function mountGoalsTab(body, state) {
 
   // ---- 歷年總結
   const revBox = h('div', { class: 'u-list2 u-revlist' });
-  const revEmpty = h('div', { class: 'u-small muted u-empty' }, '還沒有年度總結。每年年底會替這一年打分數、發評等。');
+  const revEmpty = h('div', { class: 'u-small muted u-empty' }, ct('emptyHistory', '還沒有年度總結。每年年底會替這一年打分數、發評等。'));
   const revRows = new Map();
   function makeReview(r) {
     const sumBody = h('div', { class: 'u-rv-detailbody' });
@@ -601,9 +644,9 @@ export function mountGoalsTab(body, state) {
 
   root.append(
     h('div', { class: 'u-section' }, obHead, obBox, obShow),
-    h('div', { class: 'u-section' }, sectionHead(ct('goalsTitle', '本年目標'), goalHint), goalList, goalEmpty),
-    h('div', { class: 'u-section' }, sectionHead(ct('careerTitle', '生涯進度')), sumCard),
-    h('div', { class: 'u-section' }, sectionHead(ct('reviewsTitle', '歷年總結')), revBox, revEmpty));
+    h('div', { class: 'u-section' }, sectionHead(ct('yearlyHeader', '本年度計畫'), goalHint), goalList, goalEmpty),
+    h('div', { class: 'u-section' }, sectionHead(ct('careerHeader', '生涯進度')), sumCard),
+    h('div', { class: 'u-section' }, sectionHead(ct('sections.history', '歷年總結')), revBox, revEmpty));
 
   function update() {
     if (!stillAlive()) return;
@@ -622,13 +665,13 @@ export function mountGoalsTab(body, state) {
     const goals = goalsNow(state);
     updateGoals(goals);
     const left = Math.max(1, 12 - ((state.time && state.time.month) || 1) + 1);
-    setText(goalHint, `第 ${state.time.year} 年・` + (left <= 1 ? '年底前最後一個月' : `還剩 ${left} 個月`));
+    setText(goalHint, `第 ${state.time.year} 年・` + (left <= 1 ? '年底前最後一個月' : tpl('timeLeft', '還剩 {months} 個月', { months: left })));
     // career summary + timeline
     const rv = reviewsNow(state);
     const sm = safe(() => CAR.careerSummary(state), null) || {};
     const years = careerYears();
     const yr = sm.year || state.time.year;
-    setText(sumYear, sm.endless ? `生涯第 ${yr} 年` : `生涯第 ${Math.min(yr, years)} / ${years} 年`);
+    setText(sumYear, sm.endless ? `生涯第 ${yr} 年` : '生涯' + tpl('careerYearLabel', '第 {year} 年 / 共 {total} 年', { year: Math.min(yr, years), total: years }));
     sumEndless.hidden = !sm.endless;
     const ag = gradeKey(sm.avgGrade);
     sumGrade.hidden = !ag;
