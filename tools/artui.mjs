@@ -87,7 +87,7 @@ for (const [w, h] of VIEWPORTS) {
   const ids = await page.evaluate(() => ({ st: __game.state.staff.map(s => s.id), bed: (__game.state.objects.find(o => o.defId === 'tens') || {}).id, sofa: (__game.state.objects.find(o => o.defId === 'sofa') || {}).id }));
   await sel(page, 'staff', ids.st[0]); await settle(page);
   let a = await arts(page, '.u-selcard');
-  ok(a.on >= 1 && a.names.some(n => /^staff\./.test(n)), `${tag} staff card shows a staff sprite (${a.names})`);
+  ok(a.on >= 1 && a.names.some(n => /^face\.\w+\.(normal|tired|happy)$/.test(n)), `${tag} staff card shows the mood bust (${a.names})`);
   await shot(page, `sel_staff_${tag}`);
   await sel(page, 'object', ids.bed); await settle(page);
   a = await arts(page, '.u-selcard');
@@ -135,7 +135,7 @@ for (const [w, h] of VIEWPORTS) {
   if (np) ok(a.names.some(n => /^expr\./.test(n)), `${tag} overview patient rows have mood tiles`);
   await tab(page, '員工'); await settle(page);
   a = await arts(page, '#panel');
-  ok(a.names.filter(n => /^staff\./.test(n)).length >= ids.st.length, `${tag} overview staff rows have staff sprites (${a.names.length})`);
+  ok(a.names.filter(n => /^face\./.test(n)).length >= ids.st.length, `${tag} overview staff rows have mood busts (${a.names.length})`);
   const pool = await page.evaluate(() => document.querySelectorAll('#panel [data-cid] .u-art[data-art="on"]').length);
   ok(pool >= 1, `${tag} hiring pool cards have staff sprites (${pool})`);
   ok((await overflowX(page)).length === 0, `${tag} no overflow in overview staff: ${(await overflowX(page)).join(',')}`);
@@ -257,6 +257,230 @@ for (const [w, h] of VIEWPORTS) {
   await shot(page, 'blocked_staff_390x844');
   const bad = problems.filter(p => !/Failed to load resource|net::ERR_FAILED|atlas/i.test(p));
   ok(bad.length === 0, 'blocked: no console problems beyond the aborted request ' + bad.join(' | '));
+  await page.context().close();
+}
+
+// ======================================================================= 4. mood faces (js/ui/moods.js + staff / patient / result UI)
+{
+  const { page, problems } = await open(390, 844, { mode: 'new' });
+  const U = await page.evaluate(async () => {
+    const M = await import('/js/ui/moods.js');
+    const out = {};
+    const st = (id, o) => ({ id, role: 'pt', stamina: 80, staminaMax: 100, morale: 60, state: 'idle', ...o });
+    M.resetMoods();
+    out.tiredStam = M.staffMood(st(1, { stamina: 20 }), 0);
+    out.tiredStamEdge = M.staffMood(st(11, { stamina: 30 }), 0);          // exactly 0.30 is not below the threshold
+    out.tiredMorale = M.staffMood(st(2, { morale: 20 }), 0);
+    out.tiredMoraleEdge = M.staffMood(st(12, { morale: 35 }), 0);
+    out.tiredFlag = M.staffMood(st(3, { tired: true }), 0);
+    out.tiredWant = M.staffMood(st(13, { wantRest: true }), 0);
+    out.happy = M.staffMood(st(4, { morale: 80, stamina: 90 }), 0);
+    out.happyLowStam = M.staffMood(st(14, { morale: 80, stamina: 40 }), 0);  // stamina < 0.5: only normal
+    out.happyHeavy = M.staffMood(st(15, { morale: 80, stamina: 60, state: 'working' }), 0);
+    out.normal = M.staffMood(st(5, {}), 0);
+    // hysteresis: happy at t=0, morale drops to 60 at t=3 -> still happy; at t=12 -> normal
+    const h = st(6, { morale: 80, stamina: 90 });
+    out.h0 = M.staffMood(h, 0); h.morale = 60;
+    out.h3 = M.staffMood(h, 3); out.h12 = M.staffMood(h, 12);
+    // ... but 'tired' is never delayed
+    const t = st(7, { morale: 80, stamina: 90 });
+    out.t0 = M.staffMood(t, 0); t.stamina = 10; out.t1 = M.staffMood(t, 1);
+    // treatment glow: satisfied patient -> happy for 20 min even at morale 60
+    const g = st(8, {});
+    M.noteTreatment(8, 80, 100); out.g0 = M.staffMood(g, 100); out.g25 = M.staffMood(g, 125);
+    out.faces = [M.staffFaceName('st', 'tired'), M.staffFaceName('tech', 'normal'), M.staffFaceName('pharmacist', 'happy'), M.staffFaceName('doctor', 'bogus')];
+    // patients
+    const P = (o) => ({ id: 900 + Math.random(), type: 'office', satisfaction: 60, patience: 80, patienceMax: 100, waitedMin: 5, hp: 0.2, stage: 'waiting', flags: {}, ...o });
+    const pm = o => { const m = M.patientMood(P(o), 0, 0.7); return m.tier + ':' + m.key; };
+    out.pat = {
+      delighted: pm({ satisfaction: 92 }), content: pm({ satisfaction: 65 }), neutral: pm({ satisfaction: 45 }), angry: pm({ satisfaction: 15 }),
+      impatient: pm({ satisfaction: 90, patience: 10 }), longWait: pm({ satisfaction: 60, waitedMin: 100 }), treating: pm({ satisfaction: 52, stage: 'treating' }),
+      leaveAngry: pm({ satisfaction: 70, stage: 'leaving', reason: 'angry' }), leaveCured: pm({ satisfaction: 60, stage: 'leaving', reason: 'done', cured: true }),
+      slippedOld: pm({ satisfaction: 55, flags: { slipped: true } }), slippedLow: pm({ satisfaction: 40, flags: { slipped: true } }), lowRecovery: pm({ satisfaction: 20, hp: 0.05 }),
+    };
+    const sl = P({ satisfaction: 80 }); M.noteSlip(sl.id, 50);
+    out.pat.slipNow = (m => m.tier + ':' + m.key)(M.patientMood(sl, 60, 0.7));
+    out.pat.slipLater = (m => m.tier + ':' + m.key)(M.patientMood(sl, 100, 0.7));
+    out.table = Object.fromEntries(['elder', 'office', 'kid', 'sports'].map(ty => [ty, [0, 1, 2, 3].map(i => M.patientExprIndex(ty, i))]));
+    out.exprNames = [0, 1, 2, 3].map(i => M.patientExprName('kid', i));
+    out.outcome = [
+      M.outcomeMood({ reputation: 5 }, [{ text: '聲譽 +5', good: true }]), M.outcomeMood({ money: -200000, reputation: -3 }, [{ text: '資金 -20萬', good: false }, { text: '聲譽 -3', good: false }]),
+      M.outcomeMood({}, []), M.outcomeMood({ money: -200000 }, [{ text: 'a', good: false }, { text: 'b', good: true }, { text: 'c', good: true }]), M.outcomeMood({ sat: 4, reputation: 1 }, null),
+    ];
+    out.net = [M.netMood(500), M.netMood(-500), M.netMood(0)];
+    return out;
+  });
+  ok(U.tiredStam === 'tired' && U.tiredStamEdge !== 'tired', `staffMood: tired by stamina < 30% (${U.tiredStam}/${U.tiredStamEdge})`);
+  ok(U.tiredMorale === 'tired' && U.tiredMoraleEdge !== 'tired', `staffMood: tired by morale < 35 (${U.tiredMorale}/${U.tiredMoraleEdge})`);
+  ok(U.tiredFlag === 'tired' && U.tiredWant === 'tired', 'staffMood: tired flag / wantRest => tired');
+  ok(U.happy === 'happy' && U.happyLowStam === 'normal' && U.happyHeavy === 'normal', `staffMood: happy by morale >= 75 (stamina >= 50%, not heavy) (${U.happy}/${U.happyLowStam}/${U.happyHeavy})`);
+  ok(U.normal === 'normal', 'staffMood: otherwise normal');
+  ok(U.h0 === 'happy' && U.h3 === 'happy' && U.h12 === 'normal', `staffMood hysteresis holds 10 game min (${U.h0}/${U.h3}/${U.h12})`);
+  ok(U.t0 === 'happy' && U.t1 === 'tired', 'staffMood: tired is never delayed by the hysteresis');
+  ok(U.g0 === 'happy' && U.g25 === 'normal', `staffMood: satisfied treatment keeps them happy ~20 min (${U.g0}/${U.g25})`);
+  ok(U.faces[0] === 'face.st.tired' && U.faces[1] === null && U.faces[2] === null && U.faces[3] === 'face.doctor.normal', `staffFaceName maps only game roles (${U.faces})`);
+  const exp = { delighted: '3:delighted', content: '2:content', neutral: '1:neutral', angry: '0:angry', impatient: '0:angry', longWait: '1:neutral', treating: '2:content', leaveAngry: '0:angry', leaveCured: '3:delighted', slippedOld: '1:neutral', slippedLow: '0:pain', lowRecovery: '0:pain', slipNow: '0:pain', slipLater: '3:delighted' };
+  for (const k of Object.keys(exp)) ok(U.pat[k] === exp[k], `patientMood ${k}: ${U.pat[k]} (want ${exp[k]})`);
+  ok(JSON.stringify(U.table) === JSON.stringify({ elder: [0, 1, 2, 3], office: [0, 1, 2, 3], kid: [2, 1, 0, 3], sports: [1, 0, 2, 3] }), `verified expr tile order ${JSON.stringify(U.table)}`);
+  ok(U.exprNames.join() === 'expr.kid.2,expr.kid.1,expr.kid.0,expr.kid.3', 'patientExprName follows the table');
+  ok(U.outcome.join() === 'happy,tired,normal,tired,happy' && U.net.join() === 'happy,tired,normal', `outcome / net mood (${U.outcome} | ${U.net})`);
+  await page.context().close();
+  void problems;
+}
+
+for (const [w, hh] of VIEWPORTS) {
+  const tag = `${w}x${hh}`;
+  const shots = (w === 390 || w === 1280);
+  const { page, problems } = await open(w, hh, { mode: 'new' });
+  await settle(page);
+  const sid = await page.evaluate(() => { const s = __game.state.staff.find(x => x.role === 'doctor') || __game.state.staff[0]; return { id: s.id, role: s.role }; });
+  const set = (props) => page.evaluate(([id, p]) => { Object.assign(__game.state.staff.find(s => s.id === id), p); }, [sid.id, props]);
+  const face = () => page.evaluate(() => { const e = document.querySelector('.u-selcard .u-shead .u-bust'); return e && e._art.name; });
+  const hint = () => page.evaluate(() => { const e = document.querySelector('.u-selcard .u-moodhint'); return e && !e.hidden ? e.textContent : null; });
+  await set({ stamina: 90, staminaMax: 100, morale: 60, tired: false, wantRest: false, state: 'idle' });
+  await sel(page, 'staff', sid.id); await settle(page);
+  ok(await face() === `face.${sid.role}.normal` && await hint() === '狀態平穩', `${tag} staff card: normal bust + hint (${await face()}, ${await hint()})`);
+  await set({ morale: 20 }); await settle(page);
+  ok(await face() === `face.${sid.role}.tired` && /心情|累|離職/.test(await hint() || ''), `${tag} staff card: low morale => tired bust (${await face()}, ${await hint()})`);
+  if (shots) await shot(page, `mood_staff_tired_${tag}`);
+  await set({ stamina: 10, morale: 60, tired: true }); await settle(page);
+  ok(await hint() === '看起來很累', `${tag} staff card: exhausted hint (${await hint()})`);
+  await set({ stamina: 95, morale: 90, tired: false, wantRest: false });
+  await page.evaluate(async () => { (await import('/js/ui/moods.js')).resetMoods(); });
+  await settle(page);
+  ok(await face() === `face.${sid.role}.happy` && await hint() === '心情不錯', `${tag} staff card: high morale => happy bust (${await face()}, ${await hint()})`);
+  if (shots) await shot(page, `mood_staff_happy_${tag}`);
+  ok((await overflowX(page)).length === 0, `${tag} no overflow with staff mood card: ${(await overflowX(page)).join(',')}`);
+  await page.evaluate(() => { __game.ui.selected = null; __game.bus.emit('select:changed', { selected: null }); });
+
+  // staff list: row bust follows the mood live, the row element is NOT rebuilt
+  await page.keyboard.press('v'); await settle(page); await tab(page, '員工'); await settle(page);
+  const row = () => page.evaluate(id => { const r = document.querySelector(`#panel .u-srow2[data-id="${id}"]`); if (!r) return null; r._mark = r._mark || Math.random(); const b = r.querySelector('.u-bust'); const hn = r.querySelector('.u-moodhint'); return { mark: r._mark, name: b && b._art.name, hint: hn && !hn.hidden ? hn.textContent : null }; }, sid.id);
+  await set({ stamina: 90, morale: 60, tired: false }); await page.evaluate(async () => { (await import('/js/ui/moods.js')).resetMoods(); }); await settle(page);
+  const r1 = await row();
+  await set({ morale: 30 }); await settle(page);
+  const r2 = await row();
+  ok(r1 && r2 && r1.mark === r2.mark && r1.name === `face.${sid.role}.normal` && r2.name === `face.${sid.role}.tired`, `${tag} staff list bust updates in place (${r1 && r1.name} -> ${r2 && r2.name})`);
+  ok(r2 && /心情|累|離職/.test(r2.hint || ''), `${tag} staff list mood hint (${r2 && r2.hint})`);
+  const pool = await page.evaluate(() => [...document.querySelectorAll('#panel [data-cid] .u-bust')].map(e => e._art.name));
+  ok(pool.length >= 1 && pool.every(n => /^face\.\w+\.normal$/.test(n)), `${tag} hire pool cards use the normal bust (${pool})`);
+  ok((await overflowX(page)).length === 0, `${tag} no overflow in staff list / hire pool: ${(await overflowX(page)).join(',')}`);
+  if (shots) {
+    await set({ morale: 30 }); await settle(page);
+    await shot(page, `mood_stafflist_${tag}`);
+    await page.evaluate(() => document.querySelector('#panel [data-cid]')?.scrollIntoView({ block: 'center' })); await page.waitForTimeout(200);
+    await shot(page, `mood_hirepool_${tag}`);
+  }
+  await set({ morale: 70 });
+  await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+
+  // result modal: doctor bust follows the applied effects
+  const pending = (label, effects) => page.evaluate(async ([label, effects]) => {
+    const d = { id: 'artui_t', title: '測試事件', text: '測試用決策。', choices: [{ label, effects, result: '結果文字。' }, { label: '略過', effects: {}, result: '什麼也沒發生。' }] };
+    __game.state.events.pendingDilemma = d; __game.bus.emit('dilemma:show', { dilemma: d });
+  }, [label, effects]);
+  const resultFace = async (label, effects, nth = 0) => {
+    await pending(label, effects); await page.waitForTimeout(250);
+    await page.evaluate(i => document.querySelectorAll('.modal .u-choice')[i]?.click(), nth); await page.waitForTimeout(350);
+    return page.evaluate(() => { const e = document.querySelector('.modal .u-resbody .u-bust'); return { name: e && e._art.name, title: document.querySelector('.modal-title')?.textContent }; });
+  };
+  let rf = await resultFace('好事', { reputation: 6, sat: 5 });
+  ok(rf.name === 'face.doctor.happy', `${tag} result modal good outcome => doctor happy (${rf.name})`);
+  if (shots) await shot(page, `mood_result_good_${tag}`);
+  ok((await overflowX(page)).length === 0, `${tag} no overflow in result modal: ${(await overflowX(page)).join(',')}`);
+  await closeAll(page); await page.waitForTimeout(250);
+  rf = await resultFace('壞事', { money: -150000, reputation: -4 });
+  ok(rf.name === 'face.doctor.tired', `${tag} result modal bad outcome => doctor tired (${rf.name})`);
+  if (shots) await shot(page, `mood_result_bad_${tag}`);
+  await closeAll(page); await page.waitForTimeout(250);
+  rf = await resultFace('好事', {}, 1);
+  ok(rf.name === 'face.doctor.normal', `${tag} result modal neutral outcome => doctor normal (${rf.name})`);
+  await closeAll(page); await page.waitForTimeout(250);
+
+  // staff event (resignation) -> tired face of the matching role
+  await set({ morale: 10 });
+  await page.evaluate(async ([role]) => {
+    const d = { id: 'staff_resign', title: '員工遞出辭呈', text: '想休息一陣子。', choices: [{ label: '慰留', effects: { morale: { role, delta: 12 } }, result: 'ok' }, { label: '放行', effects: {}, result: 'bye' }] };
+    __game.state.events.pendingDilemma = d; __game.bus.emit('dilemma:show', { dilemma: d });
+  }, [sid.role]);
+  await page.waitForTimeout(300);
+  const sp = await page.evaluate(() => { const e = document.querySelector('.modal .u-speaker .u-art'); return e && e._art.name; });
+  ok(sp === `face.${sid.role}.tired`, `${tag} resignation prompt shows the ${sid.role} tired face (${sp})`);
+  if (shots) await shot(page, `mood_resign_${tag}`);
+  await page.evaluate(() => document.querySelector('.modal .u-choice')?.click()); await page.waitForTimeout(300); await closeAll(page); await page.waitForTimeout(250);
+  await set({ morale: 70 });
+
+  // month report: doctor mood from the net
+  for (const [net, want] of [[3000, 'happy'], [-3000, 'tired'], [0, 'normal']]) {
+    await page.evaluate(n => __game.bus.emit('nhi:settled', { year: 1, month: 3, points: 1200, cap: 9000, pointValue: 1, nhiIncome: 1200, income: 5000, expense: 5000 - n, net: n }), net);
+    await page.waitForTimeout(300);
+    const nm = await page.evaluate(() => { const e = document.querySelector('.modal .u-rephead .u-bust'); return e && e._art.name; });
+    ok(nm === `face.doctor.${want}`, `${tag} month report net ${net} => doctor ${want} (${nm})`);
+    if (shots && net !== 0) await shot(page, `mood_report_${net > 0 ? 'profit' : 'loss'}_${tag}`);
+    ok((await overflowX(page)).length === 0, `${tag} no overflow in month report (net ${net}): ${(await overflowX(page)).join(',')}`);
+    await closeAll(page); await page.waitForTimeout(250);
+  }
+
+  // patient card at the four tiers
+  const np = await ensurePatients(page);
+  if (np) {
+    const pid = await page.evaluate(() => __game.state.patients[0].id);
+    const type = await page.evaluate(() => __game.state.patients[0].type);
+    const table = { elder: [0, 1, 2, 3], office: [0, 1, 2, 3], kid: [2, 1, 0, 3], sports: [1, 0, 2, 3] }[type];
+    const cases = [[10, 80, '焦躁', 0], [50, 80, '普通', 1], [68, 80, '滿意', 2], [95, 90, '超開心', 3]];
+    for (const [satv, pat, label, tier] of cases) {
+      await page.evaluate(([id, sv, pv]) => { const p = __game.state.patients.find(x => x.id === id); p.satisfaction = sv; p.patience = pv; p.hp = 0.4; p.waitedMin = 5; p.stage = 'waiting'; p.flags = {}; }, [pid, satv, pat]);
+      await sel(page, 'patient', pid); await settle(page);
+      const got = await page.evaluate(() => { const m = document.querySelector('.u-selcard .u-art-tile'); const l = document.querySelector('.u-selcard .u-moodlbl'); return { tile: m && m._art.name, label: l && !l.hidden ? l.textContent : null }; });
+      ok(got.tile === `expr.${type}.${table[tier]}` && (got.label || '').includes(label), `${tag} patient card tier ${tier}: ${got.tile} / ${got.label} (want expr.${type}.${table[tier]} ${label})`);
+      if (shots) await shot(page, `mood_patient_t${tier}_${tag}`);
+      ok((await overflowX(page)).length === 0, `${tag} no overflow patient card tier ${tier}: ${(await overflowX(page)).join(',')}`);
+    }
+    await page.evaluate(() => { __game.ui.selected = null; __game.bus.emit('select:changed', { selected: null }); });
+    await page.keyboard.press('v'); await settle(page); await tab(page, '病患').catch(() => {}); await settle(page);
+    const rowTxt = await page.evaluate(() => [...document.querySelectorAll('#panel .u-prow .u-moodlbl')].filter(e => !e.hidden).map(e => e.textContent));
+    ok(rowTxt.length >= 1 && rowTxt.every(t => /焦躁|痛|普通|滿意|超開心/.test(t)), `${tag} overview patient rows carry a mood label (${rowTxt.slice(0, 3)})`);
+    if (shots) await shot(page, `mood_patientlist_${tag}`);
+    ok((await overflowX(page)).length === 0, `${tag} no overflow in patient list: ${(await overflowX(page)).join(',')}`);
+    await page.keyboard.press('Escape');
+  } else console.log('note: no patient spawned');
+  ok(problems.length === 0, `${tag} no console problems (moods) ` + problems.join(' | '));
+  await page.context().close();
+}
+
+// classic style + blocked atlas: faces and mood texts vanish, the old emoji/text thumbnails stay
+for (const mode of ['classic', 'blocked']) {
+  const { page, problems } = await open(390, 844, { mode });
+  await settle(page);
+  const sid = await page.evaluate(() => __game.state.staff[0].id);
+  await sel(page, 'staff', sid); await settle(page);
+  const c = await page.evaluate(() => ({
+    bust: document.querySelector('.u-selcard .u-bust')?.dataset.art, hint: !!document.querySelector('.u-selcard .u-moodhint:not([hidden])'),
+    head: document.querySelector('.u-selcard .u-shead').textContent.length,
+  }));
+  ok(c.bust === 'off' || c.bust === 'none', `${mode}: staff card bust is not painted (${c.bust})`);
+  ok(!c.hint && c.head > 2, `${mode}: staff card has no mood hint, keeps emoji + name`);
+  await page.keyboard.press('v'); await settle(page); await tab(page, '員工'); await settle(page);
+  const l = await page.evaluate(() => ({ on: document.querySelectorAll('#panel .u-bust[data-art="on"]').length, hint: document.querySelectorAll('#panel .u-moodhint:not([hidden])').length, off: document.querySelectorAll('#panel .u-bust[data-art="off"]').length }));
+  ok(l.on === 0 && l.hint === 0 && l.off >= 1, `${mode}: staff list uses the emoji, no hints (${JSON.stringify(l)})`);
+  ok((await overflowX(page)).length === 0, `${mode}: no overflow in staff list`);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  await page.evaluate(async () => {
+    const d = { id: 'artui_t', title: '測試事件', text: '測試用決策。', choices: [{ label: '好事', effects: { reputation: 6 }, result: '結果文字。' }] };
+    __game.state.events.pendingDilemma = d; __game.bus.emit('dilemma:show', { dilemma: d });
+  });
+  await page.waitForTimeout(250);
+  await page.evaluate(() => document.querySelector('.modal .u-choice')?.click()); await page.waitForTimeout(350);
+  const rm = await page.evaluate(() => ({ shown: [...document.querySelectorAll('.modal .u-bust')].some(e => e.dataset.art === 'on'), txt: document.querySelector('.modal-body')?.textContent.includes('你選擇了') }));
+  ok(!rm.shown && rm.txt, `${mode}: result modal text intact, no bust`);
+  await closeAll(page); await page.waitForTimeout(250);
+  await page.evaluate(() => __game.bus.emit('nhi:settled', { year: 1, month: 3, points: 1200, cap: 9000, pointValue: 1, nhiIncome: 1200, income: 5000, expense: 4000, net: 1000 }));
+  await page.waitForTimeout(300);
+  const rep = await page.evaluate(() => { const e = document.querySelector('.modal .u-rephead'); return e ? getComputedStyle(e).display : 'none'; });
+  ok(mode === 'classic' ? rep === 'none' : true, `${mode}: month report header hidden in classic (${rep})`);
+  await closeAll(page);
+  const bad = problems.filter(p => !(mode === 'blocked' && /Failed to load resource|net::ERR_FAILED|atlas/i.test(p)));
+  ok(bad.length === 0, `${mode}: no console problems (moods) ` + bad.join(' | '));
   await page.context().close();
 }
 

@@ -5,6 +5,8 @@
 import { bus } from '../core/bus.js';
 import { loadArt, artReady, artRect, artUrl, artEnabled, artStaffUrl } from '../render/art.js';
 import { conceptThumb } from '../render/concept_objects.js';
+import { PATIENT_TYPES } from '../data/patients.js';
+import { patientMood, patientExprName, staffFaceName, PATIENT_MOOD_LABELS } from './moods.js';
 
 let loadState = 'pending';     // 'pending' | 'ok' | 'fail'  (fail => the atlas could not be fetched: stop reserving space)
 let atlasW = 1024, atlasH = 1024;
@@ -174,17 +176,24 @@ function paintBanner(el) {
 // ---- sprite / mood tables used by the panels ------------------------------------------------------------------
 export const STAFF_SPRITE = { doctor: 'staff.doctor', nurse: 'staff.nurse', pt: 'staff.pt', ot: 'staff.ot', st: 'staff.st', tech: 'staff.tech' };
 export const PATIENT_SPRITE = { elder: 'patient.elder.stand', office: 'patient.office.work', kid: 'patient.kid.school', sports: 'patient.sports.run' };
-// expr.<type>.{0..3} tile per mood tier [angry/in-pain, neutral, content, delighted] (judged from the sheet; the tiles are not
-// in the same order for every character)
-const MOOD_TILES = { elder: [2, 0, 1, 3], office: [0, 1, 2, 3], kid: [2, 0, 1, 3], sports: [0, 1, 2, 3] };
+// expr.<type>.{0..3} tile per mood tier: the verified per-type order lives in moods.js (PATIENT_TILE_ORDER).
 export function moodTier(sat, patience) {
   if (patience != null && patience < 18) return 0;
   return sat < 30 ? 0 : sat < 55 ? 1 : sat < 78 ? 2 : 3;
 }
-export function moodSprite(type, sat, patience) {
-  const tiles = MOOD_TILES[type];
-  if (!tiles) return null;
-  return `expr.${type}.${tiles[moodTier(sat, patience)]}`;
+export function moodSprite(type, sat, patience) { return patientExprName(type, moodTier(sat, patience)); }
+// full patient mood (see moods.js patientMood) -> {name: expr tile, label, mood}
+export function patientMoodArt(p, now) {
+  const P = PATIENT_TYPES[p.type];
+  const mood = patientMood(p, now, P && P.cureNeeded);
+  return { name: patientExprName(p.type, mood.tier), label: PATIENT_MOOD_LABELS[mood.key], mood };
+}
+// mood bust of a staff member (face.<role>.<mood>) in a fixed box; falls back to the role emoji like the old thumbnail did.
+// el.setMood(mood) swaps the face (no row rebuild).
+export function staffBust(role, mood, o = {}) {
+  const el = artEl(staffFaceName(role, mood), { height: o.height || 48, width: o.width || o.height || 48, fallback: o.fallback, fbSize: o.fbSize, cls: 'u-bust' + (o.cls ? ' ' + o.cls : ''), title: o.title });
+  el.setMood = m => el.setArt(staffFaceName(role, m));
+  return el;
 }
 // BUILDABLES id -> item sprite (only the pieces whose concept art is an unmistakable match)
 export const ITEM_SPRITE = { bed: 'item.bed', traction: 'item.traction', tens: 'item.tens', soft_mat: 'item.yoga', shockwave: 'item.ultrasound' };

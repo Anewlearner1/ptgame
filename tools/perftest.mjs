@@ -13,7 +13,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 
 async function open({ style = 'new', touch = false, w = 1280, h = 720, dpr = 1, search = '', keep = null, routes = null } = {}) {
-  const ctx = keep || await browser.newContext(touch ? { viewport: { width: w, height: h }, deviceScaleFactor: dpr, isMobile: true, hasTouch: true, userAgent: UA } : { viewport: { width: w, height: h }, deviceScaleFactor: dpr });
+  // service workers are blocked when a route mock is used (page.route cannot see requests the SW makes itself)
+  const sw = routes ? { serviceWorkers: 'block' } : {};
+  const ctx = keep || await browser.newContext(touch ? { viewport: { width: w, height: h }, deviceScaleFactor: dpr, isMobile: true, hasTouch: true, userAgent: UA, ...sw } : { viewport: { width: w, height: h }, deviceScaleFactor: dpr, ...sw });
   if (!keep) {
     await ctx.addInitScript(([st]) => {
       try { if (!sessionStorage.getItem('pt-init')) { sessionStorage.setItem('pt-init', '1'); localStorage.clear(); if (st === 'classic') localStorage.setItem('ptgame.art', 'classic'); } } catch (e) { /* ignore */ }
@@ -21,7 +23,7 @@ async function open({ style = 'new', touch = false, w = 1280, h = 720, dpr = 1, 
   }
   const page = await ctx.newPage();
   const problems = [];
-  page.on('console', m => { if (['error', 'warning'].includes(m.type())) problems.push(m.type() + ': ' + m.text()); });
+  page.on('console', m => { if (['error', 'warning'].includes(m.type()) && !/Service Worker registration blocked/.test(m.text())) problems.push(m.type() + ': ' + m.text()); });
   page.on('pageerror', e => problems.push('PAGEERR ' + e.message));
   page.on('requestfailed', r => problems.push('REQFAIL ' + r.url()));
   page.on('response', r => { if (r.status() >= 400) problems.push('HTTP ' + r.status() + ' ' + r.url()); });

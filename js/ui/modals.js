@@ -3,6 +3,8 @@ import { bus } from '../core/bus.js';
 import { ctx } from './ctx.js';
 import { h } from './dom.js';
 import { artEl, artBanner } from './artdom.js';
+import { staffFaceName, doctorFace, outcomeMood, netMood } from './moods.js';
+import { moraleOf } from '../sim/staff.js';
 import { fmt, money, signed, effectChips } from './fmt.js';
 import { showModal, closeModal } from './modal.js';
 import { LOTS } from '../data/lots.js';
@@ -90,7 +92,11 @@ export function showSettlement(p) {
     rows.map(r => kv(r[0], money(r[1]))),
     h('div', { class: 'u-kvrow u-total' }, h('span', null, '合計'), h('b', { class: cls }, money(total))));
 
+  const repMood = netMood(Math.round(net));
   const body = h('div', { class: 'u-report' },
+    h('div', { class: 'u-speaker u-rephead u-artonly' },
+      artEl(doctorFace(repMood), { size: 56, cls: 'u-bust u-bust-card', title: '診所醫師' }),
+      h('p', { class: 'u-p u-repsay', dataset: { mood: repMood } }, repMood === 'happy' ? '這個月有賺，辛苦大家了！' : repMood === 'tired' ? '這個月虧損，要再想想辦法…' : '這個月收支打平。')),
     h('div', { class: 'u-stats3' },
       h('div', { class: 'stat' }, h('span', null, '健保申報點數'), h('span', null, fmt(pts))),
       h('div', { class: 'stat' }, h('span', null, '本月點值'), h('span', { class: diluted ? 'bad' : 'good' }, pv.toFixed(2))),
@@ -137,6 +143,23 @@ function resolveDef(d) {
   return def ? { ...def, ...d } : d;
 }
 
+// Staff-related decisions (poaching, resignation): the speaker is the role's tired face when that staff member's morale is low.
+const STAFF_EVENTS = ['poach', 'staff_resign', 'pt_resign'];
+function staffEventFace(state, d) {
+  if (!d || !STAFF_EVENTS.includes(d.id)) return null;
+  let role = null;
+  for (const c of d.choices || []) {
+    const fx = c.effects || {};
+    role = (fx.resign && fx.resign.role) || (fx.morale && fx.morale.role) || role;
+  }
+  const pool = (state.staff || []).filter(s => !role || s.role === role);
+  let low = null;
+  for (const s of pool) if (!low || moraleOf(s) < moraleOf(low)) low = s;
+  if (!low || moraleOf(low) >= 50) return null;
+  const name = staffFaceName(low.role, 'tired');
+  return name ? { name, title: low.name } : null;
+}
+
 export function showPending(raw) {
   const state = ctx.state;
   const d = resolveDef(raw || state.events.pendingDilemma);
@@ -156,8 +179,11 @@ export function showPending(raw) {
       onclick: () => choose(d, i),
     }, h('span', { class: 'kbd' }, String(i + 1)), h('span', { class: 'u-choice-main' }, (c.chance ? '🎲 ' : '') + c.label), note.length ? h('span', { class: 'u-choice-note' }, note) : null));
   });
+  const face = staffEventFace(state, d);
   const body = h('div', null,
-    h('div', { class: 'u-speaker' }, artEl('portrait.doctor', { size: 72, cls: 'u-art-tile u-art-portrait', title: '診所醫師' }), h('p', { class: 'u-p' }, d.text || '')), list);
+    h('div', { class: 'u-speaker' }, face
+      ? artEl(face.name, { size: 72, cls: 'u-bust u-bust-card u-art-portrait', title: face.title })
+      : artEl('portrait.doctor', { size: 72, cls: 'u-art-tile u-art-portrait', title: '診所醫師' }), h('p', { class: 'u-p' }, d.text || '')), list);
   showModal({
     title: (isDilemma ? '🤔 兩難抉擇：' : '📰 事件：') + (d.title || ''),
     body, noActions: true, dismissable: false, pause: false, tag: 'dilemma',
@@ -178,11 +204,15 @@ function choose(d, i) {
   closeModal(true);
   // what really happened (a 🎲 option shows only the side that was rolled)
   const eff = out.chips && out.chips.length ? out.chips : effectChips(out.effects || ch.effects);
-  const body = h('div', null,
-    h('p', { class: 'u-p' }, h('b', null, `你選擇了：${ch.label}`)),
-    out.roll ? h('p', { class: 'u-p ' + (out.roll === 'win' ? 'good' : 'bad') }, out.roll === 'win' ? '🎲 運氣不錯，成功了！' : '🎲 運氣不好，失敗了…') : null,
-    h('p', { class: 'u-p' }, out.result || ch.result || ''),
-    eff.length ? chips(eff) : null);
+  let mood = outcomeMood(out.effects || ch.effects, eff);
+  if (mood === 'normal' && out.roll === 'lose') mood = 'tired';
+  const body = h('div', { class: 'u-speaker u-resbody' },
+    artEl(doctorFace(mood), { size: 64, cls: 'u-bust u-bust-card', title: '診所醫師' }),
+    h('div', { class: 'u-resmain', dataset: { mood } },
+      h('p', { class: 'u-p' }, h('b', null, `你選擇了：${ch.label}`)),
+      out.roll ? h('p', { class: 'u-p ' + (out.roll === 'win' ? 'good' : 'bad') }, out.roll === 'win' ? '🎲 運氣不錯，成功了！' : '🎲 運氣不好，失敗了…') : null,
+      h('p', { class: 'u-p' }, out.result || ch.result || ''),
+      eff.length ? chips(eff) : null));
   showModal({ title: '📋 結果', body, tag: 'dilemma-result', buttons: [{ label: '好的', primary: true }] });
 }
 

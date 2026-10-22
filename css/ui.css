@@ -507,3 +507,25 @@ html.style-concept .perf-bench .pb-bar > i { background: var(--c-blue-hi); }
 .toast.u-update { pointer-events: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; animation: none; }
 .toast.u-update .btn { flex: 0 0 auto; }
 html.style-concept .toast.u-update { padding-left: 46px; }
+
+/* ---------- mood faces (js/ui/moods.js, artdom.js staffBust / patient mood label) ---------------------------------------- */
+.u-moodlbl, .u-moodhint { font-size: 12px; font-weight: 800; color: var(--muted); white-space: nowrap; }
+.u-moodlbl[hidden], .u-moodhint[hidden] { display: none; }
+.u-moodlbl { margin-left: 4px; }
+.u-moodlbl[data-key="angry"], .u-moodlbl[data-key="pain"], .u-moodhint[data-mood="tired"] { color: #b3304a; }
+.u-moodlbl[data-key="content"], .u-moodhint[data-mood="happy"] { color: #1d7a42; }
+.u-moodlbl[data-key="delighted"] { color: #a8561a; }
+.u-srow2 .u-bars3.u-bars4 > .u-moodhint { grid-column: 1 / -1; }
+.u-bl.u-morale .u-moodhint { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.u-resbody > .u-resmain { flex: 1 1 0; min-width: 0; }
+.u-resmain > .u-p:first-child { margin-top: 0; }
+.u-artonly { display: none; }
+html.style-concept .u-artonly { display: flex; }
+.u-rephead { align-items: center; margin-bottom: 8px; }
+.u-rephead > .u-p { margin: 0; flex: 1 1 0; min-width: 0; font-weight: 700; }
+.u-rephead > .u-p[data-mood="happy"] { color: #1d7a42; }
+.u-rephead > .u-p[data-mood="tired"] { color: #b3304a; }
+html.style-concept .u-bust[data-art="on"] { background: #e4f0fb; border-radius: 12px; box-shadow: 0 0 0 2px var(--c-navy, #1e365a); }
+html.style-concept .u-bust[data-art="on"] > i { margin-top: 2px; }
+html.style-concept .u-bust.u-bust-card { border-radius: 14px; }
+html.style-concept.lay-compact .u-selbody > .u-shead > .u-art.u-bust { --aw: 36px !important; --ah: 40px !important; }

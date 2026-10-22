@@ -10,7 +10,10 @@ import { h, clear, setText, bar, setBar, toneOf, setClass, append } from './dom.
 import { STAGE_LABELS, STAFF_STATE_LABELS, TYPE_ICONS, ROLE_ICONS, money } from './fmt.js';
 import { confirmDialog } from './modal.js';
 import { layout, setBMode } from './layout.js';
-import { artEl, thumbEl, STAFF_SPRITE, PATIENT_SPRITE, moodSprite, staffTaskIcon, itemSprite } from './artdom.js';
+import { artEl, artOn, thumbEl, staffBust, patientMoodArt, STAFF_SPRITE, PATIENT_SPRITE, staffTaskIcon, itemSprite } from './artdom.js';
+import { initMoods, gameMinutes, staffMood, staffMoodHint } from './moods.js';
+import { ctx } from './ctx.js';
+import * as ST from '../sim/staff.js';
 
 let card = null, body = null, key = null, refs = null;
 
@@ -18,6 +21,7 @@ export function initSelection(state, ui) {
   card = h('div', { class: 'u-selcard', hidden: true });
   document.getElementById('stage').appendChild(card);
   bus.on('select:changed', () => { key = null; });
+  initMoods(bus, () => ctx.state);
 }
 
 function find(state, sel) {
@@ -40,17 +44,22 @@ function buildPatient(state, ui, e) {
   refs = {
     stage: h('span', { class: 'tag' }), pat: bar(), sat: bar(), cure: bar(), bubble: h('div', { class: 'u-bubble' }),
     plan: h('div', { class: 'u-chips' }), paid: h('span'), flags: h('span', { class: 'muted' }),
-    mood: artEl(moodSprite(e.type, e.satisfaction, e.patience), { size: 44, cls: 'u-art-tile u-art-ring', fallback: TYPE_ICONS[e.type] || '🙂', title: '心情' }),
+    mood: artEl(patientMoodArt(e, gameMinutes(state)).name, { size: 44, cls: 'u-art-tile u-art-ring', fallback: TYPE_ICONS[e.type] || '🙂', title: '心情' }),
+    moodTxt: h('span', { class: 'u-moodlbl', hidden: true }),
   };
   body.append(
     h('div', { class: 'u-shead' }, h('span', { class: 'u-art-pair' }, refs.mood, artEl(PATIENT_SPRITE[e.type], { height: 48, width: 34, title: P.name || e.type })),
-      h('div', { class: 'u-stitle' }, h('b', null, e.name), h('span', { class: 'muted' }, P.name || e.type)), refs.stage),
+      h('div', { class: 'u-stitle' }, h('b', null, e.name), h('span', { class: 'muted' }, P.name || e.type, refs.moodTxt)), refs.stage),
     row('耐心', refs.pat), row('滿意度', refs.sat), row('康復進度', refs.cure),
     refs.plan, refs.bubble, row('已付', refs.paid), refs.flags);
 }
 function updPatient(state, e) {
   const P = PATIENT_TYPES[e.type] || {};
-  refs.mood.setArt(moodSprite(e.type, e.satisfaction, e.patience));
+  const pm = patientMoodArt(e, gameMinutes(state));
+  refs.mood.setArt(pm.name);
+  const on = artOn() && !!pm.name;
+  refs.moodTxt.hidden = !on;
+  if (on) { setText(refs.moodTxt, '・' + pm.label); refs.moodTxt.dataset.key = pm.mood.key; refs.moodTxt.dataset.tip = pm.mood.reason; }
   setText(refs.stage, STAGE_LABELS[e.stage] || e.stage);
   setBar(refs.pat, e.patience / 100, toneOf(e.patience / 100));
   setBar(refs.sat, e.satisfaction / 100, toneOf(e.satisfaction / 100));
@@ -82,16 +91,17 @@ function buildStaff(state, ui, e) {
   refs = {
     st: h('span', { class: 'tag' }), stam: bar(), taskTxt: h('span'),
     taskIco: artEl(null, { size: 22, cls: 'u-art-ico', title: '工作中' }),
+    mor: bar(), morNum: h('em', { class: 'u-num' }), hint: h('span', { class: 'u-moodhint', hidden: true }),
+    bust: e.role in STAFF_SPRITE ? staffBust(e.role, staffMood(e, gameMinutes(state)), { height: 52, width: 44, fallback: ROLE_ICONS[e.role] || '🧑‍⚕️', title: R.name || e.role }) : null,
   };
   refs.task = h('div', { class: 'muted u-seltask' }, refs.taskIco, refs.taskTxt);
   append(body, [
-    h('div', { class: 'u-shead' }, e.role in STAFF_SPRITE
-      ? artEl(STAFF_SPRITE[e.role], { height: 52, width: 38, fallback: ROLE_ICONS[e.role] || '🧑‍⚕️', title: R.name || e.role })
-      : h('span', { class: 'u-sico' }, ROLE_ICONS[e.role] || '🧑‍⚕️'),
+    h('div', { class: 'u-shead' }, refs.bust || h('span', { class: 'u-sico' }, ROLE_ICONS[e.role] || '🧑‍⚕️'),
       h('div', { class: 'u-stitle' }, h('b', null, e.name), h('span', { class: 'muted' }, R.name || e.role)), refs.st),
     row('技術', h('span', { class: 'u-bl' }, bar(e.skill / 10), h('em', { class: 'u-num' }, e.skill))),
     row('魅力', h('span', { class: 'u-bl' }, bar(e.charm / 10), h('em', { class: 'u-num' }, e.charm))),
     row('體力', refs.stam),
+    row('士氣', h('span', { class: 'u-bl u-morale' }, refs.mor, refs.morNum, refs.hint)),
     trait ? h('div', { class: 'u-chips' }, h('span', { class: 'tag', tip: trait.desc }, trait.name), h('span', { class: 'muted u-small' }, trait.desc)) : null,
     row('月薪', h('span', null, money(e.salary))),
     refs.task]);
@@ -100,6 +110,13 @@ function updStaff(state, e) {
   setText(refs.st, STAFF_STATE_LABELS[e.state] || e.state);
   const r = e.stamina / (e.staminaMax || 100);
   setBar(refs.stam, r, toneOf(r));
+  const mo = ST.moraleOf(e);
+  setBar(refs.mor, mo / 100, toneOf(mo / 100));
+  setText(refs.morNum, Math.round(mo));
+  const mood = staffMood(e, gameMinutes(state));
+  if (refs.bust) refs.bust.setMood(mood);
+  refs.hint.hidden = !artOn() || !refs.bust;
+  if (!refs.hint.hidden) { setText(refs.hint, staffMoodHint(e, mood)); refs.hint.dataset.mood = mood; }
   let t = '';
   if (e.task) {
     const T = TREATMENTS[e.task.treatmentId];
