@@ -1,10 +1,10 @@
 {
  "image": "atlas.png",
  "w": 1024,
- "h": 1024,
+ "h": 2048,
  "sprites": {
   "staff.doctor": {
-   "x": 585,
+   "x": 742,
    "y": 2,
    "w": 101,
    "h": 166,
@@ -12,15 +12,15 @@
    "ay": 165
   },
   "staff.nurse": {
-   "x": 2,
-   "y": 198,
+   "x": 575,
+   "y": 305,
    "w": 91,
    "h": 159,
    "ax": 47,
    "ay": 158
   },
   "staff.pt": {
-   "x": 688,
+   "x": 845,
    "y": 2,
    "w": 89,
    "h": 163,
@@ -28,31 +28,31 @@
    "ay": 162
   },
   "staff.ot": {
-   "x": 95,
-   "y": 198,
+   "x": 668,
+   "y": 305,
    "w": 94,
    "h": 157,
    "ax": 51,
    "ay": 156
   },
   "staff.pharmacist": {
-   "x": 866,
-   "y": 2,
+   "x": 476,
+   "y": 305,
    "w": 97,
    "h": 159,
    "ax": 46,
    "ay": 158
   },
   "staff.tech": {
-   "x": 779,
-   "y": 2,
+   "x": 389,
+   "y": 305,
    "w": 85,
    "h": 160,
    "ax": 39,
    "ay": 159
   },
   "portrait.doctor": {
-   "x": 405,
+   "x": 562,
    "y": 2,
    "w": 178,
    "h": 170,
@@ -60,447 +60,447 @@
    "ay": 170
   },
   "role.inquiry": {
-   "x": 868,
-   "y": 547,
+   "x": 543,
+   "y": 1058,
    "w": 58,
    "h": 61,
    "ax": 29,
    "ay": 61
   },
   "role.therapy": {
-   "x": 456,
-   "y": 460,
+   "x": 139,
+   "y": 985,
    "w": 54,
    "h": 66,
    "ax": 27,
    "ay": 66
   },
   "role.assess": {
-   "x": 928,
-   "y": 547,
+   "x": 603,
+   "y": 1058,
    "w": 48,
    "h": 61,
    "ax": 24,
    "ay": 61
   },
   "role.educate": {
-   "x": 717,
-   "y": 547,
+   "x": 392,
+   "y": 1058,
    "w": 48,
    "h": 63,
    "ax": 24,
    "ay": 63
   },
   "role.equip": {
-   "x": 319,
-   "y": 460,
+   "x": 2,
+   "y": 985,
    "w": 82,
    "h": 71,
    "ax": 41,
    "ay": 71
   },
   "role.record": {
-   "x": 120,
-   "y": 612,
+   "x": 771,
+   "y": 1058,
    "w": 57,
    "h": 59,
    "ax": 28,
    "ay": 59
   },
   "patient.elder.stand": {
-   "x": 503,
-   "y": 198,
+   "x": 62,
+   "y": 468,
    "w": 59,
    "h": 113,
    "ax": 30,
    "ay": 112
   },
   "patient.elder.walk": {
-   "x": 916,
-   "y": 198,
+   "x": 538,
+   "y": 694,
    "w": 55,
    "h": 101,
    "ax": 30,
    "ay": 100
   },
   "patient.elder.cane": {
-   "x": 443,
-   "y": 198,
+   "x": 2,
+   "y": 468,
    "w": 58,
    "h": 114,
    "ax": 26,
    "ay": 113
   },
   "patient.elder.rehab": {
-   "x": 239,
-   "y": 359,
+   "x": 838,
+   "y": 797,
    "w": 62,
    "h": 92,
    "ax": 36,
    "ay": 91
   },
   "patient.office.work": {
-   "x": 325,
-   "y": 198,
+   "x": 898,
+   "y": 305,
    "w": 58,
    "h": 116,
    "ax": 28,
    "ay": 115
   },
   "patient.office.desk": {
-   "x": 564,
-   "y": 198,
+   "x": 765,
+   "y": 468,
    "w": 76,
    "h": 109,
    "ax": 38,
    "ay": 108
   },
   "patient.office.backpain": {
-   "x": 642,
-   "y": 198,
+   "x": 843,
+   "y": 468,
    "w": 58,
    "h": 109,
    "ax": 28,
    "ay": 108
   },
   "patient.office.rehab": {
-   "x": 385,
-   "y": 198,
+   "x": 958,
+   "y": 305,
    "w": 56,
    "h": 115,
    "ax": 27,
    "ay": 114
   },
   "patient.kid.school": {
-   "x": 854,
-   "y": 198,
+   "x": 376,
+   "y": 584,
    "w": 60,
    "h": 108,
    "ax": 30,
    "ay": 107
   },
   "patient.kid.play": {
-   "x": 250,
-   "y": 460,
+   "x": 909,
+   "y": 895,
    "w": 67,
    "h": 82,
    "ax": 32,
    "ay": 81
   },
   "patient.kid.rehab": {
-   "x": 183,
-   "y": 359,
+   "x": 782,
+   "y": 797,
    "w": 54,
    "h": 93,
    "ax": 28,
    "ay": 92
   },
   "patient.kid.withparent": {
-   "x": 191,
-   "y": 198,
+   "x": 764,
+   "y": 305,
    "w": 73,
    "h": 121,
    "ax": 37,
    "ay": 120
   },
   "patient.sports.run": {
-   "x": 266,
-   "y": 198,
+   "x": 839,
+   "y": 305,
    "w": 57,
    "h": 117,
    "ax": 22,
    "ay": 116
   },
   "patient.sports.train": {
-   "x": 785,
-   "y": 198,
+   "x": 307,
+   "y": 584,
    "w": 67,
    "h": 108,
    "ax": 45,
    "ay": 107
   },
   "patient.sports.stretch": {
-   "x": 114,
-   "y": 359,
+   "x": 2,
+   "y": 797,
    "w": 67,
    "h": 96,
    "ax": 33,
    "ay": 95
   },
   "patient.sports.injured": {
-   "x": 702,
-   "y": 198,
+   "x": 224,
+   "y": 584,
    "w": 81,
    "h": 108,
    "ax": 39,
    "ay": 107
   },
   "generic.stand": {
-   "x": 960,
-   "y": 359,
+   "x": 613,
+   "y": 895,
    "w": 46,
    "h": 86,
    "ax": 21,
    "ay": 85
   },
   "generic.walk_r": {
-   "x": 52,
-   "y": 460,
+   "x": 711,
+   "y": 895,
    "w": 47,
    "h": 85,
    "ax": 23,
    "ay": 84
   },
   "generic.walk_l": {
-   "x": 2,
-   "y": 460,
+   "x": 661,
+   "y": 895,
    "w": 48,
    "h": 85,
    "ax": 26,
    "ay": 84
   },
   "generic.run": {
-   "x": 889,
-   "y": 359,
+   "x": 542,
+   "y": 895,
    "w": 69,
    "h": 86,
    "ax": 28,
    "ay": 85
   },
   "generic.crouch": {
-   "x": 403,
-   "y": 460,
+   "x": 86,
+   "y": 985,
    "w": 51,
    "h": 70,
    "ax": 24,
    "ay": 69
   },
   "generic.rise": {
-   "x": 662,
-   "y": 359,
+   "x": 315,
+   "y": 895,
    "w": 52,
    "h": 87,
    "ax": 20,
    "ay": 86
   },
   "generic.sit": {
-   "x": 599,
-   "y": 359,
+   "x": 252,
+   "y": 895,
    "w": 61,
    "h": 87,
    "ax": 23,
    "ay": 86
   },
   "generic.lie": {
-   "x": 2,
-   "y": 612,
+   "x": 653,
+   "y": 1058,
    "w": 69,
    "h": 60,
    "ax": 29,
    "ay": 59
   },
   "generic.treat": {
-   "x": 2,
-   "y": 359,
+   "x": 595,
+   "y": 694,
    "w": 110,
    "h": 99,
    "ax": 51,
    "ay": 98
   },
   "generic.stretch": {
-   "x": 165,
-   "y": 460,
+   "x": 824,
+   "y": 895,
    "w": 83,
    "h": 82,
    "ax": 35,
    "ay": 81
   },
   "generic.joint": {
-   "x": 457,
-   "y": 359,
+   "x": 110,
+   "y": 895,
    "w": 82,
    "h": 88,
    "ax": 41,
    "ay": 87
   },
   "generic.strength": {
-   "x": 807,
-   "y": 359,
+   "x": 460,
+   "y": 895,
    "w": 80,
    "h": 86,
    "ax": 34,
    "ay": 85
   },
   "generic.balance": {
-   "x": 303,
-   "y": 359,
+   "x": 902,
+   "y": 797,
    "w": 44,
    "h": 90,
    "ax": 20,
    "ay": 89
   },
   "generic.gait": {
-   "x": 716,
-   "y": 359,
+   "x": 369,
+   "y": 895,
    "w": 89,
    "h": 86,
    "ax": 45,
    "ay": 85
   },
   "generic.pain": {
-   "x": 541,
-   "y": 359,
+   "x": 194,
+   "y": 895,
    "w": 56,
    "h": 88,
    "ax": 21,
    "ay": 87
   },
   "generic.done": {
-   "x": 101,
-   "y": 460,
+   "x": 760,
+   "y": 895,
    "w": 62,
    "h": 84,
    "ax": 30,
    "ay": 83
   },
   "generic.talk": {
-   "x": 349,
-   "y": 359,
+   "x": 2,
+   "y": 895,
    "w": 106,
    "h": 88,
    "ax": 51,
    "ay": 87
   },
   "item.bed": {
-   "x": 179,
-   "y": 612,
+   "x": 830,
+   "y": 1058,
    "w": 82,
    "h": 56,
    "ax": 41,
    "ay": 55
   },
   "item.traction": {
-   "x": 581,
-   "y": 460,
+   "x": 264,
+   "y": 985,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 62
   },
   "item.ball": {
-   "x": 385,
-   "y": 612,
+   "x": 47,
+   "y": 1123,
    "w": 53,
    "h": 54,
    "ax": 26,
    "ay": 53
   },
   "item.parallel": {
-   "x": 263,
-   "y": 612,
+   "x": 914,
+   "y": 1058,
    "w": 75,
    "h": 56,
    "ax": 38,
    "ay": 55
   },
   "item.step": {
-   "x": 749,
-   "y": 612,
+   "x": 411,
+   "y": 1123,
    "w": 63,
    "h": 45,
    "ax": 32,
    "ay": 44
   },
   "item.yoga": {
-   "x": 615,
-   "y": 612,
+   "x": 277,
+   "y": 1123,
    "w": 70,
    "h": 46,
    "ax": 35,
    "ay": 45
   },
   "item.band": {
-   "x": 440,
-   "y": 612,
+   "x": 102,
+   "y": 1123,
    "w": 67,
    "h": 52,
    "ax": 34,
    "ay": 51
   },
   "item.dumbbell": {
-   "x": 687,
-   "y": 612,
+   "x": 349,
+   "y": 1123,
    "w": 60,
    "h": 46,
    "ax": 30,
    "ay": 45
   },
   "item.wheelchair": {
-   "x": 512,
-   "y": 460,
+   "x": 195,
+   "y": 985,
    "w": 67,
    "h": 64,
    "ax": 34,
    "ay": 63
   },
   "item.walker": {
-   "x": 767,
-   "y": 547,
+   "x": 442,
+   "y": 1058,
    "w": 62,
    "h": 62,
    "ax": 31,
    "ay": 61
   },
   "item.cane": {
-   "x": 831,
-   "y": 547,
+   "x": 506,
+   "y": 1058,
    "w": 35,
    "h": 62,
    "ax": 18,
    "ay": 61
   },
   "item.brace": {
-   "x": 340,
-   "y": 612,
+   "x": 2,
+   "y": 1123,
    "w": 43,
    "h": 56,
    "ax": 22,
    "ay": 55
   },
   "item.icepack": {
-   "x": 814,
-   "y": 612,
+   "x": 476,
+   "y": 1123,
    "w": 51,
    "h": 44,
    "ax": 26,
    "ay": 43
   },
   "item.hotpack": {
-   "x": 558,
-   "y": 612,
+   "x": 220,
+   "y": 1123,
    "w": 55,
    "h": 48,
    "ax": 28,
    "ay": 47
   },
   "item.ultrasound": {
-   "x": 73,
-   "y": 612,
+   "x": 724,
+   "y": 1058,
    "w": 45,
    "h": 60,
    "ax": 22,
    "ay": 59
   },
   "item.tens": {
-   "x": 509,
-   "y": 612,
+   "x": 171,
+   "y": 1123,
    "w": 47,
    "h": 51,
    "ax": 24,
    "ay": 50
   },
   "scene.clinic": {
-   "x": 2,
+   "x": 159,
    "y": 2,
    "w": 401,
    "h": 194,
@@ -508,136 +508,426 @@
    "ay": 194
   },
   "expr.elder.0": {
-   "x": 646,
-   "y": 460,
+   "x": 329,
+   "y": 985,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.elder.1": {
-   "x": 711,
-   "y": 460,
+   "x": 394,
+   "y": 985,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.elder.2": {
-   "x": 776,
-   "y": 460,
+   "x": 459,
+   "y": 985,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.elder.3": {
-   "x": 841,
-   "y": 460,
+   "x": 524,
+   "y": 985,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.office.0": {
-   "x": 906,
-   "y": 460,
+   "x": 589,
+   "y": 985,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.office.1": {
-   "x": 2,
-   "y": 547,
+   "x": 654,
+   "y": 985,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.office.2": {
-   "x": 67,
-   "y": 547,
+   "x": 719,
+   "y": 985,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.office.3": {
-   "x": 132,
-   "y": 547,
+   "x": 784,
+   "y": 985,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.kid.0": {
-   "x": 197,
-   "y": 547,
+   "x": 849,
+   "y": 985,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.kid.1": {
-   "x": 262,
-   "y": 547,
+   "x": 914,
+   "y": 985,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.kid.2": {
-   "x": 327,
-   "y": 547,
+   "x": 2,
+   "y": 1058,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.kid.3": {
-   "x": 392,
-   "y": 547,
+   "x": 67,
+   "y": 1058,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.sports.0": {
-   "x": 457,
-   "y": 547,
+   "x": 132,
+   "y": 1058,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.sports.1": {
-   "x": 522,
-   "y": 547,
+   "x": 197,
+   "y": 1058,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.sports.2": {
-   "x": 587,
-   "y": 547,
+   "x": 262,
+   "y": 1058,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
   },
   "expr.sports.3": {
-   "x": 652,
-   "y": 547,
+   "x": 327,
+   "y": 1058,
    "w": 63,
    "h": 63,
    "ax": 32,
    "ay": 63
+  },
+  "staff.st": {
+   "x": 2,
+   "y": 2,
+   "w": 155,
+   "h": 301,
+   "ax": 73,
+   "ay": 300
+  },
+  "staff.st.dir.d": {
+   "x": 71,
+   "y": 797,
+   "w": 68,
+   "h": 95,
+   "ax": 33,
+   "ay": 94
+  },
+  "staff.st.dir.ld": {
+   "x": 141,
+   "y": 797,
+   "w": 68,
+   "h": 95,
+   "ax": 33,
+   "ay": 94
+  },
+  "staff.st.dir.l": {
+   "x": 211,
+   "y": 797,
+   "w": 68,
+   "h": 95,
+   "ax": 33,
+   "ay": 94
+  },
+  "staff.st.dir.lu": {
+   "x": 281,
+   "y": 797,
+   "w": 68,
+   "h": 95,
+   "ax": 33,
+   "ay": 94
+  },
+  "staff.st.dir.u": {
+   "x": 351,
+   "y": 797,
+   "w": 68,
+   "h": 95,
+   "ax": 33,
+   "ay": 94
+  },
+  "staff.st.dir.ru": {
+   "x": 421,
+   "y": 797,
+   "w": 68,
+   "h": 95,
+   "ax": 33,
+   "ay": 94
+  },
+  "staff.st.dir.r": {
+   "x": 491,
+   "y": 797,
+   "w": 68,
+   "h": 95,
+   "ax": 33,
+   "ay": 94
+  },
+  "staff.st.dir.rd": {
+   "x": 561,
+   "y": 797,
+   "w": 68,
+   "h": 95,
+   "ax": 33,
+   "ay": 94
+  },
+  "staff.st.act.speech": {
+   "x": 707,
+   "y": 694,
+   "w": 155,
+   "h": 98,
+   "ax": 78,
+   "ay": 97
+  },
+  "staff.st.act.swallow": {
+   "x": 756,
+   "y": 584,
+   "w": 146,
+   "h": 101,
+   "ax": 73,
+   "ay": 100
+  },
+  "staff.st.act.cognitive": {
+   "x": 864,
+   "y": 694,
+   "w": 155,
+   "h": 98,
+   "ax": 78,
+   "ay": 97
+  },
+  "staff.st.act.counsel": {
+   "x": 631,
+   "y": 797,
+   "w": 149,
+   "h": 94,
+   "ax": 74,
+   "ay": 93
+  },
+  "face.st.normal": {
+   "x": 260,
+   "y": 305,
+   "w": 127,
+   "h": 161,
+   "ax": 64,
+   "ay": 161
+  },
+  "face.st.tired": {
+   "x": 2,
+   "y": 305,
+   "w": 127,
+   "h": 161,
+   "ax": 64,
+   "ay": 161
+  },
+  "face.st.happy": {
+   "x": 131,
+   "y": 305,
+   "w": 127,
+   "h": 161,
+   "ax": 64,
+   "ay": 161
+  },
+  "face.doctor.normal": {
+   "x": 123,
+   "y": 468,
+   "w": 107,
+   "h": 111,
+   "ax": 54,
+   "ay": 111
+  },
+  "face.doctor.tired": {
+   "x": 232,
+   "y": 468,
+   "w": 107,
+   "h": 111,
+   "ax": 54,
+   "ay": 111
+  },
+  "face.doctor.happy": {
+   "x": 341,
+   "y": 468,
+   "w": 107,
+   "h": 111,
+   "ax": 54,
+   "ay": 111
+  },
+  "face.nurse.normal": {
+   "x": 903,
+   "y": 468,
+   "w": 109,
+   "h": 108,
+   "ax": 54,
+   "ay": 108
+  },
+  "face.nurse.tired": {
+   "x": 2,
+   "y": 584,
+   "w": 109,
+   "h": 108,
+   "ax": 54,
+   "ay": 108
+  },
+  "face.nurse.happy": {
+   "x": 113,
+   "y": 584,
+   "w": 109,
+   "h": 108,
+   "ax": 54,
+   "ay": 108
+  },
+  "face.pt.normal": {
+   "x": 450,
+   "y": 468,
+   "w": 103,
+   "h": 110,
+   "ax": 52,
+   "ay": 110
+  },
+  "face.pt.tired": {
+   "x": 555,
+   "y": 468,
+   "w": 103,
+   "h": 110,
+   "ax": 52,
+   "ay": 110
+  },
+  "face.pt.happy": {
+   "x": 660,
+   "y": 468,
+   "w": 103,
+   "h": 110,
+   "ax": 52,
+   "ay": 110
+  },
+  "face.ot.normal": {
+   "x": 904,
+   "y": 584,
+   "w": 107,
+   "h": 101,
+   "ax": 54,
+   "ay": 101
+  },
+  "face.ot.tired": {
+   "x": 2,
+   "y": 694,
+   "w": 107,
+   "h": 101,
+   "ax": 54,
+   "ay": 101
+  },
+  "face.ot.happy": {
+   "x": 111,
+   "y": 694,
+   "w": 107,
+   "h": 101,
+   "ax": 54,
+   "ay": 101
+  },
+  "face.pharmacist.normal": {
+   "x": 438,
+   "y": 584,
+   "w": 104,
+   "h": 104,
+   "ax": 52,
+   "ay": 104
+  },
+  "face.pharmacist.tired": {
+   "x": 544,
+   "y": 584,
+   "w": 104,
+   "h": 104,
+   "ax": 52,
+   "ay": 104
+  },
+  "face.pharmacist.happy": {
+   "x": 650,
+   "y": 584,
+   "w": 104,
+   "h": 104,
+   "ax": 52,
+   "ay": 104
+  },
+  "face.tech.normal": {
+   "x": 220,
+   "y": 694,
+   "w": 104,
+   "h": 101,
+   "ax": 52,
+   "ay": 101
+  },
+  "face.tech.tired": {
+   "x": 326,
+   "y": 694,
+   "w": 104,
+   "h": 101,
+   "ax": 52,
+   "ay": 101
+  },
+  "face.tech.happy": {
+   "x": 432,
+   "y": 694,
+   "w": 104,
+   "h": 101,
+   "ax": 52,
+   "ay": 101
   }
  },
  "meta": {
-  "source": "user-supplied concept sheet; extracted by tools/build_atlas.py",
+  "source": "user-supplied concept sheets; extracted by tools/build_atlas.py",
+  "sheets": [
+   {
+    "file": "source/concept_sheet.png",
+    "size": [
+     1312,
+     1199
+    ],
+    "note": "sheet 1: staff, portrait, role icons, patients, generic actions, items, scene, expression tiles"
+   },
+   {
+    "file": "source/concept_sheet2.png",
+    "size": [
+     1536,
+     1024
+    ],
+    "note": "sheet 2: speech-language therapist (staff.st, 8-direction walk, therapy actions) + staff mood busts (face.*)"
+   }
+  ],
   "padding": 2,
   "facing": {
    "staff.doctor": "front",
@@ -679,7 +969,16 @@
    "generic.gait": "front",
    "generic.pain": "front",
    "generic.done": "front",
-   "generic.talk": "front"
+   "generic.talk": "front",
+   "staff.st": "front",
+   "staff.st.dir.d": "front",
+   "staff.st.dir.ld": "ld",
+   "staff.st.dir.l": "l",
+   "staff.st.dir.lu": "lu",
+   "staff.st.dir.u": "u",
+   "staff.st.dir.ru": "ru",
+   "staff.st.dir.r": "r",
+   "staff.st.dir.rd": "rd"
   },
   "heightPx": {
    "staff.doctor": 166,
@@ -760,7 +1059,41 @@
    "expr.sports.0": 63,
    "expr.sports.1": 63,
    "expr.sports.2": 63,
-   "expr.sports.3": 63
+   "expr.sports.3": 63,
+   "staff.st": 301,
+   "staff.st.dir.d": 95,
+   "staff.st.dir.ld": 95,
+   "staff.st.dir.l": 95,
+   "staff.st.dir.lu": 95,
+   "staff.st.dir.u": 95,
+   "staff.st.dir.ru": 95,
+   "staff.st.dir.r": 95,
+   "staff.st.dir.rd": 95,
+   "staff.st.act.speech": 98,
+   "staff.st.act.swallow": 101,
+   "staff.st.act.cognitive": 98,
+   "staff.st.act.counsel": 94,
+   "face.st.normal": 161,
+   "face.st.tired": 161,
+   "face.st.happy": 161,
+   "face.doctor.normal": 111,
+   "face.doctor.tired": 111,
+   "face.doctor.happy": 111,
+   "face.nurse.normal": 108,
+   "face.nurse.tired": 108,
+   "face.nurse.happy": 108,
+   "face.pt.normal": 110,
+   "face.pt.tired": 110,
+   "face.pt.happy": 110,
+   "face.ot.normal": 101,
+   "face.ot.tired": 101,
+   "face.ot.happy": 101,
+   "face.pharmacist.normal": 104,
+   "face.pharmacist.tired": 104,
+   "face.pharmacist.happy": 104,
+   "face.tech.normal": 101,
+   "face.tech.tired": 101,
+   "face.tech.happy": 101
   }
  }
 }

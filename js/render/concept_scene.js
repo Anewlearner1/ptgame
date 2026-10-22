@@ -809,12 +809,22 @@ export function weatherNew(g, kind, W, H, ts, perfLevel) {
   }
   void perfLevel;
 }
+// The vignette is a smooth gradient: it is rendered once into a quarter-resolution canvas and stretched over the view with
+// bilinear filtering (a textured quad) instead of evaluating a radial-gradient shader over every device pixel each frame
+// (the largest single fill of a frame on a phone-sized canvas). Differs from the analytic gradient by <= 1 level.
 let _vg = null;
-export function vignetteNew(g, W, H) {
-  if (!_vg || _vg.w !== W || _vg.h !== H) {              // the gradient only depends on the view size: build it once per size
-    const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.5, W / 2, H / 2, Math.max(W, H) * 0.85);
+export function vignetteNew(g, W, H, dpr) {
+  dpr = dpr || 1;
+  if (!_vg || _vg.w !== W || _vg.h !== H || _vg.d !== dpr) {
+    const cw = Math.max(8, Math.ceil(W * dpr / 4)), ch = Math.max(8, Math.ceil(H * dpr / 4));
+    const c = newCanvas(cw, ch), gc = c.getContext('2d');
+    gc.setTransform(cw / W, 0, 0, ch / H, 0, 0);
+    const vg = gc.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.5, W / 2, H / 2, Math.max(W, H) * 0.85);
     vg.addColorStop(0, 'rgba(30,54,90,0)'); vg.addColorStop(1, 'rgba(30,54,90,0.17)');
-    _vg = { w: W, h: H, g: vg };
+    gc.fillStyle = vg; gc.fillRect(0, 0, W, H);
+    _vg = { w: W, h: H, d: dpr, c };
   }
-  g.fillStyle = _vg.g; g.fillRect(0, 0, W, H);
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'low';
+  g.drawImage(_vg.c, 0, 0, W, H);
+  g.imageSmoothingEnabled = false;
 }

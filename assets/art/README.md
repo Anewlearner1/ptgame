@@ -1,30 +1,48 @@
 # Art atlas (clinic sprites)
 
-Credits: user-supplied concept sheet; extracted by `tools/build_atlas.py`.
-Original sheet (1312x1199) kept for provenance in `source/concept_sheet.png`.
+Credits: two user-supplied concept sheets; extracted by `tools/build_atlas.py`.
+* Sheet 1 (1312x1199: staff, portrait, role icons, patients, generic actions, equipment, scene, expression tiles) is kept in `source/concept_sheet.png`.
+* Sheet 2 (1536x1024: speech-language therapist 語言治療師 character sheet = main pose, 8-direction walk, four therapy interaction scenes,
+  expression busts, plus the bottom row 醫療人員 - 表情變化 with normal / tired / happy busts of six roles) is kept in `source/concept_sheet2.png`.
 
 ## Files
 
 | file | what |
 |---|---|
-| `atlas.png` | RGBA atlas, shelf packed, 2px padding (edge colours extruded into the padding at alpha 0), 1024x1024 |
+| `atlas.png` | RGBA atlas, shelf packed, 2px padding (edge colours extruded into the padding at alpha 0), 1024x2048 (113 sprites) |
 | `atlas.json` | manifest, see below |
 | `preview.png` | contact sheet: every sprite on dark `#2b3a42` (left) and light `#f3f6f4` (right), red cross = anchor |
-| `source/concept_sheet.png` | the untouched original |
+| `source/concept_sheet.png` | the untouched original of sheet 1 |
+| `source/concept_sheet2.png` | the untouched original of sheet 2 (speech-language therapist + staff mood busts) |
 
 Rebuild: `python3 tools/build_atlas.py` (PIL + numpy only). Add `--debug-dir DIR` to also dump each cut sprite as PNG.
 
 ## Manifest
 
 ```
-{ "image": "atlas.png", "w": 1024, "h": 1024,
+{ "image": "atlas.png", "w": 1024, "h": 2048,
   "sprites": { "<name>": {"x","y","w","h","ax","ay"} },
-  "meta": { "source", "padding", "facing": {"<people sprite>": "right"|"left"|"front"}, "heightPx": {"<sprite>": native height} } }
+  "meta": { "source", "sheets": [{"file","size","note"}, ...], "padding",
+            "facing": {"<people sprite>": "right"|"left"|"front"|"ld"|"l"|"lu"|"u"|"ru"|"r"|"rd"}, "heightPx": {"<sprite>": native height} } }
 ```
 
 `ax, ay` are in sprite-local pixels. People: `ax` = horizontal centre of the lowest pixels (feet), `ay` = bottom of the feet
 (= `h-1`, the shadow contact point; the last row is 1px transparent padding). Items: `ax` = `w/2`, `ay` = `h-1`.
 Icons, portrait, expression tiles, scene: `ax = w/2`, `ay = h`.
+Atlas coordinates (`x`,`y`) change whenever the atlas is repacked; always address sprites by name. Names of earlier sprites never change
+(their pixels are identical to the first build).
+
+Sheet-2 sprites:
+* `staff.st` = full-body speech therapist (feet anchor). `staff.st.dir.{d,ld,l,lu,u,ru,r,rd}` = 8-direction walk frames in *screen space*
+  (`d` = toward the viewer / screen-down, `u` = away, `l`/`r` = screen left/right, two letters = diagonal); `meta.facing` is `front` for `d`,
+  otherwise the letter. All 8 frames share one canvas (68x95): `ax` = torso/leg centre column (the same for all, strides do not move it),
+  `ay` = bottom row, so frames can be swapped in place.
+* `staff.st.act.{speech,swallow,cognitive,counsel}` = the therapist together with the patient / parent (and table, speech bubble, props).
+  Anchor = bottom centre of the whole group (`w/2`, `h-1`); no `meta.facing`.
+* `face.<role>.<normal|tired|happy>` for roles `st` (speech therapist), `doctor`, `nurse`, `pt`, `ot`, `pharmacist`, `tech`: head+shoulder busts
+  (sweat drop, swirl, sparkles, X-ray plate kept). The three moods of one role have the **same canvas size** and are aligned on the head
+  (top of hair + head centre), `ax = w/2`, `ay = h`, so swapping moods never shifts the image. `face.st.normal` is cut from the top of
+  `staff.st` and resampled (LANCZOS) to the scale of `face.st.tired/happy`.
 `meta.facing` is given for staff, portrait, patients and generic sprites (judged by eye; "front" = frontal / three-quarter
 view without a clear side). `meta.heightPx` is the native pixel height of every sprite.
 The art is smooth-upscaled pixel art (about 2-3 sheet px per art pixel), so draw it with linear filtering or scale it by
@@ -32,7 +50,7 @@ arbitrary factors; nearest-neighbour at integer scales also looks fine.
 
 ## Naming convention
 
-`staff.<role>`, `portrait.doctor`, `role.<skill>` (icons), `patient.<elder|office|kid|sports>.<pose>`,
+`staff.<role>`, `staff.st.dir.<d|ld|l|lu|u|ru|r|rd>`, `staff.st.act.<speech|swallow|cognitive|counsel>`, `face.<role>.<normal|tired|happy>`, `portrait.doctor`, `role.<skill>` (icons), `patient.<elder|office|kid|sports>.<pose>`,
 `generic.<action>` (blue-vest generic character), `expr.<type>.<0..3>` (face tiles; 0..3 = the four sheet columns, left to right),
 `item.<equipment>`, `scene.clinic`.
 
@@ -45,6 +63,12 @@ arbitrary factors; nearest-neighbour at integer scales also looks fine.
 * `portrait.doctor` keeps its blue frame (only the outside corners are transparent); `expr.*` are opaque rounded tiles (r=8);
   `scene.clinic` is an opaque rectangle cropped just inside the picture frame.
 * Label strips are excluded by the crop windows.
+* Sheet 2 specifics: the ground shadow there is a saturated blue, so persons also use `peel_shadow` / `peel_below` (bluish streaks touching
+  transparency at the feet) and a floor line under the action tiles is stripped (`strip_floor`). Busts sit on pastel panels whose
+  tint is only ~14 px (RGB distance) from the white coats, so each role has its own tight flood tolerance (`FACE_TOL`: doctor 5.5,
+  nurse 10, pharmacist 8, ot 12, pt/tech 16, st tiles 18) together with: no seeding from the flat bottom edge, window ended on the last
+  bust row, `halo_dark` (peel the light fringe next to the black outline), `speck_open` (opening of thin light remnants) and
+  `drop_light` (small near-white blobs touching the background are dropped).
 * Known imperfections: `generic.gait` and `patient.sports.run` keep a few light specks where the original has faint cast
   shadow / background between legs; `patient.office.desk` has two tiny light sparkles near the hair; sprite edges keep the
   source's soft grey anti-alias outline.
@@ -132,3 +156,48 @@ arbitrary factors; nearest-neighbour at integer scales also looks fine.
 | `expr.sports.1` | 1085,856 - 1148,919 | tile | front | 63x63 | 32,63 |
 | `expr.sports.2` | 1152,856 - 1215,919 | tile | front | 63x63 | 32,63 |
 | `expr.sports.3` | 1218,856 - 1281,919 | tile | front | 63x63 | 32,63 |
+
+## Crop table, sheet 2 (`concept_sheet2.png`, 1536x1024; x0,y0 - x1,y1)
+
+Face windows list the nominal window; the bottom is cut automatically to the last bust row.
+
+| name | window | kind | facing | size | anchor |
+|---|---|---|---|---|---|
+| `staff.st` | 14,116 - 186,446 | person | front | 155x301 | 73,300 |
+| `staff.st.dir.d` | 816,152 - 894,261 | person | front | 68x95 | 33,94 |
+| `staff.st.dir.ld` | 896,152 - 972,261 | person | ld | 68x95 | 33,94 |
+| `staff.st.dir.l` | 974,152 - 1050,261 | person | l | 68x95 | 33,94 |
+| `staff.st.dir.lu` | 1052,152 - 1130,261 | person | lu | 68x95 | 33,94 |
+| `staff.st.dir.u` | 816,298 - 894,412 | person | u | 68x95 | 33,94 |
+| `staff.st.dir.ru` | 896,298 - 972,412 | person | ru | 68x95 | 33,94 |
+| `staff.st.dir.r` | 974,298 - 1050,412 | person | r | 68x95 | 33,94 |
+| `staff.st.dir.rd` | 1052,298 - 1130,412 | person | rd | 68x95 | 33,94 |
+| `staff.st.act.speech` | 1156,150 - 1332,254 | group | - | 155x98 | 78,97 |
+| `staff.st.act.swallow` | 1347,150 - 1519,254 | group | - | 146x101 | 73,100 |
+| `staff.st.act.cognitive` | 1156,306 - 1332,410 | group | - | 155x98 | 78,97 |
+| `staff.st.act.counsel` | 1347,306 - 1519,410 | group | - | 149x94 | 74,93 |
+| `face.st.normal` | sheet2 staff.st window rows 0-205 x0.71 | face | - | 127x161 | 64,161 |
+| `face.st.tired` | 503,202 - 630,362 | face | - | 127x161 | 64,161 |
+| `face.st.happy` | 649,202 - 776,362 | face | - | 127x161 | 64,161 |
+| `face.doctor.normal` | 40,592 - 172,703 | face | - | 107x111 | 54,111 |
+| `face.doctor.tired` | 40,703 - 172,811 | face | - | 107x111 | 54,111 |
+| `face.doctor.happy` | 40,812 - 172,930 | face | - | 107x111 | 54,111 |
+| `face.nurse.normal` | 305,592 - 437,703 | face | - | 109x108 | 54,108 |
+| `face.nurse.tired` | 305,703 - 437,811 | face | - | 109x108 | 54,108 |
+| `face.nurse.happy` | 305,812 - 437,930 | face | - | 109x108 | 54,108 |
+| `face.pt.normal` | 550,592 - 678,703 | face | - | 103x110 | 52,110 |
+| `face.pt.tired` | 550,703 - 678,811 | face | - | 103x110 | 52,110 |
+| `face.pt.happy` | 550,812 - 678,930 | face | - | 103x110 | 52,110 |
+| `face.ot.normal` | 797,592 - 922,703 | face | - | 107x101 | 54,101 |
+| `face.ot.tired` | 797,703 - 922,811 | face | - | 107x101 | 54,101 |
+| `face.ot.happy` | 797,812 - 922,930 | face | - | 107x101 | 54,101 |
+| `face.pharmacist.normal` | 1050,592 - 1172,703 | face | - | 104x104 | 52,104 |
+| `face.pharmacist.tired` | 1050,703 - 1172,811 | face | - | 104x104 | 52,104 |
+| `face.pharmacist.happy` | 1050,812 - 1172,930 | face | - | 104x104 | 52,104 |
+| `face.tech.normal` | 1295,592 - 1432,703 | face | - | 104x101 | 52,101 |
+| `face.tech.tired` | 1295,703 - 1432,811 | face | - | 104x101 | 52,101 |
+| `face.tech.happy` | 1295,812 - 1432,930 | face | - | 104x101 | 52,101 |
+
+Sheet-2 caveats: the sheet's row-2 walking frames (`上`, `右上`, `右`, `右下`) are drawn almost the same as row 1 (front / three-quarter, the
+head is never seen from behind), so `staff.st.dir.u` and the `u*` diagonals are not true back views; `staff.st.dir.ld` has a hollow
+back foot (open outline in the source). `staff.st.dir.*` are tiny (~95 px) compared to `staff.st` (301 px); scale them in the renderer.

@@ -1048,7 +1048,7 @@ function drawAtmosphere(state, now, dpr, lite) {
   }
   // vignette
   if (perfRef.level >= 2) return;
-  if (layerNew) { CS.vignetteNew(g, W, H); return; }
+  if (layerNew) { CS.vignetteNew(g, W, H, dpr); return; }
   if (!vgOld || vgOld.w !== W || vgOld.h !== H) {          // the gradient only depends on the view size: build it once per size
     const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.max(W, H) * 0.8);
     vg.addColorStop(0, 'rgba(10,15,30,0)'); vg.addColorStop(1, 'rgba(10,15,30,0.28)');

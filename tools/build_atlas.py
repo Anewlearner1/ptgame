@@ -29,6 +29,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'assets', 'art', 'source', 'concept_sheet.png')
+SRC2 = os.path.join(ROOT, 'assets', 'art', 'source', 'concept_sheet2.png')   # speech-language therapist sheet
 OUT = os.path.join(ROOT, 'assets', 'art')
 
 # --------------------------------------------------------------------------
@@ -125,7 +126,63 @@ for _r, _t in enumerate(['elder', 'office', 'kid', 'sports']):
     for _c in range(4):
         CROPS['expr.%s.%d' % (_t, _c)] = (EXPR_X[_c], EXPR_Y[_r], EXPR_X[_c] + EXPR_S, EXPR_Y[_r] + EXPR_S, TL, 'front', {})
 
+# --------------------------------------------------------------------------
+# second concept sheet (concept_sheet2.png, 1536x1024): speech-language
+# therapist + staff mood busts.  Windows are in SHEET 2 pixels ('sheet': 2).
+#   kind  group - person-style cut-out, anchor = bottom-centre of the whole group
+#         face  - bust cut-out, anchor = (w/2, h); the three moods of one role
+#                 are padded to a common canvas afterwards (equalise_faces)
+# --------------------------------------------------------------------------
+G, F = 'group', 'face'
+S2 = {'sheet': 2}
+
+
+def _o(**k):
+    d = dict(S2, shadow_spread=0.3, peel_shadow=6)   # sheet 2 ground shadow is a saturated blue
+    d.update(k)
+    return d
+
+
+CROPS2 = {
+    'staff.st': (14, 116, 186, 446, P, 'front', _o()),
+}
+# walking, 8 directions (screen space): d = toward viewer, u = away
+_WALK_X = [(816, 894), (896, 972), (974, 1050), (1052, 1130)]
+_WALK = [('d', 0, 0), ('ld', 1, 0), ('l', 2, 0), ('lu', 3, 0),
+         ('u', 0, 1), ('ru', 1, 1), ('r', 2, 1), ('rd', 3, 1)]
+_WALK_Y = [(152, 261), (298, 412)]
+for _d, _c, _r in _WALK:
+    CROPS2['staff.st.dir.' + _d] = (_WALK_X[_c][0], _WALK_Y[_r][0], _WALK_X[_c][1], _WALK_Y[_r][1],
+                                    P, 'front' if _d == 'd' else _d,
+                                    _o(peel_shadow=0, peel_below=True, peel_db=25, peel_lum=215,
+                                       fill_shoes=(_d == 'ld')))   # white shoe interior == background colour
+# therapy interaction tiles (group with a patient, table and props kept)
+CROPS2.update({
+    'staff.st.act.speech':    (1156, 150, 1332, 254, G, None, _o(shadow=False, holes=False, strip_floor=True)),
+    'staff.st.act.swallow':   (1347, 150, 1519, 254, G, None, _o(shadow=False, holes=False, strip_floor=True)),
+    'staff.st.act.cognitive': (1156, 306, 1332, 410, G, None, _o(shadow=False, holes=False, strip_floor=True)),
+    'staff.st.act.counsel':   (1347, 306, 1519, 410, G, None, _o(shadow=False, holes=False, strip_floor=True)),
+})
+# expression busts of the speech therapist (tile interiors)
+CROPS2['face.st.tired'] = (503, 202, 630, 362, F, None, _o(tol=18.0, halo_dark=0))   # blue tile
+CROPS2['face.st.happy'] = (649, 202, 776, 362, F, None, _o(tol=18.0, halo_dark=0))
+# staff mood busts: role -> (x0, x1) window; rows normal / tired / happy
+FACE_ROWS = [(592, 703), (703, 811), (812, 930)]
+FACE_ROLES = [('doctor', 40, 172), ('nurse', 305, 437), ('pt', 550, 678),
+              ('ot', 797, 922), ('pharmacist', 1050, 1172), ('tech', 1295, 1432)]
+MOODS = ['normal', 'tired', 'happy']
+# flood tolerance per panel: how far the (white) clothes are from the pastel tint
+FACE_TOL = {'doctor': 5.5, 'nurse': 10.0, 'pt': 16.0, 'ot': 12.0, 'pharmacist': 8.0, 'tech': 16.0}
+for _role, _x0, _x1 in FACE_ROLES:
+    for _m, (_y0, _y1) in zip(MOODS, FACE_ROWS):
+        CROPS2['face.%s.%s' % (_role, _m)] = (_x0, _y0, _x1, _y1, F, None, _o(tol=FACE_TOL[_role]))
+# face.st.normal = bust taken from the top of staff.st (window coords of staff.st
+# cut; scaled so the head matches the expression busts)
+ST_NORMAL = {'y1': 205, 'scale': 0.71}
+
+CROPS.update(CROPS2)
 ORDER = list(CROPS.keys())
+ORDER.insert(ORDER.index('face.st.tired'), 'face.st.normal')   # derived, see st_normal()
 
 PAD = 2           # atlas padding between sprites
 TOL = 30.0        # default flood tolerance (RGB euclid)
@@ -161,7 +218,7 @@ def dmin_map(win, refs):
     return d.min(2), d.argmin(2)
 
 
-def flood(win, dmin, tol):
+def flood(win, dmin, tol, seed_bottom=True):
     """Background mask: connected to the ring, within tol of a ref colour, or
     (gradient rule) very close to an accepted neighbour and within 1.6*tol."""
     h, w = dmin.shape
@@ -169,6 +226,8 @@ def flood(win, dmin, tol):
     dq = deque()
     for x in range(w):
         for y in (0, h - 1):
+            if y == h - 1 and not seed_bottom:
+                continue
             if dmin[y, x] < tol and not bg[y, x]:
                 bg[y, x] = True
                 dq.append((y, x))
@@ -256,7 +315,7 @@ def cut_out(win, opts, kind):
     tol = opts.get('tol', TOL)
     refs = bg_refs(win)
     dmin, which = dmin_map(win, refs)
-    bg = flood(win, dmin, tol)
+    bg = flood(win, dmin, tol, not opts.get('noseed_bottom'))
     # peel the light anti-alias halo: up to `halo` px of light, background-ish
     # pixels next to the background (a bounded growth, so enclosed light areas
     # such as a white cap or shoe are not eaten)
@@ -264,6 +323,24 @@ def cut_out(win, opts, kind):
     hcand = (dmin < opts.get('halo_tol', 120.0)) & (lum > opts.get('halo_lum', 115.0))
     for _ in range(opts.get('halo', 2)):
         bg = bg | (dilate(bg, 1) & hcand)
+    if opts.get('halo_dark'):
+        # light fringe between the black outline and the background: peel light
+        # near-background pixels touching the background and sitting within 2px
+        # of a dark outline pixel (white coats without outline are left alone)
+        dk = lum < 90
+        near_dark = dilate(dk, 2)
+        h2 = (dmin < opts.get('halo_tol2', 60.0)) & (lum > 150) & near_dark
+        for _ in range(opts['halo_dark']):
+            bg = bg | (dilate(bg, 1) & h2)
+    if opts.get('speck_open'):
+        # thin (< 2r+1 px) light remnants of the pastel panel near the background
+        # (a very tight tolerance keeps white coats, but leaves panel noise): drop
+        # them with a morphological opening; thick white areas survive
+        r = opts['speck_open']
+        L = (~bg) & (dmin < opts.get('speck_tol', 55.0)) & (lum > 170)
+        core = ~dilate(~L, r)
+        keepL = dilate(core, r) & L
+        bg = bg | (L & ~keepL & dilate(bg, 3))
     if opts.get('shadow'):
         cand = shadow_candidates(win, refs, which, opts.get('shadow_spread', 0.13))
         band = opts.get('band', 26)
@@ -320,6 +397,96 @@ def cut_out(win, opts, kind):
             faint = dmin[m].max() < tol * 2.0
             if (area < keep_min or faint) and area < big:
                 alpha[m] = 0
+    if opts.get('drop_light'):
+        # detached, almost white / grey blobs = panel remnants (sweat drops, sparkles,
+        # swirls are all clearly coloured)
+        lab, n = components(alpha > 0)
+        if n:
+            sizes = np.bincount(lab.ravel(), minlength=n + 1)
+            big = sizes[1:].max()
+            sat = col.max(2) - col.min(2)
+            lum3 = 0.3 * col[:, :, 0] + 0.59 * col[:, :, 1] + 0.11 * col[:, :, 2]
+            for i in range(1, n + 1):
+                m = lab == i
+                if sizes[i] < big and sizes[i] < 200 and ((lum3[m] > 190) & (sat[m] < 45)).mean() > 0.9:
+                    alpha[m] = 0
+    if opts.get('drop_light'):
+        # small light blobs that touch the (removed) background: panel remnants glued
+        # to an outline.  Big white areas (coats, masks) are far larger than this.
+        sat = col.max(2) - col.min(2)
+        lum3 = 0.3 * col[:, :, 0] + 0.59 * col[:, :, 1] + 0.11 * col[:, :, 2]
+        Lm = (alpha > 0) & (lum3 > 185) & (sat < 50)
+        lab, n = components(Lm, conn8=False)
+        near = dilate(alpha == 0, 1)
+        if n:
+            sizes = np.bincount(lab.ravel(), minlength=n + 1)
+            for i in range(1, n + 1):
+                m = lab == i
+                if sizes[i] < opts.get('drop_light_area', 90) and (m & near).any():
+                    alpha[m] = 0
+    n_peel = opts.get('peel_shadow', 0)
+    if n_peel:
+        # blue ground-shadow streaks hugging the feet: peel bluish mid-tone pixels
+        # that touch transparency, bottom band only (outlines stop the peel)
+        r_, g_, b_ = col[:, :, 0], col[:, :, 1], col[:, :, 2]
+        lum2 = 0.3 * r_ + 0.59 * g_ + 0.11 * b_
+        blu = (b_ > r_ + opts.get('peel_db', 22)) & (lum2 > 95) & (lum2 < opts.get('peel_lum', 232))
+        rows_ = np.where((alpha > 0.5).any(1))[0]
+        band_ = np.zeros(alpha.shape, bool)
+        band_[max(0, rows_.max() - opts.get('peel_band', 26)):, :] = True
+        blu &= band_
+        for _ in range(n_peel):
+            solid = alpha > 0.5
+            edge = dilate(~solid, 1) & solid
+            kill = edge & blu
+            if not kill.any():
+                break
+            alpha[kill] = 0
+    if opts.get('fill_shoes'):
+        # white shoe interiors that are the same colour as the panel: refill
+        # transparent pixels that have outline on all 4 sides within 6px
+        # (bottom 12 rows only)
+        solid = alpha > 0.5
+        h_, w_ = solid.shape
+        rows_ = np.where(solid.any(1))[0]
+        y0_ = rows_.max() - 12
+        def seen(dy, dx):
+            acc = np.zeros_like(solid)
+            for k in range(1, 7):
+                sh = np.zeros_like(solid)
+                ys0, ys1 = max(0, dy * k), h_ + min(0, dy * k)
+                xs0, xs1 = max(0, dx * k), w_ + min(0, dx * k)
+                sh[ys0:ys1, xs0:xs1] = solid[ys0 - dy * k:ys1 - dy * k, xs0 - dx * k:xs1 - dx * k]
+                acc |= sh
+            return acc
+        fillm = (~solid) & seen(1, 0) & seen(-1, 0) & seen(0, 1) & seen(0, -1)
+        fillm[:y0_] = False
+        col[fillm] = (246, 246, 252)
+        alpha[fillm] = 1.0
+    if opts.get('strip_floor'):
+        # thin floor line sticking out at the very bottom: drop pixels in the last
+        # 3 rows whose column has nothing opaque 2..6px above
+        solid = alpha > 0.5
+        rows_ = np.where(solid.any(1))[0]
+        yb = rows_.max()
+        for y in range(max(0, yb - 2), yb + 1):
+            for x in range(alpha.shape[1]):
+                if alpha[y, x] > 0 and not solid[max(0, y - 6):max(0, y - 1), x].any():
+                    alpha[y, x] = 0
+    if opts.get('peel_below'):
+        # shadow streaks below / beside the soles: bluish pixels under the lowest
+        # dark outline pixel of their column (bottom band only)
+        r_, g_, b_ = col[:, :, 0], col[:, :, 1], col[:, :, 2]
+        lum2 = 0.3 * r_ + 0.59 * g_ + 0.11 * b_
+        blu = (b_ > r_ + opts.get('peel_db', 22)) & (lum2 < opts.get('peel_lum', 232))
+        dark = (lum2 < 70) & (alpha > 0.5)
+        rows_ = np.where((alpha > 0.5).any(1))[0]
+        y0_ = max(0, rows_.max() - opts.get('peel_band', 26))
+        for x in range(alpha.shape[1]):
+            ys_ = np.where(dark[y0_:, x])[0]
+            start = (y0_ + ys_.max() + 1) if len(ys_) else y0_
+            kill = blu[start:, x] & (alpha[start:, x] > 0)
+            alpha[start:, x][kill] = 0
     rgba = np.dstack([col, alpha * 255]).round().astype(np.uint8)
     return rgba
 
@@ -350,13 +517,15 @@ def anchor(rgba, kind):
         # centre of the lowest pixels (feet)
         cols = np.where(band)[1]
         return int(round(cols.mean())), h - 1
-    if kind == 'item':
+    if kind in ('item', 'group'):
         return int(round(w / 2)), h - 1
     return int(round(w / 2)), h
 
 
-def process(sheet, name, spec):
+def process(sheet, name, spec, sheet2=None):
     x0, y0, x1, y1, kind, facing, opts = spec
+    if opts.get('sheet') == 2:
+        sheet = sheet2
     win = sheet[y0:y1, x0:x1].astype(float)
     if kind == 'scene':
         rgba = np.dstack([win, np.full(win.shape[:2], 255)]).astype(np.uint8)
@@ -372,19 +541,112 @@ def process(sheet, name, spec):
         rgba = cut_out(win, o, kind)
         return trim(rgba), kind, facing
     o = dict(opts)
+    if kind == 'face':
+        # the busts are cut flat at the bottom with a light gap line below: end the
+        # window on the last row that still holds the bust, so no background touches
+        # (and feathers) the cut edge
+        refs = bg_refs(win)
+        dm = dmin_map(win, refs)[0]
+        sig = (dm > 35).sum(1)
+        last = np.where(sig >= 10)[0].max()
+        win = win[:last + 1]
     if kind == 'person':
         o.setdefault('tol', PERSON_TOL)
         o.setdefault('shadow', True)       # remove the soft ground shadow
         o.setdefault('holes', True)        # ... also where enclosed between legs/cane
         o.setdefault('hole_band', 12)
         o.setdefault('hole_tol', 12.0)
+    if kind in ('group', 'face'):
+        o.setdefault('tol', PERSON_TOL if kind == 'group' else 5.5)
+        o.setdefault('shadow', kind == 'group')
+        o.setdefault('holes', False)
+        if kind == 'face':
+            o.setdefault('tol', 5.5)    # pure-white coats are only ~14 away from the pastel panel
+            o.setdefault('halo', 0)
+            o.setdefault('halo_dark', 3)
+            o.setdefault('speck_open', 2)
+            o.setdefault('drop_light', True)
+            o.setdefault('noseed_bottom', True)   # busts are cut flat at the bottom; white coat == panel
     if kind in ('item', 'icon'):
         o.setdefault('shadow', True)
         o.setdefault('band', 999)
         o.setdefault('hole_band', 999)
         o.setdefault('hole_tol', 14.0)
     rgba = cut_out(win, o, kind)
+    if opts.get('notrim'):
+        return rgba, kind, facing
     return trim(rgba), kind, facing
+
+
+def st_normal(sheet2):
+    """face.st.normal: head+shoulders taken from the top of the staff.st pose,
+    resampled (LANCZOS, premultiplied alpha) to the scale of the expression busts."""
+    spec = CROPS['staff.st']
+    o = dict(spec[6])
+    o['notrim'] = True
+    rgba, _, _ = process(None, 'staff.st', spec[:6] + (o,), sheet2)
+    rgba = rgba[:ST_NORMAL['y1']]
+    im = Image.fromarray(rgba, 'RGBA')
+    f = ST_NORMAL['scale']
+    im = im.resize((max(1, round(im.width * f)), max(1, round(im.height * f))), Image.LANCZOS)
+    a = np.asarray(im).copy()
+    a[a[:, :, 3] < 20] = 0
+    return trim(a)
+
+
+def head_ref(rgba):
+    """(x, y) of the head reference in a bust: x = mean column of the largest
+    component's top 30 % rows, y = its top row."""
+    lab, n = components(rgba[:, :, 3] > 0)
+    sizes = np.bincount(lab.ravel(), minlength=n + 1)
+    sizes[0] = 0
+    m = lab == sizes.argmax()
+    ys, xs = np.where(m)
+    top, bot = ys.min(), ys.max()
+    sel = ys <= top + 0.3 * (bot - top)
+    return int(round(xs[sel].mean())), int(top)
+
+
+def body_centre_x(rgba):
+    """Stable horizontal anchor of a walking frame: mean column of the opaque
+    pixels in the lower 55 % of the sprite (torso + legs; the ponytail and the
+    swinging feet of a stride do not move it much)."""
+    a = rgba[:, :, 3] > 128
+    ys = np.where(a.any(1))[0]
+    y0 = ys.min() + int(0.45 * (ys.max() - ys.min()))
+    return int(round(np.where(a[y0:])[1].mean()))
+
+
+def equalise_walk(parts, names):
+    """Pad the 8 walking frames to one canvas: same body-centre column (ax) and
+    same bottom row (ay = h-1), so the renderer can swap frames in place."""
+    cx = {n: body_centre_x(parts[n]) for n in names}
+    L = max(cx.values())
+    R = max(parts[n].shape[1] - cx[n] for n in names)
+    H = max(parts[n].shape[0] for n in names)
+    for n in names:
+        p = parts[n]
+        out = np.zeros((H, L + R, 4), np.uint8)
+        out[H - p.shape[0]:, L - cx[n]:L - cx[n] + p.shape[1]] = p
+        parts[n] = out
+    return L, H - 1
+
+
+def equalise_faces(parts, names):
+    """Pad the busts of one role to one common canvas, aligned on the head
+    (top of the hair + head centre), so swapping moods never shifts the image."""
+    refs = {n: head_ref(parts[n]) for n in names}
+    L = max(refs[n][0] for n in names)
+    R = max(parts[n].shape[1] - refs[n][0] for n in names)
+    U = max(refs[n][1] for n in names)
+    D = max(parts[n].shape[0] - refs[n][1] for n in names)
+    for n in names:
+        p = parts[n]
+        hx, ty = refs[n]
+        out = np.zeros((U + D, L + R, 4), np.uint8)
+        ox, oy = L - hx, U - ty
+        out[oy:oy + p.shape[0], ox:ox + p.shape[1]] = p
+        parts[n] = out
 
 
 # --------------------------------------------------------------------------
@@ -455,7 +717,9 @@ def make_preview(sprites, atlas, path, zoom=1, width=1700):
     prev_group = None
     for n, s in sprites.items():
         parts = n.split('.')
-        group = '.'.join(parts[:2]) if parts[0] in ('patient', 'expr') else parts[0]
+        group = '.'.join(parts[:2]) if parts[0] in ('patient', 'expr', 'face') else parts[0]
+        if n.startswith('staff.st'):
+            group = 'staff.st.' + (parts[2] if len(parts) > 2 else '')
         w, h = s['w'] * zoom, s['h'] * zoom
         cw = max(2 * w + 4, 96) + 6
         ch = h + 18
@@ -495,11 +759,14 @@ def main():
         debug = sys.argv[sys.argv.index('--debug-dir') + 1]
         os.makedirs(debug, exist_ok=True)
     sheet = np.asarray(Image.open(SRC).convert('RGB'))
+    sheet2 = np.asarray(Image.open(SRC2).convert('RGB'))
     parts = {}
     meta_facing = {}
     kinds = {}
     for name in ORDER:
-        rgba, kind, facing = process(sheet, name, CROPS[name])
+        if name not in CROPS:
+            continue
+        rgba, kind, facing = process(sheet, name, CROPS[name], sheet2)
         parts[name] = rgba
         kinds[name] = kind
         if kind == 'person':
@@ -508,6 +775,16 @@ def main():
             meta_facing[name] = facing
         if debug:
             Image.fromarray(rgba).save(os.path.join(debug, name + '.png'))
+    # speech therapist bust (normal) + per-role mood busts on a common canvas
+    parts['face.st.normal'] = st_normal(sheet2)
+    kinds['face.st.normal'] = F
+    walk_names = [n for n in ORDER if n.startswith('staff.st.dir.')]
+    walk_anchor = equalise_walk(parts, walk_names)
+    for role in ['st'] + [r[0] for r in FACE_ROLES]:
+        equalise_faces(parts, ['face.%s.%s' % (role, m) for m in MOODS])
+    for n in list(parts):
+        if n.startswith('face.') and debug:
+            Image.fromarray(parts[n]).save(os.path.join(debug, n + '.png'))
     W, H, pos = shelf_pack([(n, p.shape[1], p.shape[0]) for n, p in parts.items()])
     atlas = np.zeros((H, W, 4), np.uint8)
     sprites = {}
@@ -518,6 +795,8 @@ def main():
         x, y = pos[n]
         atlas[y:y + h, x:x + w] = p
         ax, ay = anchor(p, kinds[n])
+        if n in walk_names:
+            ax, ay = walk_anchor
         sprites[n] = {'x': x, 'y': y, 'w': w, 'h': h, 'ax': ax, 'ay': ay}
         heights[n] = h
     # extrude edge colours into the transparent padding (filter safety)
@@ -528,7 +807,13 @@ def main():
         'image': 'atlas.png', 'w': W, 'h': H,
         'sprites': sprites,
         'meta': {
-            'source': 'user-supplied concept sheet; extracted by tools/build_atlas.py',
+            'source': 'user-supplied concept sheets; extracted by tools/build_atlas.py',
+            'sheets': [
+                {'file': 'source/concept_sheet.png', 'size': [1312, 1199],
+                 'note': 'sheet 1: staff, portrait, role icons, patients, generic actions, items, scene, expression tiles'},
+                {'file': 'source/concept_sheet2.png', 'size': [1536, 1024],
+                 'note': 'sheet 2: speech-language therapist (staff.st, 8-direction walk, therapy actions) + staff mood busts (face.*)'},
+            ],
             'padding': PAD,
             'facing': meta_facing,
             'heightPx': heights,
