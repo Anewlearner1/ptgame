@@ -16,7 +16,7 @@ import {
 } from './sprites.js';
 import { loadArt, artReady, artEnabled } from './art.js';
 import * as CS from './concept_scene.js';
-import { setArtScale, setArtQuality, drawArtPerson, personHeight, patientSprite, staffSprite, artFlip, blit } from './artdraw.js';
+import { setArtScale, setArtQuality, drawArtPerson, personHeight, patientSprite, staffSprite, artFlip, blit, dirFrames, dirSector, tableauFor, hasTableaux, artBox } from './artdraw.js';
 
 const HW = TILE_W / 2, HH = TILE_H / 2;
 const LX = 1100, LY = 240;                               // layer origin offset (world -> layer px)
@@ -456,16 +456,68 @@ function progressOf(a) {
 }
 
 // Atlas sprite for a person: 2-phase bob + tilt while walking, gentle bob while working / treating, seated = lowered + legs faded.
+// fixed = a true directional frame (artdraw.dirFrames): no mirroring, no tilt, no "walking away" darkening, only the vertical bob.
 // Returns the world y of the sprite top (NaN -> caller draws the procedural sprite).
 const DEG = Math.PI / 180;
-function artAgent(g, name, id, x, y, dir, moving, sit, busy, now) {
+function artAgent(g, name, id, x, y, dir, moving, sit, busy, now, fixed) {
   const wx = isoX(x, y);
   let wy = isoY(x, y), bob = 0, tilt = 0;
-  if (moving) { const ph = ((now / 120 + id) | 0) & 1; bob = ph ? -1.5 : 0; tilt = (ph ? 3 : -3) * DEG; if (perfRef.level >= 2) tilt = 0; }   // level >= 2: bob only (a tilt is a rotated, smoothed blit)
+  if (moving) { const ph = ((now / 120 + id) | 0) & 1; bob = ph ? -1.5 : 0; if (!fixed) { tilt = (ph ? 3 : -3) * DEG; if (perfRef.level >= 2) tilt = 0; } }   // level >= 2: bob only (a tilt is a rotated, smoothed blit)
   else if (busy) bob = Math.sin(now / 300 + id * 1.7) * 0.9 - 0.9;
   else if (!sit) bob = (Math.sin(now / 420 + id) > 0.7) ? -1 : 0;
   if (sit) wy += -SEAT_LIFT - 1 + 0.45 * personHeight(name);
+  if (fixed) return drawArtPerson(g, name, wx, wy + bob, false, 0, false, false);
   return drawArtPerson(g, name, wx, wy + bob, artFlip(name, dir, id), tilt, sit, moving && (dir === 2 || dir === 3));
+}
+
+// ───────────────────────── treatment tableaux (one group sprite for therapist + patient) ─────────────────────────
+// Rebuilt every frame from the live state (so a finished treatment / a moved agent falls back to the two individual sprites in the
+// very next frame). Pooled arrays, no allocation. See artdraw.TABLEAUX.
+const TBMAX = 24;
+let tbN = 0;
+const tbStaff = new Array(TBMAX).fill(null), tbPat = new Array(TBMAX).fill(null), tbSpr = new Array(TBMAX).fill(null);
+const tbMX = new Float32Array(TBMAX), tbMY = new Float32Array(TBMAX);      // midpoint (grid)
+const tbEX = new Float32Array(TBMAX), tbEY = new Float32Array(TBMAX);      // sort position (grid): the agent nearer to the camera
+const TB_NUDGE = 0.75;
+const TB_MAXDIST = 3;                                                      // grid tiles: further apart than this = not a pair
+function computeTableaux(state) {
+  tbN = 0;
+  if (!artReady()) return;
+  const sts = state.staff, pts = state.patients;
+  for (let i = 0; i < sts.length && tbN < TBMAX; i++) {
+    const s = sts[i];
+    if (s.state !== 'working' || !s.task || !hasTableaux(s.role) || (s.path && s.path.length)) continue;
+    const pid = s.task.patientId;
+    let p = null;
+    for (let j = 0; j < pts.length; j++) if (pts[j].id === pid) { p = pts[j]; break; }
+    if (!p || p.stage !== 'treating' || (p.path && p.path.length)) continue;
+    const name = tableauFor(s.role, s.task.treatmentId, p.type, p.id);
+    if (!name || !artBox(name)) continue;
+    const dx = p.x - s.x, dy = p.y - s.y;
+    if (dx * dx + dy * dy > TB_MAXDIST * TB_MAXDIST) continue;
+    const k = tbN++;
+    tbStaff[k] = s; tbPat[k] = p; tbSpr[k] = name;
+    tbMX[k] = (s.x + p.x) / 2; tbMY[k] = (s.y + p.y) / 2;
+    // sort position: the agent nearer to the camera, nudged forward - the group is wider than one person, so a neighbouring room
+    // that stands just in front of one of them must not swallow the whole tableau
+    if (s.x + s.y >= p.x + p.y) { tbEX[k] = s.x + TB_NUDGE; tbEY[k] = s.y + TB_NUDGE; } else { tbEX[k] = p.x + TB_NUDGE; tbEY[k] = p.y + TB_NUDGE; }
+  }
+}
+function tbOfPatient(p) { for (let k = 0; k < tbN; k++) if (tbPat[k] === p) return k; return -1; }
+function tbOfStaff(s) { for (let k = 0; k < tbN; k++) if (tbStaff[k] === s) return k; return -1; }
+
+function drawTableau(g, k, now, ui) {
+  const s = tbStaff[k], p = tbPat[k], name = tbSpr[k];
+  const wx = isoX(tbMX[k], tbMY[k]), wy = isoY(tbMX[k], tbMY[k]);
+  // one wide soft shadow under the group (the individual ones are not drawn)
+  if (layerNew && perfRef.level < 3) { const sh = CS.sceneShadow(), f = 2.3; g.drawImage(sh, wx - sh.ax * f, wy - sh.ay, sh.dw * f, sh.dh); }
+  const top = drawArtPerson(g, name, wx, wy, false, 0, false, false);
+  if (top !== top) return;
+  if (p.bubble && p.bubble.text) addOverlay(getBubble(p.bubble.text, 'say'), wx, top - 2, 1);
+  else if (s.bubble && s.bubble.text) addOverlay(getBubble(s.bubble.text, 'say'), wx, top - 2, 1);
+  else { const pr = progressOf(p); drawBar(g, wx, top - 8, pr >= 0 ? pr : ((now / 1500) % 1), '#4cc86a'); }
+  const sel = ui.selected;
+  if (sel && ((sel.type === 'staff' && sel.id === s.id) || (sel.type === 'patient' && sel.id === p.id))) selRing(g, tbMX[k], tbMY[k], now, 1.7);
 }
 
 function drawShadow(g, wx, wy) {
@@ -544,7 +596,16 @@ function drawPatient(g, p, now, ui) {
   if (ui.selected && ui.selected.type === 'patient' && ui.selected.id === p.id) selRing(g, x, y, now);
 }
 
+const dir8Map = new Map();               // staff id -> last 8-way screen sector (directional sprites keep it while idle / working)
+// Debug / test hook (allocates; never called per frame): tableaux drawn in the last frame and the last 8-way sector per staff id.
+export function artInfo() {
+  const tableaux = [], dir8 = {};
+  for (let k = 0; k < tbN; k++) tableaux.push({ staff: tbStaff[k].id, patient: tbPat[k].id, sprite: tbSpr[k], x: tbMX[k], y: tbMY[k] });
+  dir8Map.forEach((v, id) => { dir8[id] = v; });
+  return { tableaux, dir8 };
+}
 function drawStaff(g, s, now, ui) {
+  if (tbN) { const tk = tbOfStaff(s); if (tk >= 0) { drawTableau(g, tk, now, ui); return; } }
   const path = s.path;
   const moving = path && path.length > 0;
   let x = s.x, y = s.y, dir = faceMap.get(s.id);
@@ -561,7 +622,20 @@ function drawStaff(g, s, now, ui) {
   const wx = isoX(x, y), wy = isoY(x, y);
   drawShadow(g, wx, wy);
   let top = NaN;
-  if (artReady()) { const name = staffSprite(s.role); if (name) top = artAgent(g, name, s.id, x, y, dir, moving, false, pose === 'work', now); }
+  if (artReady()) {
+    let name = staffSprite(s.role), fixed = false;
+    if (name) {
+      const df = dirFrames(name);
+      if (df) {                                           // true 8-way frames: pick by the screen-space move vector, keep it while idle
+        let d8 = dir8Map.get(s.id);
+        if (d8 === undefined) d8 = 0;
+        if (moving) d8 = dirSector(path[0].x + 0.5 - x, path[0].y + 0.5 - y, d8);
+        dir8Map.set(s.id, d8);
+        name = df[d8]; fixed = true;
+      }
+      top = artAgent(g, name, s.id, x, y, dir, moving, false, pose === 'work', now, fixed);
+    }
+  }
   if (top !== top) {
     const spr = getPersonSprite(s.role, dir, frame, { pose, variant: s.id & 7 });
     const bob = (!moving && pose === 'stand') ? ((Math.sin(now / 500 + s.id * 2) > 0.75) ? -1 : 0) : 0;
@@ -593,9 +667,9 @@ function drawCar(g, c) {
   g.drawImage(spr, Math.round(isoX(c.x - 1, c.y - 0.5) - spr.ax), Math.round(isoY(c.x - 1, c.y - 0.5) - spr.ay));
 }
 
-function selRing(g, x, y, now) {
+function selRing(g, x, y, now, sc) {
   const X = isoX(x, y), Y = isoY(x, y);
-  const pulse = 1 + Math.sin(now / 180) * 0.08;
+  const pulse = (1 + Math.sin(now / 180) * 0.08) * (sc || 1);
   if (layerNew) { CS.sceneSelRing(g, X, Y, pulse); return; }
   g.lineWidth = 2;
   g.strokeStyle = '#2a2233'; g.beginPath(); g.ellipse(X, Y, 17 * pulse, 8.5 * pulse, 0, 0, 6.2832); g.stroke();
@@ -854,8 +928,9 @@ export function render(state, ui, now) {
   // ── entities ──
   eN = 0; ovN = 0;
   const pts = state.patients, sts = state.staff;
-  for (let i = 0; i < pts.length; i++) { const p = pts[i]; if (p.stage === 'gone') continue; let x = p.x, y = p.y; if (p.seat && p.stage === 'waiting' && Math.abs(p.seat.x + 0.5 - x) < 0.4 && Math.abs(p.seat.y + 0.5 - y) < 0.4) { x = p.seat.x + 0.5; y = p.seat.y + 0.5; } addEnt(1, p, x, y); }
-  for (let i = 0; i < sts.length; i++) addEnt(2, sts[i], sts[i].x, sts[i].y);
+  computeTableaux(state);
+  for (let i = 0; i < pts.length; i++) { const p = pts[i]; if (p.stage === 'gone' || (tbN && tbOfPatient(p) >= 0)) continue; let x = p.x, y = p.y; if (p.seat && p.stage === 'waiting' && Math.abs(p.seat.x + 0.5 - x) < 0.4 && Math.abs(p.seat.y + 0.5 - y) < 0.4) { x = p.seat.x + 0.5; y = p.seat.y + 0.5; } addEnt(1, p, x, y); }
+  for (let i = 0; i < sts.length; i++) { const k = tbN ? tbOfStaff(sts[i]) : -1; if (k >= 0) addEnt(2, sts[i], tbEX[k], tbEY[k]); else addEnt(2, sts[i], sts[i].x, sts[i].y); }
   if (!lite) {
     if (!state.weather || state.weather.kind !== 'typhoon') updateCars(state, carClock);
     for (let i = 0; i < carList.length; i++) if (carList[i].on) addEnt(3, carList[i], carList[i].x, carList[i].y);
@@ -957,7 +1032,9 @@ export function render(state, ui, now) {
     for (let i = 0; i < arr.length; i++) if (arr[i].id === sel.id) {
       const a = arr[i];
       const c = getBubble(a.name || '', 'tag');
-      ctx.drawImage(c, Math.round(isoX(a.x, a.y) * z + cam.x - c.cw / 2) - 1, Math.round(isoY(a.x, a.y) * z + cam.y + 6) - 1, c.width / dpr, c.height / dpr);
+      let ax = a.x, ay = a.y;
+      if (tbN) { const k = sel.type === 'patient' ? tbOfPatient(a) : tbOfStaff(a); if (k >= 0) { ax = tbMX[k]; ay = tbMY[k]; } }     // inside a tableau: tag under the group
+      ctx.drawImage(c, Math.round(isoX(ax, ay) * z + cam.x - c.cw / 2) - 1, Math.round(isoY(ax, ay) * z + cam.y + 6) - 1, c.width / dpr, c.height / dpr);
       break;
     }
   }
@@ -1065,6 +1142,20 @@ export function pickAt(state, ui, sx, sy, radius = 0) {
   let best = null, bestD = -1;
   const test = (a, type) => {
     let x = a.x, y = a.y;
+    if (tbN) {
+      if (type === 'patient' && tbOfPatient(a) >= 0) return;               // hidden inside a tableau: the group belongs to the staff member
+      if (type === 'staff') {
+        const k = tbOfStaff(a);
+        if (k >= 0) {
+          const bx = artBox(tbSpr[k]), mx = isoX(tbMX[k], tbMY[k]), my = isoY(tbMX[k], tbMY[k]);
+          if (bx && wx >= mx - bx.ax && wx <= mx - bx.ax + bx.w && wy >= my - bx.ay && wy <= my + 6) {
+            const d = tbEX[k] + tbEY[k];
+            if (d > bestD) { bestD = d; best = { type, id: a.id }; }
+          }
+          return;
+        }
+      }
+    }
     if (type === 'patient' && a.seat && Math.abs(a.seat.x + 0.5 - x) < 0.4 && Math.abs(a.seat.y + 0.5 - y) < 0.4) { x = a.seat.x + 0.5; y = a.seat.y + 0.5; }
     const ax = isoX(x, y), ay = isoY(x, y);
     if (Math.abs(wx - ax) <= 15 && wy >= ay - (artReady() ? 54 : 46) && wy <= ay + 6) {
@@ -1092,6 +1183,18 @@ export function pickAt(state, ui, sx, sy, radius = 0) {
   let near = null, nearD = radius;
   const cand = (a, type) => {
     if (type === 'patient' && a.stage === 'gone') return;
+    if (tbN) {
+      if (type === 'patient' && tbOfPatient(a) >= 0) return;
+      if (type === 'staff') {
+        const k = tbOfStaff(a);
+        if (k >= 0) {
+          const bx = artBox(tbSpr[k]);
+          const d = Math.hypot(sx - (isoX(tbMX[k], tbMY[k]) * z + cam.x), sy - (isoY(tbMX[k], tbMY[k]) * z + cam.y - (bx ? bx.h / 2 : 18) * z));
+          if (d < nearD) { nearD = d; near = { type, id: a.id }; }
+          return;
+        }
+      }
+    }
     let x = a.x, y = a.y;
     if (type === 'patient' && a.seat && Math.abs(a.seat.x + 0.5 - x) < 0.4 && Math.abs(a.seat.y + 0.5 - y) < 0.4) { x = a.seat.x + 0.5; y = a.seat.y + 0.5; }
     const d = Math.hypot(sx - (isoX(x, y) * z + cam.x), sy - (isoY(x, y) * z + cam.y - 18 * z));

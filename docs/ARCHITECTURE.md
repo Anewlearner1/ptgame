@@ -284,11 +284,18 @@ Tile diamond 64×32 (`TILE_W`,`TILE_H`); object `height` px extruded upward; wor
 ## 美術包（概念圖圖集）
 - 素材：`assets/art/atlas.png` + `atlas.json`（79 個去背素材，由 `tools/build_atlas.py` 從使用者提供的概念圖切出；原圖在 `assets/art/source/`，不隨網站部署）。命名見 `assets/art/README.md`。
 - `js/render/art.js`：`loadArt() / artReady() / artRect(name) / artCanvas(name) / artUrl() / artEnabled() / setArtEnabled(on)`；事件 `art:changed {enabled, ready}`。設定存 `localStorage 'ptgame.art'`（預設新美術；可切回「原像素風」）。圖集載入失敗時全部退回程式繪製。
-- 地圖：人物（醫師/護理師/PT/OT；ST 用 `staff.pharmacist`；四類病患）與設備（bed、traction、tens、soft_mat、shockwave）使用圖集。介面：`js/ui/artdom.js`（`artEl`、`artBanner`）。測試：`tools/arttest.mjs`、`tools/artui.mjs`（各用自己的 http.server 連接埠，見檔頭）。
+- 地圖：人物（醫師/護理師/PT/OT/ST；四類病患；ST 用圖集的真實精靈 `staff.st`，不再是藥師換色）與設備（bed、traction、tens、soft_mat、shockwave）使用圖集。介面：`js/ui/artdom.js`（`artEl`、`artBanner`）。測試：`tools/arttest.mjs`、`tools/artui.mjs`（各用自己的 http.server 連接埠，見檔頭）。
+
+### 方向幀與治療情境圖（`artdraw.js` 的資料表）
+- `DIRECTIONAL = ['staff.st']`：基底名在圖集中另有 `<base>.dir.{d,ld,l,lu,u,ru,r,rd}`（螢幕空間的 8 向行走幀）時，這類人物改用「螢幕空間移動向量」選幀：`dirSector(dgx, dgy, fallback)` 先套 `iso.js` 的投影（`sx=(dx−dy)·32, sy=(dx+dy)·16`），再用 `atan2` 分成 8 個 45° 扇區（邊界 22.5°；0 d、1 ld、2 l、3 lu、4 u、5 ru、6 r、7 rd）；向量近乎零就保留上一個方向（`renderer.js` 的 `dir8Map`：待機／工作時不變，初始為 d）。這類人物不水平翻轉、不 ±3° 傾斜、不做「背向變暗」，只保留上下 bob；其他職類維持單張精靈＋翻轉／傾斜。`dirFrames(base)` 回傳 8 個名稱（沒有就 `null`）。
+- 縮放：`scaleOf` 以「人形的不透明高度」（`art.artFigure`，alpha 外框，一次 `getImageData` 後快取）對齊其他員工（`FIG_T = 45.5` 世界 px）；方向幀都用 `dir.d` 的人形高度，幀間不會跳大小；`staff.st` 主圖同樣依人形高度。主圖（301 px、成人比例）與方向幀（95 px、大頭 Q 版）比例差很大，所以地圖上待機／工作也用方向幀（`d` 或最後方向），主圖只用在介面縮圖。
+- `TABLEAUX = {st: {speech: {kid: [speech, cognitive], elder: [swallow], default: [counsel]}}}`：`[角色][治療 id][病患類型|default]` → 候選精靈（用病患 id 取餘數挑一張：小孩偶數 speech／奇數 cognitive、長者 swallow、上班族／運動員 counsel）。新增其他「員工＋病患」組合只要在這張表加一筆（精靈要有 `<base>.act.*` 命名、`scaleOf` 的 `ACT_REL` 會把治療師頭部縮到與行走幀同大，目前 0.93）。
+- 渲染（`renderer.js`）：每幀 `computeTableaux(state)`（池化陣列、不配置）找出「該職類、狀態 working、有任務且治療 id 在表中、雙方都沒在走、病患 stage `treating`、距離 ≤ 3 格」的配對；配對內的病患不加入實體清單，員工實體改畫一張組合圖：錨點＝兩人位置中點（底部置中）、排序位置＝較近鏡頭者再往前 `TB_NUDGE`=0.75 格（群組比單人寬，避免被鄰近的診間整個蓋住）、一個加寬的地面陰影、進度條在群組上方、氣泡優先用病患的、選取圈放大在中點、名牌在群組下方。點選群組選到「員工」（`pickAt` 用群組外框；被藏起來的病患不會單獨被選到）。治療結束或任一方移動／離開，下一幀就退回兩個獨立精靈（每幀重算，沒有狀態殘留）。classic、圖集載入失敗、美術關閉＝完全是舊行為。`renderer.artInfo()` 是測試用掛鉤（本幀的 tableaux 與各員工最後方向，會配置，勿在每幀呼叫）。
+- 測試：`tools/arttest.mjs`（真實精靈像素比對、`dirSector` 邊界、待機保持方向、各病患類型的情境圖、classic／圖集封鎖時沒有情境圖、2 分鐘 ×3 浸泡）。
 
 ### 概念風格（整體統一，見 docs/ART_STYLE.md）
 - 啟用條件 = `artEnabled()`（設定「美術風格」＝新美術；預設）。切回「原像素風」＝改版前的畫面與介面，逐像素一致（已用 64 張畫布與 152 張介面截圖雜湊驗證）。
-- 世界：`js/render/concept_objects.js`（24 種道具、3 種地板、`conceptThumb`）、`concept_scene.js`（地面、牆窗、招牌、建築、樹、車、疊加層、狀態圖示）；人物與 5 件設備來自圖集；語言治療師為合成精靈 `staff.st`（`artStaffCanvas/artStaffUrl`）。
+- 世界：`js/render/concept_objects.js`（24 種道具、3 種地板、`conceptThumb`）、`concept_scene.js`（地面、牆窗、招牌、建築、樹、車、疊加層、狀態圖示）；人物與 5 件設備來自圖集；語言治療師為圖集的真實精靈 `staff.st`（155×301，`artStaffCanvas/artStaffUrl` 仍可用，回傳真實精靈；介面縮圖直接用圖集背景）。
 - 介面：所有規則都在 `html.style-concept` 底下（style/ui/mobile.css 末段）；`js/ui/theme.js`（同步 class 與 theme-color）、`js/ui/icons.js`（SVG 圖示）。測試：`tools/stylecss.mjs`（連接埠 8212）。
 
 ## 效能診斷與最佳化（perf）

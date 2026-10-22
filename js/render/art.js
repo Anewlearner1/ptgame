@@ -6,6 +6,7 @@
 //   artReady()           -> boolean            atlas loaded AND style == 'new'
 //   artRect(name)        -> {x,y,w,h,ax,ay,facing,heightPx} | null   (null unless artReady())
 //   artCanvas(name)      -> HTMLCanvasElement | null                  cached native-size cut-out (null unless artReady())
+//   artFigure(name)      -> {y0,y1,x0,x1,h} | null   opaque bounding box of the cut-out (alpha > 40), cached; h = y1 - y0 + 1
 //   artUrl()             -> string             absolute URL of atlas.png (for DOM CSS backgrounds; valid even before load)
 //   artEnabled() / setArtEnabled(on)           persisted in localStorage 'ptgame.art' ('classic' | 'new', default 'new')
 // Bus events: 'art:changed' {enabled, ready} on toggle AND when the atlas finishes loading (so UIs can re-render).
@@ -21,6 +22,7 @@ let loading = null;       // in-flight / settled promise
 let enabled = readPref();
 const cuts = new Map();   // name -> canvas
 const rects = new Map();  // name -> rect object
+const figs = new Map();   // name -> opaque bbox
 
 function readPref() {
   try { return localStorage.getItem(KEY) !== 'classic'; } catch (_) { return true; }
@@ -46,7 +48,7 @@ export function loadArt() {
       const im = await decode(PNG_URL);
       if (!im.naturalWidth) throw new Error('empty atlas');
       manifest = m; image = im;
-      cuts.clear(); rects.clear(); urls.clear();
+      cuts.clear(); rects.clear(); urls.clear(); figs.clear();
       bus.emit('art:changed', { enabled, ready: artReady() });
       return true;
     } catch (e) {
@@ -70,21 +72,17 @@ export function setArtEnabled(on) {
 
 export function artReady() { return !!(manifest && image && enabled); }
 
-// Virtual sprites derived from atlas ones by a palette swap (the sheet has no speech-therapist): 'staff.st' = staff.pharmacist with a
-// lavender coat + purple scrubs (#5a5aa2 family). artRect/artCanvas treat them like any atlas sprite.
-const DERIVED = { 'staff.st': 'staff.pharmacist' };
-
 export function artRect(name) {
   if (!artReady()) return null;
   let r = rects.get(name);
   if (r) return r;
-  const s = manifest.sprites[DERIVED[name] || name];
+  const s = manifest.sprites[name];
   if (!s) return null;
   const meta = manifest.meta || {};
   r = {
     x: s.x, y: s.y, w: s.w, h: s.h, ax: s.ax, ay: s.ay,
-    facing: (meta.facing && meta.facing[DERIVED[name] || name]) || 'front',
-    heightPx: (meta.heightPx && meta.heightPx[DERIVED[name] || name]) || s.h,
+    facing: (meta.facing && meta.facing[name]) || 'front',
+    heightPx: (meta.heightPx && meta.heightPx[name]) || s.h,
   };
   rects.set(name, r);
   return r;
@@ -97,41 +95,34 @@ export function artCanvas(name) {
   if (c) return c;
   c = document.createElement('canvas');
   c.width = r.w; c.height = r.h;
-  const g = c.getContext('2d', DERIVED[name] ? { willReadFrequently: true } : undefined);
+  const g = c.getContext('2d');
   g.drawImage(image, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
-  if (DERIVED[name]) swapPurple(g, r.w, r.h);
   c.ax = r.ax; c.ay = r.ay;
   cuts.set(name, c);
   return c;
 }
 
-// grey/white coat -> lavender, saturated blue (scrubs shirt) -> violet; skin, hair, outline and tablet untouched
-function swapPurple(g, w, h) {
-  const im = g.getImageData(0, 0, w, h), d = im.data;
-  for (let i = 0; i < d.length; i += 4) {
-    if (d[i + 3] < 128) continue;
-    const r = d[i], gg = d[i + 1], b = d[i + 2];
-    const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), df = mx - mn;
-    if (df < 38 && mx > 150) {                       // white coat (lit + shaded)
-      const l = mx / 255, k = 0.55 + 0.45 * l;
-      d[i] = 204 * k; d[i + 1] = 199 * k; d[i + 2] = 247 * k;
-    } else if (df > 0 && mx > 0 && df / mx > 0.28) {   // saturated blue -> violet (hue +38 deg, a little less saturated)
-      let hh;
-      if (mx === r) hh = ((gg - b) / df + 6) % 6; else if (mx === gg) hh = (b - r) / df + 2; else hh = (r - gg) / df + 4;
-      hh *= 60;
-      if (hh > 185 && hh < 260) {
-        hh = (hh + 38) % 360;
-        const s = Math.min(1, (df / mx) * 0.8), v = mx / 255, c2 = v * s, x2 = c2 * (1 - Math.abs(((hh / 60) % 2) - 1)), m2 = v - c2;
-        let rr = 0, g2 = 0, bb = 0;
-        if (hh < 60) { rr = c2; g2 = x2; } else if (hh < 120) { rr = x2; g2 = c2; } else if (hh < 180) { g2 = c2; bb = x2; } else if (hh < 240) { g2 = x2; bb = c2; } else if (hh < 300) { rr = x2; bb = c2; } else { rr = c2; bb = x2; }
-        d[i] = (rr + m2) * 255; d[i + 1] = (g2 + m2) * 255; d[i + 2] = (bb + m2) * 255;
-      }
-    }
-  }
-  g.putImageData(im, 0, 0);
+// Opaque bounding box of a sprite (one getImageData per sprite, on a willReadFrequently scratch canvas so Chrome logs nothing).
+// Used to scale people by their FIGURE height, not by the padded canvas height.
+let scratch = null;
+export function artFigure(name) {
+  let f = figs.get(name);
+  if (f) return f;
+  const src = artCanvas(name);
+  if (!src) return null;
+  if (!scratch) scratch = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  scratch.canvas.width = src.width; scratch.canvas.height = src.height;
+  scratch.clearRect(0, 0, src.width, src.height);
+  scratch.drawImage(src, 0, 0);
+  const d = scratch.getImageData(0, 0, src.width, src.height).data;
+  let y0 = src.height, y1 = -1, x0 = src.width, x1 = -1;
+  for (let y = 0, i = 3; y < src.height; y++) for (let x = 0; x < src.width; x++, i += 4) if (d[i] > 40) { if (y < y0) y0 = y; if (y > y1) y1 = y; if (x < x0) x0 = x; if (x > x1) x1 = x; }
+  f = y1 < 0 ? { y0: 0, y1: src.height - 1, x0: 0, x1: src.width - 1, h: src.height } : { y0, y1, x0, x1, h: y1 - y0 + 1 };
+  figs.set(name, f);
+  return f;
 }
 
-// Staff portrait/sprite canvas for a role (native size, cached). 'st' is the palette-swapped one. null unless artReady().
+// Staff portrait/sprite canvas for a role (native size, cached). 'st' is the real speech-therapist sheet sprite (155x301). null unless artReady().
 const STAFF_NAME = { doctor: 'staff.doctor', nurse: 'staff.nurse', pt: 'staff.pt', ot: 'staff.ot', st: 'staff.st', tech: 'staff.tech' };
 export function artStaffCanvas(role) { const n = STAFF_NAME[role]; return n ? artCanvas(n) : null; }
 const urls = new Map();

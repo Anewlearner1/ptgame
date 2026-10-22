@@ -1,8 +1,9 @@
 // Atlas-art drawing helpers for the renderer (S-L): people (patients / staff) and the equipment that has a clear match
 // in the sheet. Everything here is a no-op / returns null when the atlas is not ready, so renderer.js falls back to the
 // procedural sprites in sprites.js.
-import { artReady, artCanvas, artRect } from './art.js';
+import { artReady, artCanvas, artRect, artFigure } from './art.js';
 import { bus } from '../core/bus.js';
+import { HALF_W, HALF_H } from './iso.js';
 
 // ───────────────────────── scale tables ─────────────────────────
 // Target on-screen height (world px at zoom 1) of each family's base sprite; the other poses of the family reuse the same
@@ -15,20 +16,92 @@ const FAMILY = {
 };
 const STAFF_H = 46;
 
+// ───────────────────────── directional frames & treatment tableaux (data) ─────────────────────────
+// A sprite base name B listed in DIRECTIONAL whose atlas also has B.dir.{d,ld,l,lu,u,ru,r,rd} (screen-space walk frames) is drawn
+// from the frame that matches the screen-space movement vector (no mirroring, no tilt). Everything else keeps the single sprite +
+// flip / tilt behaviour. Order = the sector index used by dirSector(): 0 d(own, screen-down) 1 ld 2 l 3 lu 4 u 5 ru 6 r 7 rd.
+export const DIRECTIONAL = ['staff.st'];
+export const DIR_SUFFIX = ['d', 'ld', 'l', 'lu', 'u', 'ru', 'r', 'rd'];
+// TABLEAUX[role][treatmentId][patient type | 'default'] = candidate sprites (the patient id picks one: id % length). While such a
+// staff member is 'working' on that treatment with its patient (stage 'treating'), renderer.js draws ONE group sprite instead of both.
+export const TABLEAUX = {
+  st: { speech: { kid: ['staff.st.act.speech', 'staff.st.act.cognitive'], elder: ['staff.st.act.swallow'], default: ['staff.st.act.counsel'] } },
+};
+// scale of a tableau relative to the therapist's walking frame: the therapist's head in the group is ~7% larger than in the frame at
+// equal scale, so the group is drawn at 0.93x to make the therapist look the same size as when she walks
+const ACT_REL = 0.93;
+const FIG_T = 45.5;            // on-screen height (world px at zoom 1) of the opaque figure of a staff sprite (others: canvas 46 minus 1px padding)
+
 const _kCache = new Map();
 function scaleOf(name) {
   let k = _kCache.get(name);
   if (k) return k;
-  let base = null, th = 0;
-  if (name.startsWith('staff.')) { base = name; th = STAFF_H; }
-  else {
-    const fam = FAMILY[name.split('.')[1]];
-    if (fam) { base = fam[0]; th = fam[1]; }
+  let base = null, th = 0, i;
+  if ((i = name.indexOf('.dir.')) > 0 || (i = name.indexOf('.act.')) > 0) {
+    // directional frame / tableau of a sheet whose figure heights differ per sprite: scale by the figure of the base's `dir.d` frame
+    const f = artFigure(name.slice(0, i) + '.dir.d');
+    k = f ? FIG_T / f.h * (name.indexOf('.act.') > 0 ? ACT_REL : 1) : 0.35;
+  } else if (DIRECTIONAL.indexOf(name) >= 0) {
+    const f = artFigure(name);
+    k = f ? FIG_T / f.h : 0.35;
+  } else {
+    if (name.startsWith('staff.')) { base = name; th = STAFF_H; }
+    else {
+      const fam = FAMILY[name.split('.')[1]];
+      if (fam) { base = fam[0]; th = fam[1]; }
+    }
+    const r = artRect(base || name);
+    k = r && th ? th / r.h : 0.35;
   }
-  const r = artRect(base || name);
-  k = r && th ? th / r.h : 0.35;
   _kCache.set(name, k);
   return k;
+}
+
+// 8 sprite names of a directional base (null when the base is not directional / the atlas lacks a frame). Cached; reset on art:changed.
+const _dirs = new Map();
+export function dirFrames(base) {
+  let v = _dirs.get(base);
+  if (v !== undefined) return v;
+  v = null;
+  if (DIRECTIONAL.indexOf(base) >= 0) {
+    const a = [];
+    for (let i = 0; i < 8; i++) { const n = base + '.dir.' + DIR_SUFFIX[i]; if (!artRect(n)) { a.length = 0; break; } a.push(n); }
+    if (a.length === 8) v = a;
+  }
+  if (artReady()) _dirs.set(base, v);          // not cached while the atlas is missing (it may load later)
+  return v;
+}
+// Sector 0..7 (see DIR_SUFFIX) of the SCREEN-SPACE direction of a grid-space move (dgx, dgy): the iso.js projection
+// (sx = (dx - dy) * TILE_W/2, sy = (dx + dy) * TILE_H/2), then 45 deg sectors centred on the 8 directions (boundaries at 22.5 deg).
+// Returns `fallback` for a (near) zero vector. Allocation-free.
+export function dirSector(dgx, dgy, fallback) {
+  if (dgx * dgx + dgy * dgy < 0.0004) return fallback;
+  const sx = (dgx - dgy) * HALF_W, sy = (dgx + dgy) * HALF_H;
+  // angle measured from screen-down (+y) towards screen-left (-x): d=0, ld=45, l=90, lu=135, u=180, ru=225 (-135), r=270 (-90), rd=315 (-45)
+  let a = Math.atan2(-sx, sy) * (4 / Math.PI);            // in units of 45 deg, -4..4
+  if (a < 0) a += 8;
+  return (Math.floor(a + 0.5) & 7);
+}
+// the sprite of an entry of TABLEAUX for (role, treatmentId, patient type, patient id), or null
+export function tableauFor(role, treatmentId, ptype, pid) {
+  const r = TABLEAUX[role];
+  const t = r && r[treatmentId];
+  if (!t) return null;
+  const l = t[ptype] || t.default;
+  return l && l.length ? l[(pid | 0) % l.length] : null;
+}
+export function hasTableaux(role) { return !!TABLEAUX[role]; }
+// world-px box of a sprite at its own scale: {w, h, ax, ay} (anchor = feet / bottom-centre). null when missing.
+const _boxes = new Map();
+export function artBox(name) {
+  let b = _boxes.get(name);
+  if (b) return b;
+  const r = artRect(name);
+  if (!r) return null;
+  const k = scaleOf(name);
+  b = { w: r.w * k, h: r.h * k, ax: r.ax * k, ay: r.ay * k };
+  _boxes.set(name, b);
+  return b;
 }
 
 // ───────────────────────── pre-scaled people cache ─────────────────────────
@@ -49,7 +122,7 @@ export function setArtScale(S, e, f) {
   else { exact_cur = false; lvl_cur = Math.round(Math.log2(S) * 4); Sq_cur = Math.pow(2, lvl_cur / 4); }
 }
 const _lv = new Map();     // name -> [4 variants (plain, sit, back, sit+back)] of Map(lvl -> entry)
-export function clearArtCaches() { _lv.clear(); _kCache.clear(); _obj.clear(); nEntries = 0; }
+export function clearArtCaches() { _lv.clear(); _kCache.clear(); _obj.clear(); _dirs.clear(); _boxes.clear(); nEntries = 0; }
 bus.on('art:changed', clearArtCaches);
 
 function resize(src, tw, th) {
