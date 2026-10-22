@@ -9,6 +9,10 @@ import { showTutorial, showHelp } from '../modals.js';
 import { layout } from '../layout.js';
 import { artBanner } from '../artdom.js';
 import { artEnabled, setArtEnabled } from '../../render/art.js';
+import { QUALITY_MODES, QUALITY_HELP, FPSCAP_HELP, perfCfg, setQuality, setFpsCap } from '../quality.js';
+import { isHudOn, setHud } from '../perfhud.js';
+import { runAndShowReport, benchRunning } from '../perfbench.js';
+import { versionLabel } from '../version.js';
 import { canFullscreen, isFullscreen, toggleFullscreen, canPromptInstall, promptInstall, isStandalone, isIOS } from '../pwa.js';
 
 const store = { tab: 'save', metric: 'cash' };
@@ -139,6 +143,31 @@ function installSection() {
   return section('📲 安裝與全螢幕', note, row);
 }
 
+// ---------------------------------------------------------------- performance (效能診斷 / 畫質 / 幀率上限 / 效能報告)
+function perfSection(state, ui) {
+  const hud = h('input', { type: 'checkbox', checked: isHudOn(), dataset: { perf: 'hud' }, onchange: () => setHud(hud.checked) });
+  const q = h('select', { dataset: { perf: 'quality' }, 'aria-label': '畫質', onchange: () => setQuality(q.value) },
+    QUALITY_MODES.map(([v, l]) => h('option', { value: v }, l)));
+  const fc = h('select', { dataset: { perf: 'fpscap' }, 'aria-label': '幀率上限', onchange: () => setFpsCap(fc.value) },
+    [['60', '60'], ['30', '30']].map(([v, l]) => h('option', { value: v }, l)));
+  const qHelp = h('p', { class: 'muted u-p u-small' });
+  const rep = h('button', { class: 'btn small primary', type: 'button', dataset: { perf: 'report' }, onclick: () => { if (!benchRunning()) runAndShowReport(state, ui); } }, '📋 效能報告');
+  const sync = () => {
+    q.value = perfCfg.quality; fc.value = String(perfCfg.fpsCap); hud.checked = isHudOn();
+    qHelp.textContent = QUALITY_HELP[perfCfg.quality];
+  };
+  sync();
+  const un1 = bus.on('quality:changed', () => { if (q.isConnected) sync(); else { un1(); un2(); } });
+  const un2 = bus.on('perfhud:changed', () => { if (hud.isConnected) sync(); else { un1(); un2(); } });
+  return section('⚡ 效能與畫質',
+    h('label', { class: 'u-setting' }, hud, ' 效能診斷（畫面左上角顯示 fps／耗時，快捷鍵 F3）'),
+    h('label', { class: 'u-setting' }, '畫質　', q), qHelp,
+    h('label', { class: 'u-setting' }, '幀率上限　', fc, h('span', { class: 'muted u-small' }, '　fps')),
+    h('p', { class: 'muted u-p u-small' }, FPSCAP_HELP),
+    h('div', { class: 'row' }, rep),
+    h('p', { class: 'muted u-p u-small' }, '效能報告：自動跑 12 秒測試（遊戲會加速、畫面短暫放大），完成後可複製或分享，貼給開發者即可。測試中請勿操作，可按「取消」中止。'));
+}
+
 // ---------------------------------------------------------------- settings
 function buildSettings(body, state, ui) {
   const grid = h('input', { type: 'checkbox', checked: ui.showGrid, onchange: () => { ui.showGrid = grid.checked; } });
@@ -150,6 +179,8 @@ function buildSettings(body, state, ui) {
   const help = h('button', { class: 'btn small', type: 'button', onclick: () => showHelp() }, '操作說明');
   const inst = installSection();
   if (inst) body.append(inst);
+  const verLine = h('p', { class: 'muted u-p u-small u-ver' }, '版本：' + versionLabel());
+  const unVer = bus.on('version:loaded', () => { if (verLine.isConnected) verLine.textContent = '版本：' + versionLabel(); else unVer(); });
   // 美術風格: concept art (new) vs the original procedural pixel art; applies immediately and persists (render/art.js)
   const styleBtns = [[true, '新美術（概念圖）'], [false, '原像素風']].map(([on, label]) =>
     h('button', { class: 'btn u-artbtn', type: 'button', dataset: { art: on ? 'new' : 'classic' }, onclick: () => setArtEnabled(on) }, label));
@@ -162,6 +193,7 @@ function buildSettings(body, state, ui) {
   body.append(section('🎨 美術風格',
     h('div', { class: 'row u-artswitch', role: 'group', 'aria-label': '美術風格' }, styleBtns),
     h('p', { class: 'muted u-p u-small' }, '切換後立即生效，並記在這台裝置上。新美術會多下載一張約 1 MB 的圖片（首次載入後可離線使用）；在手機上若想節省流量，可改回「原像素風」。')));
+  body.append(perfSection(state, ui));
   body.append(section('遊戲設定',
     h('label', { class: 'u-setting' }, grid, ' 顯示地圖格線（G）'),
     h('label', { class: 'u-setting' }, snd, ' 音效（預留，尚無音效）'),
@@ -177,6 +209,7 @@ function buildSettings(body, state, ui) {
     section('關於',
       artBanner('scene.clinic', { title: '診所一景', maxVh: 15, cls: 'u-banner-sm' }),
       h('p', { class: 'muted u-p u-small' }, '復健科診所物語'),
+      verLine,
       h('p', { class: 'muted u-p u-small' }, '角色與設備美術：使用者提供的概念圖')));
   return { update() { if (grid.checked !== ui.showGrid) grid.checked = ui.showGrid; } };
 }

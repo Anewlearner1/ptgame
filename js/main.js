@@ -21,6 +21,10 @@ import { initRenderer, render } from './render/renderer.js';
 import { initCamera, centerOnLot } from './render/camera.js';
 import { initInput } from './render/input.js';
 import { initUI, updateUI } from './ui/ui.js';
+import { createPerfStats, pushFrame } from './core/perfstats.js';
+import { initQuality, perfCfg, FRAME_30_MS } from './ui/quality.js';
+import { initPerfHud } from './ui/perfhud.js';
+import { initVersion } from './ui/version.js';
 
 const MAX_STEP_MIN = 1.0;     // sub-step size in game minutes (keeps sim stable at x3)
 const MAX_FRAME_SEC = 0.1;    // clamp tab-switch hiccups
@@ -65,11 +69,22 @@ function boot() {
   refreshDerived();
   centerOnLot(state, canvas);
   initUI(state, ui);
+  ui.perfStats = createPerfStats();          // per-frame sim / render / ui ms + frame interval (read by the HUD and the benchmark)
+  initQuality(ui);                           // 畫質 / 幀率上限 (persisted), before the first render
+  initPerfHud(state, ui);
+  initVersion();                             // build version (version.json) + 'update available' toast
 
   window.__game = { state, ui, bus, refreshDerived };   // debugging + automated tests
 
-  let last = performance.now();
+  let last = performance.now(), lastRaf = 0, nextDue = 0;
+  const PS = ui.perfStats;
   function frame(now) {
+    // frame limiter (幀率上限 30): skip the whole tick; `last` is only advanced by frames that do work, so dt stays real
+    if (perfCfg.fpsCap === 30) {
+      if (now < nextDue - 1.5) { PS.skipped++; requestAnimationFrame(frame); return; }
+      nextDue = now - nextDue > 50 ? now + FRAME_30_MS : nextDue + FRAME_30_MS;
+    } else nextDue = 0;
+    const t0 = performance.now();
     const dtSec = Math.min((now - last) / 1000, MAX_FRAME_SEC);
     last = now;
     if (ui.dirtyOcc) refreshDerived();
@@ -88,8 +103,14 @@ function boot() {
         if (state.time.paused) break;     // a modal event paused the game mid-frame
       }
     }
+    const t1 = performance.now();
     render(state, ui, now);
+    const t2 = performance.now();
     updateUI(state, ui);
+    const t3 = performance.now();
+    const fMs = lastRaf ? now - lastRaf : 0;
+    lastRaf = now;
+    if (fMs > 0 && fMs < 1000 && !document.hidden) pushFrame(PS, now, fMs, t1 - t0, t2 - t1, t3 - t2);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

@@ -16,7 +16,7 @@ import {
 } from './sprites.js';
 import { loadArt, artReady, artEnabled } from './art.js';
 import * as CS from './concept_scene.js';
-import { setArtScale, drawArtPerson, personHeight, patientSprite, staffSprite, artFlip, blit } from './artdraw.js';
+import { setArtScale, setArtQuality, drawArtPerson, personHeight, patientSprite, staffSprite, artFlip, blit } from './artdraw.js';
 
 const HW = TILE_W / 2, HH = TILE_H / 2;
 const LX = 1100, LY = 240;                               // layer origin offset (world -> layer px)
@@ -37,11 +37,13 @@ export function initRenderer(cv) {
   layerCtx = layer.getContext('2d');
   layerCtx.imageSmoothingEnabled = false;
   warmSprites();
-  bus.on('art:changed', () => { objSig = ''; layer._built = false; bubbleCache.clear(); });   // atlas loaded / style toggled: rebuild object sprites + static layer
+  bus.on('art:changed', () => { objSig = null; layer._built = false; bubbleCache.clear(); });   // atlas loaded / style toggled: rebuild object sprites + static layer
   loadArt();                                                            // non-blocking; the procedural art is used until (and unless) it resolves
   ensureSize();
-  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => ensureSize()).observe(canvas);
-  window.addEventListener('resize', ensureSize);
+  const dirty = () => { sizeDirty = true; ensureSize(); };
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(dirty).observe(canvas);
+  window.addEventListener('resize', dirty);
+  window.addEventListener('orientationchange', dirty);
 }
 
 // Quality scaler state (ui.perf = {dpr, fps, level, auto}). level 0 full; 1 no decorative layers (cars, sparkle, weather
@@ -65,7 +67,7 @@ function perfFrame(ui, dtMs, now) {
   if (dtMs <= 0 || dtMs > 250 || document.hidden) return;
   P.fps = P.fps * 0.92 + (1000 / dtMs) * 0.08;
   if (!P.auto || now < 3000) return;          // ignore the start-up burst (sprite warm-up, layout)
-  if (dtMs > 24) { slowRun++; fastRun = 0; } else { slowRun = 0; fastRun++; }
+  if (dtMs > (P.fpsCap === 30 ? 45 : 24)) { slowRun++; fastRun = 0; } else { slowRun = 0; fastRun++; }   // 30 fps cap: a 33 ms frame is on target
   if (slowRun >= 20 && P.level < 3) {
     P.level++; slowRun = 0; fastRun = 0;
     if (now - lastDropAt < 20000) restoreNeed = Math.min(3600, restoreNeed * 2);   // dropped soon after a restore: be patient
@@ -75,9 +77,13 @@ function perfFrame(ui, dtMs, now) {
   }
 }
 
+// The canvas box is only re-read from the DOM (clientWidth/Height force a layout when anything is dirty) after a resize signal,
+// plus every 120 frames as a safety net; DPR / quality changes are picked up on every frame (cheap, no DOM access).
+let sizeDirty = true, sizeAge = 0, boxW = 0, boxH = 0;
 function ensureSize() {
   if (!canvas) return false;
-  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (sizeDirty || ++sizeAge > 120) { boxW = canvas.clientWidth; boxH = canvas.clientHeight; sizeDirty = false; sizeAge = 0; }
+  const w = boxW, h = boxH;
   const dpr = effectiveDpr(w, h);
   if (perfRef.dpr !== dpr) perfRef.dpr = dpr;
   if (!w || !h) return false;
@@ -281,7 +287,7 @@ const recs = [];                         // sorted draw order
 const flatRecs = [];                     // non-blocking flat objects (drawn before everything else)
 const tileRec = new Int16Array(MAP_W * MAP_H);
 const recById = new Map();
-let objSig = '';
+let objSig = null;
 
 function mustPrecede(a, b) {
   return (a.x1 <= b.x0 && !(b.y1 <= a.y0)) || (a.y1 <= b.y0 && !(b.x1 <= a.x0));
@@ -296,7 +302,9 @@ function rebuildRecs(state) {
     const rot = o.rot ? 1 : 0;
     const spr = getObjectSprite(o.defId, rot);
     const { w, h } = sizeOf(def, rot);
-    const rec = { obj: o, def, spr, x0: o.x, y0: o.y, x1: o.x + w, y1: o.y + h, w, h, px: Math.round(isoX(o.x, o.y) - spr.ax), py: Math.round(isoY(o.x, o.y) - spr.ay), idx: 0, state: 0 };
+    const rec = { obj: o, def, spr, x0: o.x, y0: o.y, x1: o.x + w, y1: o.y + h, w, h, px: Math.round(isoX(o.x, o.y) - spr.ax), py: Math.round(isoY(o.x, o.y) - spr.ay), idx: 0, state: 0, bx0: 0, by0: 0, bx1: 0, by1: 0 };
+    // world-space bounding box of the drawn sprite (+2 px slack for the sub-pixel snapping in blit()): used to skip off-screen draws
+    rec.bx0 = rec.px - 2; rec.by0 = rec.py - 2; rec.bx1 = rec.px + (spr.dw || spr.width) + 2; rec.by1 = rec.py + (spr.dh || spr.height) + 2;
     recById.set(o.id, rec);
     if (def.blocks === false) flatRecs.push(rec); else list.push(rec);
   }
@@ -453,7 +461,7 @@ const DEG = Math.PI / 180;
 function artAgent(g, name, id, x, y, dir, moving, sit, busy, now) {
   const wx = isoX(x, y);
   let wy = isoY(x, y), bob = 0, tilt = 0;
-  if (moving) { const ph = ((now / 120 + id) | 0) & 1; bob = ph ? -1.5 : 0; tilt = (ph ? 3 : -3) * DEG; }
+  if (moving) { const ph = ((now / 120 + id) | 0) & 1; bob = ph ? -1.5 : 0; tilt = (ph ? 3 : -3) * DEG; if (perfRef.level >= 2) tilt = 0; }   // level >= 2: bob only (a tilt is a rotated, smoothed blit)
   else if (busy) bob = Math.sin(now / 300 + id * 1.7) * 0.9 - 0.9;
   else if (!sit) bob = (Math.sin(now / 420 + id) > 0.7) ? -1 : 0;
   if (sit) wy += -SEAT_LIFT - 1 + 0.45 * personHeight(name);
@@ -461,7 +469,10 @@ function artAgent(g, name, id, x, y, dir, moving, sit, busy, now) {
 }
 
 function drawShadow(g, wx, wy) {
-  if (layerNew) { const s = CS.sceneShadow(); g.drawImage(s, wx - s.ax, wy - s.ay, s.dw, s.dh); return; }
+  if (layerNew) {
+    if (perfRef.level >= 3) return;                         // lowest quality: no blended ground shadows
+    const s = CS.sceneShadow(); g.drawImage(s, wx - s.ax, wy - s.ay, s.dw, s.dh); return;
+  }
   const sh = getShadowSprite();
   g.drawImage(sh, Math.round(wx - sh.ax), Math.round(wy - sh.ay));
 }
@@ -650,6 +661,39 @@ function strokeOut(g, col, w) {          // footprint outline; the concept style
 }
 const DAY_KEYS = [[0, 255, 232, 200], [0.1, 255, 250, 240], [0.22, 255, 255, 255], [0.62, 255, 255, 255], [0.8, 255, 214, 168], [0.92, 196, 170, 206], [1, 128, 132, 196]];
 
+// Painted floors. Concept style: drawn once into the cached background copy (they only change on a map edit, so the signature
+// below is the cache key); classic: drawn per frame. Tiles outside the view are skipped.
+function floorSig(state, lot) {
+  let h = lot.x0 * 31 + lot.y0 * 17 + lot.w * 7 + lot.h;
+  const rows = state.map.floor;
+  for (let y = lot.y0; y < lot.y0 + lot.h; y++) {
+    const row = rows[y];
+    if (!row) continue;
+    for (let x = lot.x0; x < lot.x0 + lot.w; x++) {
+      const id = row[x];
+      if (id) h = (Math.imul(h, 31) + id.length * 131 + id.charCodeAt(id.length - 1) * 7 + id.charCodeAt(id.length >> 1)) | 0;
+      else h = (Math.imul(h, 31) + 1) | 0;
+    }
+  }
+  return h;
+}
+const fl = { state: null, lot: null, vx0: 0, vy0: 0, vx1: 0, vy1: 0 };      // inputs of bakeFloors (no per-frame closure)
+function bakeFloors(g) { paintFloors(g, fl.state, fl.lot, fl.vx0, fl.vy0, fl.vx1, fl.vy1); }
+function paintFloors(g, state, lot, vx0, vy0, vx1, vy1) {
+  for (let y = lot.y0; y < lot.y0 + lot.h; y++) {
+    const row = state.map.floor[y];
+    if (!row) continue;
+    for (let x = lot.x0; x < lot.x0 + lot.w; x++) {
+      const id = row[x];
+      if (!id) continue;
+      const X = isoX(x, y), Y = isoY(x, y);
+      if (X + 40 < vx0 || X - 40 > vx1 || Y + 44 < vy0 || Y - 8 > vy1) continue;
+      const fs = getFloorSprite(id);
+      if (fs.dw) g.drawImage(fs, X - (fs.ax != null ? fs.ax : 32), Y - (fs.ay || 0), fs.dw, fs.dh); else g.drawImage(fs, X - 32, Y);
+    }
+  }
+}
+
 export function render(state, ui, now) {
   if (!ctx) return;
   perfFrame(ui, lastNow ? now - lastNow : 0, now);
@@ -664,36 +708,31 @@ export function render(state, ui, now) {
   const sig = layerSignature(state);
   if (sig !== layerSig || !layer._built) { layerSig = sig; buildLayer(state); layer._built = true; }
   const osig = objSignature(state);
-  if (String(osig) !== objSig) { objSig = String(osig); rebuildRecs(state); }
+  if (osig !== objSig) { objSig = osig; rebuildRecs(state); }
   if (hooks.refreshHover && ui.tool && ui.tool.mode !== 'none' && now - hoverTick > 160) { hoverTick = now; hooks.refreshHover(); }
 
   const cam = ui.cam, z = cam.zoom, dpr = view.dpr, S = z * dpr;
-  setArtScale(S);
+  const camE = Math.round(cam.x * dpr), camF = Math.round(cam.y * dpr);
+  setArtScale(S, camE, camF);
+  setArtQuality(lite ? 'low' : 'medium');     // level >= 1: bilinear instead of mip-mapped resampling while the zoom is moving (about half the cost)
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ST = layerNew ? STY_NEW : STY_OLD;
-  ctx.fillStyle = layerNew ? BG_NEW : BG;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (!(layerNew && CS.layerCovers(canvas.width, canvas.height))) {     // the concept layer cache is an opaque full-canvas copy: no need to clear first
+    ctx.fillStyle = layerNew ? BG_NEW : BG;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
   ctx.imageSmoothingEnabled = false;
-  ctx.setTransform(S, 0, 0, S, Math.round(cam.x * dpr), Math.round(cam.y * dpr));
+  ctx.setTransform(S, 0, 0, S, camE, camF);
   const vx0 = -cam.x / z, vy0 = -cam.y / z, vx1 = vx0 + view.w / z, vy1 = vy0 + view.h / z;
 
   // static layer (visible part only)
-  if (layerNew) CS.drawSceneLayer(ctx, vx0, vy0, vx1, vy1, S, BG_NEW);
+  const lot = state.lot;
+  if (layerNew) { fl.state = state; fl.lot = lot; fl.vx0 = vx0; fl.vy0 = vy0; fl.vx1 = vx1; fl.vy1 = vy1; CS.drawSceneLayer(ctx, vx0, vy0, vx1, vy1, S, BG_NEW, bakeFloors, floorSig(state, lot)); }
   else {
     let sx = Math.max(0, Math.floor(vx0 + LX)), sy = Math.max(0, Math.floor(vy0 + LY));
     let ex = Math.min(LAYER_W, Math.ceil(vx1 + LX)), ey = Math.min(LAYER_H, Math.ceil(vy1 + LY));
     if (ex > sx && ey > sy) ctx.drawImage(layer, sx, sy, ex - sx, ey - sy, sx - LX, sy - LY, ex - sx, ey - sy);
-  }
-
-  const lot = state.lot;
-  // painted floors
-  for (let y = lot.y0; y < lot.y0 + lot.h; y++) {
-    const row = state.map.floor[y];
-    if (!row) continue;
-    for (let x = lot.x0; x < lot.x0 + lot.w; x++) {
-      const id = row[x];
-      if (id) { const fs = getFloorSprite(id); if (fs.dw) ctx.drawImage(fs, isoX(x, y) - (fs.ax != null ? fs.ax : 32), isoY(x, y) - (fs.ay || 0), fs.dw, fs.dh); else ctx.drawImage(fs, isoX(x, y) - 32, isoY(x, y)); }
-    }
+    paintFloors(ctx, state, lot, vx0, vy0, vx1, vy1);              // concept style: baked into the cached background copy above
   }
   const tool = ui.tool || { mode: 'none' };
   const hov = ui.hover || { x: -1, y: -1 };
@@ -808,6 +847,7 @@ export function render(state, ui, now) {
   // flat objects
   for (let i = 0; i < flatRecs.length; i++) {
     const r = flatRecs[i];
+    if (r.bx1 < vx0 || r.bx0 > vx1 || r.by1 < vy0 || r.by0 > vy1) continue;       // off-screen
     if (r === carryRec) { ctx.globalAlpha = 0.3; blit(ctx, r.spr, r.px, r.py); ctx.globalAlpha = 1; } else blit(ctx, r.spr, r.px, r.py);
   }
 
@@ -838,6 +878,7 @@ export function render(state, ui, now) {
     }
     if (si < nR) {
       const r = recs[si];
+      if (r.bx1 < vx0 || r.bx0 > vx1 || r.by1 < vy0 || r.by0 > vy1) continue;       // off-screen
       if (r === carryRec) { ctx.globalAlpha = 0.3; blit(ctx, r.spr, r.px, r.py); ctx.globalAlpha = 1; } else blit(ctx, r.spr, r.px, r.py);
     }
   }
@@ -943,6 +984,7 @@ function updateCars(state, t) {
 }
 
 // ───────────────────────── weather + daylight ─────────────────────────
+let vgOld = null;
 function drawAtmosphere(state, now, dpr, lite) {
   const g = ctx, W = view.w, H = view.h;
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1007,9 +1049,12 @@ function drawAtmosphere(state, now, dpr, lite) {
   // vignette
   if (perfRef.level >= 2) return;
   if (layerNew) { CS.vignetteNew(g, W, H); return; }
-  const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.max(W, H) * 0.8);
-  vg.addColorStop(0, 'rgba(10,15,30,0)'); vg.addColorStop(1, 'rgba(10,15,30,0.28)');
-  g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  if (!vgOld || vgOld.w !== W || vgOld.h !== H) {          // the gradient only depends on the view size: build it once per size
+    const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.max(W, H) * 0.8);
+    vg.addColorStop(0, 'rgba(10,15,30,0)'); vg.addColorStop(1, 'rgba(10,15,30,0.28)');
+    vgOld = { w: W, h: H, g: vg };
+  }
+  g.fillStyle = vgOld.g; g.fillRect(0, 0, W, H);
 }
 
 // ───────────────────────── picking (used by input.js) ─────────────────────────

@@ -661,17 +661,22 @@ function drawSign(g, info, sg) {
 // The smoothed, non-integer-ratio blit of a big canvas is the most expensive single draw of the frame, so its result (the whole
 // visible background, BG colour included) is cached per camera state and copied 1:1 while the camera rests.
 let layerVer = 0, vc = null, vcKey = '';
-export function drawSceneLayer(ctx, vx0, vy0, vx1, vy1, S, bg) {
+// `extra(g)` (optional) paints more static content on top of the layer INTO the cached copy (painted floors); `extraKey` must
+// change whenever that content changes.
+export function layerCovers() { return !!L2; }            // true when drawSceneLayer() will overwrite the whole canvas
+let vcS = 0, vcX = 0, vcY = 0, vcV = -1, vcE = 0;      // cache key of `vc` (numbers: no per-frame string / DOMMatrix allocation)
+export function drawSceneLayer(ctx, vx0, vy0, vx1, vy1, S, bg, extra, extraKey) {
   if (!L2) return;
-  const m = ctx.getTransform(), cw = ctx.canvas.width, ch = ctx.canvas.height;
-  const key = m.a + ',' + m.e + ',' + m.f + ',' + cw + ',' + ch + ',' + layerVer;
+  const cw = ctx.canvas.width, ch = ctx.canvas.height, ek = extraKey || 0;
   if (!vc || vc.width !== cw || vc.height !== ch) { vc = newCanvas(cw, ch); vcKey = ''; }
-  if (key !== vcKey) {
+  if (vcKey !== 'ok' || vcS !== S || vcX !== vx0 || vcY !== vy0 || vcV !== layerVer || vcE !== ek) {
+    const m = ctx.getTransform();
     const g = vc.getContext('2d', { alpha: false });
     g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = bg; g.fillRect(0, 0, cw, ch);
     g.setTransform(m.a, 0, 0, m.d, m.e, m.f);
     blitLayer(g, vx0, vy0, vx1, vy1, S);
-    vcKey = key;
+    if (extra) { g.imageSmoothingEnabled = false; extra(g); }
+    vcKey = 'ok'; vcS = S; vcX = vx0; vcY = vy0; vcV = layerVer; vcE = ek;
   }
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false; ctx.drawImage(vc, 0, 0); ctx.restore();
 }
@@ -804,8 +809,12 @@ export function weatherNew(g, kind, W, H, ts, perfLevel) {
   }
   void perfLevel;
 }
+let _vg = null;
 export function vignetteNew(g, W, H) {
-  const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.5, W / 2, H / 2, Math.max(W, H) * 0.85);
-  vg.addColorStop(0, 'rgba(30,54,90,0)'); vg.addColorStop(1, 'rgba(30,54,90,0.17)');
-  g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  if (!_vg || _vg.w !== W || _vg.h !== H) {              // the gradient only depends on the view size: build it once per size
+    const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.5, W / 2, H / 2, Math.max(W, H) * 0.85);
+    vg.addColorStop(0, 'rgba(30,54,90,0)'); vg.addColorStop(1, 'rgba(30,54,90,0.17)');
+    _vg = { w: W, h: H, g: vg };
+  }
+  g.fillStyle = _vg.g; g.fillRect(0, 0, W, H);
 }

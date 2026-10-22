@@ -35,7 +35,11 @@ function scaleOf(name) {
 // Each sprite is scaled once to its on-screen device size (stepwise halving = box-ish filter, then one smooth resize), at a
 // quantised device scale S = zoom * dpr (19% steps), so edges stay crisp at any zoom. Drawn with a small residual scale.
 let S_cur = 1, lvl_cur = 0, Sq_cur = 1, lastS = 0, stable = 0, exact_cur = false, nEntries = 0;
-export function setArtScale(S) {
+let smoothQ = 'medium';        // resampling quality of the moving-zoom / tilted blits; renderer.js lowers it with the quality level
+export function setArtQuality(q) { smoothQ = q; }
+let baseE = 0, baseF = 0;      // translate of the world->device transform (the frame sets scale S + this translate)
+export function setArtScale(S, e, f) {
+  baseE = e || 0; baseF = f || 0;
   S = Math.max(0.05, S);
   // while the zoom moves (wheel / pinch) use 19%-step levels; once it has rested for a few frames switch to an exact-scale
   // set (1 device px per sprite px -> no resampling at draw time, pixel-aligned)
@@ -44,7 +48,7 @@ export function setArtScale(S) {
   if (stable >= 6) { exact_cur = true; Sq_cur = S; lvl_cur = 10000 + Math.round(S * 1000); }
   else { exact_cur = false; lvl_cur = Math.round(Math.log2(S) * 4); Sq_cur = Math.pow(2, lvl_cur / 4); }
 }
-const _lv = new Map();     // name -> Map(lvl -> entry)
+const _lv = new Map();     // name -> [4 variants (plain, sit, back, sit+back)] of Map(lvl -> entry)
 export function clearArtCaches() { _lv.clear(); _kCache.clear(); _obj.clear(); nEntries = 0; }
 bus.on('art:changed', clearArtCaches);
 
@@ -75,9 +79,11 @@ function shadeBack(c) {
 }
 const SIT_FADE = 0.34;     // share of the sprite height (from the feet up) that fades out when seated (legs vanish into the sofa)
 function entryFor(name, sit, back) {
-  const key = (sit ? name + '#sit' : name) + (back ? '#back' : '');
-  let m = _lv.get(key);
-  if (!m) { m = new Map(); _lv.set(key, m); }
+  let vs = _lv.get(name);
+  if (!vs) { vs = [null, null, null, null]; _lv.set(name, vs); }
+  const vi = (sit ? 1 : 0) | (back ? 2 : 0);
+  let m = vs[vi];
+  if (!m) { m = new Map(); vs[vi] = m; }
   let e = m.get(lvl_cur);
   if (e) return e;
   const src = artCanvas(name);
@@ -95,7 +101,10 @@ function entryFor(name, sit, back) {
     g.fillStyle = gr; g.fillRect(0, y0, tw, th - y0);
     g.globalCompositeOperation = 'source-over';
   }
-  if (++nEntries > 600) { const keep = m; _lv.clear(); _lv.set(key, keep); nEntries = 1; }   // bound memory (many rest-zoom levels)
+  if (++nEntries > 600) {                      // bound memory (many rest-zoom levels)
+    const keep = m; _lv.clear();
+    const nv = [null, null, null, null]; nv[vi] = keep; _lv.set(name, nv); nEntries = 1;
+  }
   e = { c, fc: null, dw: tw / Sq_cur, dh: th / Sq_cur, ax: r.ax * k, ay: r.ay * k, exact: exact_cur };
   m.set(lvl_cur, e);
   return e;
@@ -115,16 +124,17 @@ export function drawArtPerson(g, name, x, y, flip, tilt, sit, back) {
   const c = flip ? (e.fc || (e.fc = mirror(e.c))) : e.c;
   const ax = flip ? e.dw - e.ax : e.ax;
   if (!tilt) {
-    if (!e.exact) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'medium'; }
+    if (!e.exact) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = smoothQ; }
     g.drawImage(c, Math.round((x - ax) * S_cur) / S_cur, Math.round((y - e.ay) * S_cur) / S_cur, e.dw, e.dh);
     if (!e.exact) g.imageSmoothingEnabled = false;
   } else {
-    g.save();
-    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'medium';
+    // translate + rotate on top of the frame's base transform; the base is put back with setTransform (no save/restore state churn)
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = smoothQ;
     g.translate(Math.round(x * S_cur) / S_cur, Math.round(y * S_cur) / S_cur);
     g.rotate(tilt);
     g.drawImage(c, -ax, -e.ay, e.dw, e.dh);
-    g.restore();
+    g.setTransform(S_cur, 0, 0, S_cur, baseE, baseF);
+    g.imageSmoothingEnabled = false;
   }
   return y - e.ay;
 }
@@ -214,7 +224,7 @@ export function blit(g, spr, x, y) {
   if (spr.lod) {            // concept_objects.js: master drawn at 2x, pre-scaled to the current zoom x DPR (same levels as the people)
     const c = spr.lod(S_cur, lvl_cur, exact_cur);
     if (c.ex) g.drawImage(c, Math.round(x * S_cur) / S_cur, Math.round(y * S_cur) / S_cur, c.width / S_cur, c.height / S_cur);
-    else { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'medium'; g.drawImage(c, x, y, spr.dw, spr.dh); g.imageSmoothingEnabled = false; }
+    else { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = smoothQ; g.drawImage(c, x, y, spr.dw, spr.dh); g.imageSmoothingEnabled = false; }
     return;
   }
   if (spr.art) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'medium'; g.drawImage(spr, x, y, spr.dw, spr.dh); g.imageSmoothingEnabled = false; }

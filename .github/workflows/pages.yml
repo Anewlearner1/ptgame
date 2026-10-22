@@ -29,6 +29,10 @@ jobs:
           mkdir -p _site/assets/art
           cp assets/art/atlas.png assets/art/atlas.json _site/assets/art/
           touch _site/.nojekyll
+      - name: Stamp build version
+        run: |
+          printf '{"sha":"%s","built":"%s"}\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > _site/version.json
+          cat _site/version.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -1,7 +1,9 @@
 // Service worker: network-first for everything same-origin (so a deploy is never stale),
 // cache fallback so the game still opens and plays offline after one online visit.
 // Bump CACHE when the caching strategy itself changes; content updates need no bump.
-const CACHE = 'ptgame-v2';
+// version.json (written by the Pages workflow) goes through the same network-first path, so the in-app 'update available'
+// check (js/ui/version.js) always sees the live deploy while online and the last known one offline.
+const CACHE = 'ptgame-v3';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'css/style.css', 'css/ui.css', 'css/mobile.css',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'icons/icon.svg',
   'assets/art/atlas.json', 'assets/art/atlas.png'];   // sprite atlas: precached (optional: the game falls back to the procedural art)
