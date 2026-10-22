@@ -64,6 +64,7 @@ export function createInitialState() {
     flags: { tutorialDone: false },
 
     achv: { unlocked: {}, counters: {}, title: null, badges: [] },   // achievements, see docs/ACHIEVEMENTS.md §5.2
+    career: { startedYear: 1, onboarding: { done: {}, hidden: false }, goals: { year: 0, list: [] }, reviews: [], ending: null, endless: false },   // goals & ending, see docs/GOALS_AND_ENDING.md §7
   };
 }
 

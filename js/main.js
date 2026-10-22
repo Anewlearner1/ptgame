@@ -16,6 +16,7 @@ import { initInspection } from './sim/inspection.js';
 import { loadGame, listSaves } from './sim/save.js';
 import { initResearch } from './sim/research.js';
 import { initAchievements } from './sim/achievements.js';
+import { initCareer } from './sim/career.js';
 
 import { initRenderer, render } from './render/renderer.js';
 import { initCamera, centerOnLot } from './render/camera.js';
@@ -47,6 +48,7 @@ function boot() {
   initResearch();
   initInspection();
   initAchievements();
+  initCareer();
 
   bus.on('mods:dirty', () => recomputeMods(state));
   bus.on('map:changed', () => { ui.dirtyOcc = true; });
