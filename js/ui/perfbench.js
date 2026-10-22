@@ -80,15 +80,14 @@ export function showReportModal(text) {
   hint.textContent = '按「複製」後貼回給開發者，就能知道你的手機卡在哪裡。';
   wrap.append(hint, ta);
   const buttons = [
-    { label: '複製', primary: true, onClick: async () => {
-      const ok = await copyText(text, ta);
-      bus.emit('toast', ok ? { text: '已複製效能報告', kind: 'good' } : { text: '無法自動複製，請長按文字手動選取', kind: 'bad' });
+    { label: '複製', primary: true, onClick: () => {          // must return false synchronously: keeps the dialog open
+      copyText(text, ta).then(ok => bus.emit('toast', ok ? { text: '已複製效能報告', kind: 'good' } : { text: '無法自動複製，請長按文字手動選取', kind: 'bad' }));
       return false;
     } },
   ];
   if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-    buttons.push({ label: '分享', onClick: async () => {
-      try { await navigator.share({ title: '復健科診所物語 效能報告', text }); } catch (e) { /* cancelled */ }
+    buttons.push({ label: '分享', onClick: () => {
+      Promise.resolve().then(() => navigator.share({ title: '復健科診所物語 效能報告', text })).catch(() => { /* cancelled */ });
       return false;
     } });
   }

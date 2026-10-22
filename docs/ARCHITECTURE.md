@@ -290,3 +290,27 @@ Tile diamond 64×32 (`TILE_W`,`TILE_H`); object `height` px extruded upward; wor
 - 啟用條件 = `artEnabled()`（設定「美術風格」＝新美術；預設）。切回「原像素風」＝改版前的畫面與介面，逐像素一致（已用 64 張畫布與 152 張介面截圖雜湊驗證）。
 - 世界：`js/render/concept_objects.js`（24 種道具、3 種地板、`conceptThumb`）、`concept_scene.js`（地面、牆窗、招牌、建築、樹、車、疊加層、狀態圖示）；人物與 5 件設備來自圖集；語言治療師為合成精靈 `staff.st`（`artStaffCanvas/artStaffUrl`）。
 - 介面：所有規則都在 `html.style-concept` 底下（style/ui/mobile.css 末段）；`js/ui/theme.js`（同步 class 與 theme-color）、`js/ui/icons.js`（SVG 圖示）。測試：`tools/stylecss.mjs`（連接埠 8212）。
+
+## 效能診斷與最佳化（perf）
+### 量測管線
+- `js/core/perfstats.js`：固定長度環形緩衝（720 筆，無配置）。`main.js` 的每個「真正繪製的幀」寫入一筆：`frame`（與上一幀的間隔 ms）、`sim`（模擬 + `refreshDerived`）、`render`（`render()`，只計 JS 下指令時間）、`ui`（`updateUI`）。`ui.perfStats` 另有最新值 `simMs/renderMs/uiMs/frameMs` 與 `skipped`（被幀率上限略過的 rAF 次數）。`summarize(ps, now, windowMs)` 回傳 fps、1% 低（= 1000 / p99 幀間隔）、幀 p50/p95/p99、各項平均。
+- 注意：Canvas2D 的光柵化在 GPU／合成執行緒，`render` ms 不含它；真實卡頓請看 fps 與 1% 低。無頭 Chromium（軟體 GL）則會把光柵化算進 JS（數字偏大且不穩），所以只能比較「同一環境、同一場景」。
+- `js/ui/perfhud.js`（HUD：`?perf=1`／`F3`／設定開關，`ptgame.perfhud`；關閉時零成本，開啟時 4 Hz、6 個文字節點只在字串改變時寫入）、`js/ui/perfbench.js`（12 秒基準 + 報告）、`js/ui/perfinfo.js`（裝置資訊、GPU 字串、JS 堆積）、`js/ui/quality.js`（畫質／幀率上限）、`js/ui/version.js`（版本與更新提示）。
+### 畫質與幀率上限
+- `ui.perf = {dpr, fps, level, auto, mode, manual, fpsCap}`。`畫質` 設定（`ptgame.quality`）：自動 = 既有縮放器（只在觸控裝置自動調整；桌機維持 0）；高 = level 0；中 = level 2；低 = level 3。manual 時 `auto=false`，`renderer.ensureSize()` 下一幀就重算 DPR（立即生效）。
+- level 清單：1 = 無車輛／煙火／天氣粒子（`lite`）、新美術改用雙線性（`low`）縮放；2 = DPR 上限 2、無暗角、新美術行走不搖擺（省去旋轉＋平滑的 blit）；3 = DPR 上限 1.25、新美術無地面陰影。classic 的 level 行為與改版前逐像素相同（只有上述「新美術」專屬項目會變）。
+- `幀率上限 30`（`ptgame.fpscap`）：`main.js frame()` 以 `nextDue` 略過 rAF tick；`last` 只在有做事的幀更新，所以 `dtSec` 是真實時間，遊戲時間照實際秒數前進（`tools/perftest.mjs` 驗證每秒遊戲分鐘數一致 ±5%）。縮放器在上限 30 時把「過慢」門檻從 24 ms 改為 45 ms。
+### 版本與更新
+- `.github/workflows/pages.yml` 寫入 `_site/version.json = {sha, built}`。`version.js` 開機讀一次（`fetch('version.json', {cache:'no-store'})`，失敗＝`dev`）；分頁回到前景（距上次檢查 > 30 秒）與每 10 分鐘再讀，sha 不同就顯示「有新版本，重新整理即可更新」（每次載入只提示一次）。localhost／file:// 不發請求（避免 404 進 console），`?ver=1` 可強制。`sw.js` 仍是 network-first（快取名 `ptgame-v3`），所以線上時讀到的永遠是最新部署。
+### 渲染熱點與已做的最佳化（新美術為主；classic 逐像素不變，已用 64＋48 張畫布雜湊驗證）
+量測方式：`Profiler`（CDP）、`drawImage` 計數／面積統計、`ui.perfStats`、CPU 節流 4×／6×。**JS 端本來就很精簡**（模擬 ≈ 0.3 ms/步、新美術 render ≈ 0.4–0.8 ms/幀）；主要成本是光柵化（填充面積與繪製次數），所以做的是「少畫」：
+1. **視窗裁切**：設備／平面設備／鋪設地板在螢幕外就不畫（`rec.bx0..by1`、`paintFloors`）。手機 DPR 3、縮放 2.5、L3 的每幀 `drawImage` 由 242 次降到 62 次，目標面積 53 → 11.5 Mpx（classic 也受惠：335 → 253、283 → 157、232 → 81 次）。
+2. **鋪設地板併入背景快取**（新美術）：`drawSceneLayer(..., extra, extraKey)` 把地板畫進已經快取的整幅背景（以地板簽章為 key），靜止時每幀 0 次地板繪製（原本 L3 約 106 次）。
+3. 新美術的背景快取是整幅不透明畫面，所以省掉前面多餘的整幅 `fillRect`；快取 key 改成數字比較（不再每幀組字串＋`getTransform()`）。
+4. 人物縮放快取（`artdraw.entryFor`）改成 name → 4 種變體 → level 的巢狀表，不再每人每幀組字串；行走傾斜改用 `translate/rotate` + `setTransform` 還原（不用 `save/restore`），`save()` 每幀 23–33 次 → 2 次。
+5. `ensureSize()` 不再每幀讀 `clientWidth/Height`（會強制 layout）：只在 resize／ResizeObserver／每 120 幀重讀；暗角漸層物件依尺寸快取；`objSig` 改數字比較。
+6. 已評估但**未採用**（會改變畫面）：把暗角改成低解析貼圖、移動中的縮放改 `imageSmoothingQuality='low'`（只在 level ≥ 1 啟用）。
+### 已知限制與建議
+- 手機 DPR 3、縮放 2.5 時大張設備精靈（`lod` 的 exact 層級可達 1000×870 px）仍是最貴的繪製，之後可考慮在 S > 2K 時直接縮放母圖，或限制 exact 層級的像素上限。
+- 縮放手勢跨過 19% 級距時，會一次建立所有可見精靈的新層級（高品質多段縮小），在無頭軟體 GL 量到 130–390 ms 的尖峰；真機未驗證。可考慮每幀限量建立並暫用鄰近層級。
+- 量測腳本（不隨網站部署）：`tools/perftest.mjs`（功能測試）。基準場景（60+ 角色、L0／L3、桌機 1280×720 與手機 390×844 DPR 3、節流 1×／4×／6×）的腳本與數字見最終報告。
