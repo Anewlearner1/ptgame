@@ -83,6 +83,13 @@ export function defaultMods() {
     staffStamina: 1,       // multiplier on staff stamina drain (lower is better)
     rentMult: 1,
     wageMult: 1,
+    cureGain: 1,           // multiplier on the `cure` contributed by each completed treatment (臨床經驗)
+    treatTime: 1,          // multiplier on ALL treatment durations (lower is faster; stacks with nhiTurnover)
+    wearRate: 1,           // multiplier on equipment wear accumulation (lower is better; 設備精進)
+    repGrowth: 0,          // additive reputation per week (品牌聲望)
+    satGain: 0,            // additive satisfaction for every patient at the end of the visit (客戶關係)
+    typeSat: {},           // patientTypeId -> additive satisfaction (like elderSat, generalised)
+    typeCure: {},          // patientTypeId -> additive multiplier on cure (0.1 → ×1.1)
   };
 }
 
