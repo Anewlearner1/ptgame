@@ -94,7 +94,7 @@
 
 **院長生涯追加（docs/GOALS_AND_ENDING.md）：+12，合計 53（其中隱藏 13）。** 3 個一般成就——`m_decade` 十年老店（金，走到十年結局或進入第 11 年）、`c_grade_s` 年度 S（金，任一年度總結為 S）、`m_goals_20` 目標達人（銀，累計達成 20 個年度目標）；加 9 個結局成就 `e_<結局 id>`（隱藏：國手級復健中心＝金；長照守護者／運動醫學名醫／早療推手／自費專科品牌／穩健的社區診所＝銀；苦撐的老店／功成身退／提早收攤＝銅），由 `data/achievements.js` 依 `data/goals.js` 的 `ENDINGS[].achievementId` 產生。階層獎勵沿用 `ACHIEVEMENT_TIERS`。
 
-**持續精進追加：+3，合計 56（其中隱藏 13）。** `m_upg_10` 精益求精（銅，六條持續精進路線等級總和 ≥ 10）、`m_upg_40` 研究魂不滅（銀，≥ 40）、`m_upg_cap` 登峰造極（金，任一路線升到滿級）；進度指標 `upgradeLevels`，由 `research:upgrade` 事件觸發（見 docs/ARCHITECTURE.md「持續精進」）。
+**持續精進追加：+3（連同專區追加的 2 個，目前合計 58；其中隱藏 13）。** `m_upg_10` 精益求精（銅，六條持續精進路線等級總和 ≥ 10）、`m_upg_40` 研究魂不滅（銀，≥ 40）、`m_upg_cap` 登峰造極（金，任一路線升到滿級）；進度指標 `upgradeLevels`，由 `research:upgrade` 事件觸發（見 docs/ARCHITECTURE.md「持續精進」）。
 
 **專區辭典追加：+2，合計 58（其中隱藏 13；含「持續精進」追加後）。** `c_zone_collect` 專區收藏家（銀，累計啟動過 6 種不同的專區，不必同時；計數器 `state.achv.counters.zonesSeen = {zoneId: 1}`，在 `map:changed`／每週／載入時登記，載入時只保留現存專區 id，舊存檔補空物件）、`c_zone_master` 專區大師（金，同時有 8 個以上專區啟動，稱號「專區大師」；進度條以目前啟動數顯示）。兩者皆以 `state.zones` 判定，原有的 4 個專區成就不變。
 

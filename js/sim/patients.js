@@ -66,7 +66,7 @@ export const TUNE = {
   MAX_AGE: 600,
   PRE_SLACK: 6,              // a patient may walk towards a station whose user finishes within (walk time + this)
   FOLLOWUP_SKIP_EXAM: 0.7,   // chance a returning patient does not need a new doctor exam
-  STAFF_LEAD: 3,             // staff leave for a station when the patient is this many minutes from arriving
+  STAFF_LEAD: 6,             // staff leave for a station when the patient is this many minutes from arriving
   STEP_OVERHEAD: 28,         // walking + waiting allowance per step when trimming late arrivals' plans
   REORDER_WAIT: 8,           // after waiting this long for step 1, a patient may start a later self-service step first
   STAFF_WAIT: 30,            // arrived at a staffed station and nobody came for this long -> give the station back

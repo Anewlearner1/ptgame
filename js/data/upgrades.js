@@ -11,7 +11,7 @@
 //   cap: max level, baseCost / growth: cost of buying level L+1 = round(baseCost * growth^L)  (see upgradeCost)
 //   unlock: { domainNodes: N }  line becomes available once N research-tree nodes of its domain are done
 //
-// Numbers are calibrated with the balance harness (docs/ARCHITECTURE.md "持續精進"): total at cap = +40% cure gain,
+// Numbers are calibrated with the balance harness (docs/ARCHITECTURE.md "持續精進" -> Costs & calibration): total at cap = +40% cure gain,
 // +18% per-type cure, -45% equipment wear, -14.4% treatment time, +9 satisfaction / +15% patience, +0.9 reputation per week.
 import { PATIENT_TYPES } from './patients.js';
 
@@ -39,14 +39,14 @@ export const UPGRADE_LINES = [
     desc: '定期校正、換耗材、擦乾淨。機器磨損的速度變慢，維修單也變薄。',
     note: '保養做得好，機器不鬧脾氣。',
     effects: [{ key: 'wearRate', perLevel: -0.03, op: 'add' }],
-    cap: 15, baseCost: 55, growth: 1.25, unlock: { domainNodes: 3 },
+    cap: 15, baseCost: 55, growth: 1.27, unlock: { domainNodes: 3 },
   },
   {
     id: 'up_workflow', name: '流程最佳化', domain: 'device', icon: '⏱',
     desc: '備品放順手、換床單有口訣、病人上機直接開始。每個療程都縮短一點點。',
     note: '省下來的幾十秒，一天就是一位病人。',
     effects: [{ key: 'treatTime', perLevel: -0.012, op: 'add' }],
-    cap: 12, baseCost: 60, growth: 1.25, unlock: { domainNodes: 5 },
+    cap: 12, baseCost: 60, growth: 1.27, unlock: { domainNodes: 5 },
   },
   // ---------- 服務 service ----------
   {

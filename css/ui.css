@@ -852,9 +852,9 @@ html.style-concept .u-syn.selected { box-shadow: 0 0 0 2px #3aa56a, 0 3px 8px rg
 .lay-mobile .u-synhead { margin-bottom: 4px; }
 
 /* ---------- 設施人員資格 (js/ui/roles.js, sim/qualify.js): role chips, 缺人 badge ------------------------------------ */
-.u-roles { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; font-size: 11px; line-height: 1.3; }
-.u-roles-l { font-weight: 700; color: var(--ink-soft, #6b5a3a); }
-.tag.u-role { font-size: 11px; padding: 0 5px; white-space: nowrap; }
+.u-roles { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; font-size: 12px; line-height: 1.3; }
+.u-roles-l { font-size: 12px; font-weight: 700; color: var(--ink-soft, #6b5a3a); }
+.tag.u-role { font-size: 12px; padding: 0 5px; white-space: nowrap; }
 .tag.u-role.ok { background: var(--u-good-bg); color: #1d5c2a; box-shadow: 0 0 0 1.5px #1d5c2a; }
 .tag.u-role.lack { background: #fff0c4; color: #7a5200; box-shadow: 0 0 0 1.5px #b88a1a; }
 .u-roles.lack .u-roles-l { color: #8a5a00; }
@@ -870,7 +870,7 @@ html.style-concept .u-syn.selected { box-shadow: 0 0 0 2px #3aa56a, 0 3px 8px rg
 .tag.u-need { background: #fff0c4; color: #7a5200; box-shadow: 0 0 0 1.5px #b88a1a; white-space: nowrap; }
 .tag.u-need[hidden] { display: none; }
 .lay-compact #stage[data-bmode="strip"] .u-roles-l, .lay-compact #stage[data-bmode="strip"] .u-roles .u-role.ok { display: none; }
-.lay-compact #stage[data-bmode="strip"] .u-item .u-roles { font-size: 10px; }
+.lay-compact #stage[data-bmode="strip"] .u-item .u-roles { font-size: 12px; }
 html.style-concept .tag.u-role.ok { background: #d7f0e0; color: #14553a; box-shadow: 0 0 0 1.5px #3aa56a; }
 html.style-concept .tag.u-role.lack, html.style-concept .tag.u-need { background: #fff0c4; color: #6b4a00; box-shadow: 0 0 0 1.5px #d9a21a; }
 html.style-concept .u-eq tbody tr.u-unstaffed:not(.u-broken) { background: #fff6dc; }
