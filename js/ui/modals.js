@@ -358,11 +358,16 @@ function onGameOver(p) {
 }
 
 // ---------------------------------------------------------------- tutorial
+let tutorialWaiting = false;
 export function showTutorial(force) {
   const state = ctx.state;
   let seen = false;
   try { seen = localStorage.getItem('ptgame.tutorialSeen') === '1'; } catch (e) { /* storage unavailable */ }
   if (!force && ((state.flags && state.flags.tutorialDone) || seen)) return;
+  if (ctx.ui && ctx.ui.coverOn) {                                  // the cover goes first (one deferred call is enough)
+    if (!tutorialWaiting) { tutorialWaiting = true; const off = bus.on('cover:closed', () => { off(); tutorialWaiting = false; showTutorial(force); }); }
+    return;
+  }
   const steps = (INTRO_STEPS || []).map(s => typeof s === 'string' ? { title: '', text: s } : s);
   if (!steps.length) return;
   let i = 0;

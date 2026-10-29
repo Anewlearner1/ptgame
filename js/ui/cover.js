@@ -5,6 +5,9 @@ import { artBanner } from './artdom.js';
 import { installBox } from './installbox.js';
 import { listSaves } from '../sim/save.js';
 import { fmtDateTime } from './fmt.js';
+import { bus } from '../core/bus.js';
+import { supportAvailable, showSupport } from './support.js';
+import { isModalOpen } from './modal.js';
 
 export function coverWanted() {
   let q = '';
@@ -27,14 +30,17 @@ export function showCover(ui) {
       h('div', { class: 'cover-sub' }, '台灣復健科診所模擬經營'),
       artBanner('scene.clinic', { title: '診所一景', maxVh: 30 }),
       go,
+      supportAvailable() ? h('button', { class: 'btn small cover-support', type: 'button', dataset: { cover: 'support' }, onclick: showSupport }, '☕ 支持作者') : null,
       auto ? h('div', { class: 'cover-save muted u-small' }, `自動存檔：${auto.label || ''}　${auto.savedAt ? fmtDateTime(auto.savedAt) : ''}`) : null,
       box ? h('div', { class: 'cover-install', dataset: { cover: 'install' } }, h('div', { class: 'u-sec' }, '📲 安裝與全螢幕'), ...box) : null));
   function close() {
     ui.coverOn = false;
     document.removeEventListener('keydown', onKey, true);
     el.remove();
+    bus.emit('cover:closed', {});
   }
   function onKey(e) {
+    if (isModalOpen()) return;                 // the support page (or tutorial) has the keyboard
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); close(); }
   }
   ui.coverOn = true;

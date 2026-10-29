@@ -13,6 +13,7 @@ import { QUALITY_MODES, QUALITY_HELP, FPSCAP_HELP, perfCfg, setQuality, setFpsCa
 import { isHudOn, setHud } from '../perfhud.js';
 import { versionLabel } from '../version.js';
 import { installBox } from '../installbox.js';
+import { supportAvailable, supportBody } from '../support.js';
 
 const store = { tab: 'save', metric: 'cash' };
 const SLOTS = [['auto', '自動存檔'], ['1', '存檔 1'], ['2', '存檔 2'], ['3', '存檔 3']];
@@ -327,11 +328,13 @@ function buildCharts(body, state) {
 }
 
 export function mountSystem(root, state, ui) {
-  const t = tabbed([
+  const tabs = [
     { id: 'save', label: '💾 存檔', build: b => buildSave(b, state, ui) },
     { id: 'charts', label: '📈 營運圖表', build: b => buildCharts(b, state) },
     { id: 'settings', label: '⚙ 設定', build: b => buildSettings(b, state, ui) },
-  ], store);
+  ];
+  if (supportAvailable()) tabs.push({ id: 'support', label: '☕ 支持', build: b => b.append(supportBody()) });
+  const t = tabbed(tabs, store);
   root.appendChild(t.el);
   return { update() { t.update(); } };
 }

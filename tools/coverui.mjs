@@ -33,17 +33,43 @@ for (const [w, h, touch] of [[390, 844, true], [844, 390, true], [1280, 720, fal
     const r = await page.locator('.cover-go').boundingBox();
     ok(r && r.height >= 40 && r.y >= 0 && r.y + r.height <= h, `${tag} start button reachable (${r && Math.round(r.y)}+${r && Math.round(r.height)})`);
     if (shotDir) await page.screenshot({ path: `${shotDir}/cover_${w}x${h}_${style}.png` });
+    ok(await page.locator('.cover-support').count() === 0, `${tag} no 支持作者 button while no URL is configured`);
+    ok(await page.locator('.modal-backdrop').count() === 0, `${tag} tutorial waits behind the cover`);
+    // 支持作者: configure a URL at runtime, rebuild the cover
+    await page.evaluate(async () => {
+      const M = await import('/js/data/support.js'); M.SUPPORT.url = 'https://example.com/donate';
+      const C = await import('/js/ui/cover.js'); document.getElementById('cover').remove(); __game.ui.coverOn = false; C.showCover(__game.ui);
+    });
+    await page.waitForTimeout(300);
+    ok(await page.locator('.cover-support').count() === 1, `${tag} 支持作者 button appears once a URL is set`);
+    await page.locator('.cover-support').click(); await page.waitForTimeout(400);
+    ok(await page.locator('.support-page').count() === 1 && (await page.locator('.modal').innerText()).includes('支持作者'), `${tag} support page opens over the cover`);
+    ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${tag} support page: no overflow`);
+    const gb = await page.locator('.support-go').boundingBox();
+    ok(gb && gb.y >= 0 && gb.y + gb.height <= h, `${tag} support button visible in the viewport`);
+    if (shotDir) await page.screenshot({ path: `${shotDir}/support_${w}x${h}_${style}.png` });
+    await page.keyboard.press('Enter'); await page.waitForTimeout(200);
+    ok(await page.locator('#cover').count() === 1, `${tag} Enter inside the support page does not start the game`);
+    const [pop] = await Promise.all([page.waitForEvent('popup', { timeout: 4000 }).catch(() => null), page.locator('.support-go').click()]);
+    ok(!!pop, `${tag} 前往贊助頁 opens the sponsor URL in a new tab (${pop && pop.url()}; the sandbox cannot reach it)`);
+    if (pop) await pop.close().catch(() => {});
+    await page.locator('.modal-actions button', { hasText: '關閉' }).click(); await page.waitForTimeout(300);
+    ok(await page.locator('.support-page').count() === 0, `${tag} support page closes`);
     await page.locator('.cover-go').click(); await page.waitForTimeout(1500);
     ok(await page.locator('#cover').count() === 0, `${tag} start closes the cover`);
+    ok(await page.locator('.modal-backdrop').count() >= 1, `${tag} tutorial shows after the cover`);
+    await page.evaluate(() => { document.querySelector('#modal-root .modal-actions .btn')?.click(); });
+    await page.waitForTimeout(1200);
     const t2 = await page.evaluate(() => __game.state.time.clock + __game.state.time.week * 1440);
-    ok(t2 !== t1 || await page.evaluate(() => __game.state.time.paused), `${tag} sim runs after start (${t2})`);
+    ok(t2 !== t1 || await page.evaluate(() => __game.state.time.paused), `${tag} sim runs after start (${t2}) ${JSON.stringify(await page.evaluate(() => [__game.state.time.paused, __game.state.time.speed, __game.ui.coverOn, document.querySelectorAll(".modal-backdrop").length]))}`);
     // settings still carry the install box
     if (touch) {
       await page.evaluate(() => { document.querySelector('#modal-root button')?.click(); });
-      await page.evaluate(() => { __game.ui.panel = 'system'; }); await page.waitForTimeout(300);
+      await page.evaluate(() => { __game.ui.panel = 'system'; }); await page.waitForTimeout(800);
       await page.evaluate(() => { [...document.querySelectorAll('#panel .tab')].find(t => t.textContent.includes('設定'))?.click(); });
-      await page.waitForTimeout(300);
-      ok((await page.locator('#panel').innerText()).includes('安裝與全螢幕'), `${tag} 設定 still has 安裝與全螢幕`);
+      await page.waitForTimeout(600);
+      const pt = await page.locator('#panel').innerText(); ok(pt.includes('安裝與全螢幕'), `${tag} 設定 still has 安裝與全螢幕 ${JSON.stringify(pt.slice(0, 160))}`);
+      ok((await page.locator('#panel .tab', { hasText: '支持' }).count()) === 1, `${tag} 系統 has the 支持 tab once a URL is set`);
     }
     // saved game -> 繼續遊戲
     await page.evaluate(async () => { const S = await import('/js/sim/save.js'); S.saveGame(__game.state, 'auto'); });
