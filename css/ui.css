@@ -870,3 +870,17 @@ html.style-concept .u-eq tbody tr.u-unstaffed:not(.u-broken) { background: #fff6
 .u-sstat.bad { color: #8a5a00; }
 .lay-mobile .u-selbody > .u-srow-wide { grid-column: 1 / -1; }
 .u-srow .tag.u-role { white-space: nowrap; }
+
+/* ================= 封面 (js/ui/cover.js) ================= */
+.cover { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px)); background: linear-gradient(#cfe6f5, #eaf6f6 60%, #ead2ae); overflow: auto; }
+.cover-card { width: min(440px, 100%); display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; margin: auto; }
+.cover-title { font-size: 30px; font-weight: 900; color: var(--ink, #1f2d33); letter-spacing: 2px; }
+.cover-sub { font-size: 14px; color: var(--muted, #6b7a80); margin-top: -6px; }
+.cover .u-banner { margin: 4px auto; }
+.cover-go { min-height: 48px; min-width: 200px; font-size: 18px; padding: 8px 28px; }
+.cover-save { font-size: 12px; }
+.cover-install { width: 100%; padding: 8px 10px; background: rgba(255, 255, 255, 0.7); box-shadow: 0 0 0 1.5px var(--line, #c6d4e4); text-align: left; }
+.cover-install .row { justify-content: center; }
+html.style-concept .cover { background: linear-gradient(#cfe6f5, #eaf6f6 60%, #ead2ae); }
+html.style-concept .cover-title { color: var(--c-navy, #1e365a); }
+html.style-concept .cover-install { border-radius: 10px; box-shadow: 0 0 0 2px var(--c-navy, #1e365a); }

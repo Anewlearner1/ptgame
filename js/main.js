@@ -26,6 +26,7 @@ import { createPerfStats, pushFrame } from './core/perfstats.js';
 import { initQuality, perfCfg, FRAME_30_MS } from './ui/quality.js';
 import { initPerfHud } from './ui/perfhud.js';
 import { initVersion } from './ui/version.js';
+import { coverWanted, showCover } from './ui/cover.js';
 
 const MAX_STEP_MIN = 1.0;     // sub-step size in game minutes (keeps sim stable at x3)
 const MAX_FRAME_SEC = 0.1;    // clamp tab-switch hiccups
@@ -76,6 +77,8 @@ function boot() {
   initPerfHud(state, ui);
   initVersion();                             // build version (version.json) + 'update available' toast
 
+  if (coverWanted()) showCover(ui);          // 封面 (frozen sim until 開始／繼續)
+
   window.__game = { state, ui, bus, refreshDerived };   // debugging + automated tests
 
   let last = performance.now(), lastRaf = 0, nextDue = 0;
@@ -92,7 +95,7 @@ function boot() {
     if (ui.dirtyOcc) refreshDerived();
 
     const blocked = !!state.events.pendingDilemma;   // a decision modal freezes the whole sim
-    const speed = (state.time.paused || blocked) ? 0 : state.time.speed;
+    const speed = (state.time.paused || blocked || ui.coverOn) ? 0 : state.time.speed;
     if (speed > 0) {
       let remain = dtSec * speed * MIN_PER_REAL_SEC;
       while (remain > 1e-6) {
