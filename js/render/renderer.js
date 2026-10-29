@@ -7,6 +7,7 @@ import * as SYN from '../data/synergies.js';
 import { sizeOf } from '../core/grid.js';
 import { bus } from '../core/bus.js';
 import { badgeIcons } from '../sim/achievements.js';
+import { unstaffedIds } from '../sim/qualify.js';
 import { isoX, isoY, placementOrigin, hooks } from './iso.js';
 import { drawTouchOverlay, layoutBar, safeRect, T as TOUCH } from './touchui.js';
 import { COARSE } from './camera.js';
@@ -677,8 +678,13 @@ function selRing(g, x, y, now, sc) {
 }
 
 // ───────────────────────── zones ─────────────────────────
-const ZONE_COL = { golden3: '255,200,60', premium: '190,120,255', kidpark: '90,220,130' };
+const ZONE_COL = {
+  golden3: '255,200,60', premium: '190,120,255', kidpark: '90,220,130',
+  sportsRehab: '255,130,70', elderPath: '90,180,255', orthoStation: '210,210,235', hotCold: '255,90,90', kidLearn: '255,120,200',
+  kidCorner: '255,170,230', flagship: '255,215,0', staffBack: '120,230,200', cafeNook: '200,150,100', regDesk: '150,150,255',
+};
 const zoneCache = new Map();    // zone id -> {sig, path, cx, cy, label}
+const ZL_MAX = 32, zlX = new Float32Array(ZL_MAX), zlY = new Float32Array(ZL_MAX), zlW = new Float32Array(ZL_MAX), zlH = new Float32Array(ZL_MAX);
 function zoneGeom(z) {
   const cells = z.cells || [];
   let sig = cells.length * 131;
@@ -847,13 +853,16 @@ export function render(state, ui, now) {
   const zones = state.zones;
   if (zones && zones.length) {
     const pulse = 0.55 + 0.25 * Math.sin(tNow * 2.4);
+    const zp = ui.zonePulse;       // 「在地圖上看」 (overview dictionary): that zone's glow flashes for ~2 s
+    if (zp && now >= zp.until) ui.zonePulse = null;
     for (const zn of zones) {
       const e = zoneGeom(zn);
       const col = layerNew ? (CS.ZONE_COL_NEW[zn.id] || CS.ZONE_DEFAULT_NEW) : (ZONE_COL[zn.id] || '255,220,120');
-      ctx.fillStyle = 'rgba(' + col + ',' + (0.10 + 0.06 * pulse) + ')'; ctx.fill(e.fillP);
+      const boost = zp && zp.id === zn.id && now < zp.until ? (0.5 + 0.5 * Math.sin(tNow * 10)) * Math.min(1, (zp.until - now) / 500) : 0;
+      ctx.fillStyle = 'rgba(' + col + ',' + (0.10 + 0.06 * pulse + 0.26 * boost) + ')'; ctx.fill(e.fillP);
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-      ctx.strokeStyle = 'rgba(' + col + ',' + (0.18 * pulse) + ')'; ctx.lineWidth = 9; ctx.stroke(e.path);
-      ctx.strokeStyle = 'rgba(' + col + ',' + (0.55 + 0.3 * pulse) + ')'; ctx.lineWidth = 2.5; ctx.stroke(e.path);
+      ctx.strokeStyle = 'rgba(' + col + ',' + (0.18 * pulse + 0.3 * boost) + ')'; ctx.lineWidth = 9 + 9 * boost; ctx.stroke(e.path);
+      ctx.strokeStyle = 'rgba(' + col + ',' + Math.min(1, 0.55 + 0.3 * pulse + 0.3 * boost) + ')'; ctx.lineWidth = 2.5 + 2 * boost; ctx.stroke(e.path);
     }
   }
 
@@ -963,6 +972,18 @@ export function render(state, ui, now) {
     ctx.fillStyle = tint.col; rectPath(ctx, tint.x, tint.y, tint.w, tint.h); ctx.fill();
     tint.on = false;
   }
+  // ⚠ over facilities nobody on the payroll can operate (sim/qualify.js): small, gently pulsing, culled off-screen
+  const unst = unstaffedIds(state);
+  if (unst.size) {
+    const pul = 0.5 + 0.5 * Math.sin(tNow * 3);
+    for (let i = 0; i < nR; i++) {
+      const r = recs[i];
+      if (!unst.has(r.obj.id) || r.bx1 < vx0 || r.bx0 > vx1 || r.by1 < vy0 || r.by0 > vy1) continue;
+      ctx.globalAlpha = 0.72 + 0.28 * pul;
+      drawIcon(ctx, 'warn', r.px + (r.spr.dw || r.spr.width) / 2, r.py + 8, -pul * 2);
+    }
+    ctx.globalAlpha = 1;
+  }
   // ghost
   if (ghostO) {
     const spr = getObjectSprite(ghostO.def.id, ghostO.rot);
@@ -1020,10 +1041,21 @@ export function render(state, ui, now) {
   }
   // zone labels
   if (zones && zones.length) {
+    // labels of neighbouring zones are stacked upwards in zone order, so adjacent / merged zones never overlap (deterministic, no allocation)
+    let zlN = 0;
     for (const zn of zones) {
       const e = zoneGeom(zn);
       const c = getBubble(e.label, 'zone');
-      ctx.drawImage(c, Math.round(e.cx * z + cam.x - c.cw / 2) - 1, Math.round(e.cy * z + cam.y - 46 * z - c.ch) - 1, c.width / dpr, c.height / dpr);
+      const lx = e.cx * z + cam.x - c.cw / 2;
+      let ly = e.cy * z + cam.y - 46 * z - c.ch;
+      for (let pass = 0; pass < 12; pass++) {
+        let hit = -1;
+        for (let k = 0; k < zlN; k++) if (lx < zlX[k] + zlW[k] + 2 && lx + c.cw + 2 > zlX[k] && ly < zlY[k] + zlH[k] + 1 && ly + c.ch + 1 > zlY[k]) { hit = k; break; }
+        if (hit < 0) break;
+        ly = zlY[hit] - c.ch - 2;
+      }
+      if (zlN < ZL_MAX) { zlX[zlN] = lx; zlY[zlN] = ly; zlW[zlN] = c.cw; zlH[zlN] = c.ch; zlN++; }
+      ctx.drawImage(c, Math.round(lx) - 1, Math.round(ly) - 1, c.width / dpr, c.height / dpr);
     }
   }
   // selected name tag

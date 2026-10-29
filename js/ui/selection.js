@@ -14,6 +14,8 @@ import { artEl, artOn, thumbEl, staffBust, patientMoodArt, STAFF_SPRITE, PATIENT
 import { initMoods, gameMinutes, staffMood, staffMoodHint } from './moods.js';
 import { ctx } from './ctx.js';
 import * as ST from '../sim/staff.js';
+import { isUnstaffed, requiredRolesFor, toastIfUnstaffed, roleShort } from '../sim/qualify.js';
+import { roleRow, updateRoleRow, operatesTip } from './roles.js';
 
 let card = null, body = null, key = null, refs = null;
 
@@ -22,6 +24,13 @@ export function initSelection(state, ui) {
   document.getElementById('stage').appendChild(card);
   bus.on('select:changed', () => { key = null; });
   initMoods(bus, () => ctx.state);
+  // a facility that is placed while nobody on the payroll can operate it: say so once per role (尚未僱用○○，這台設備無法運作)
+  let known = new Set(state.objects.map(o => o.id));
+  bus.on('state:loaded', () => { known = new Set(state.objects.map(o => o.id)); });
+  bus.on('map:changed', () => {
+    for (const o of state.objects) if (!known.has(o.id)) toastIfUnstaffed(state, o);
+    known = new Set(state.objects.map(o => o.id));
+  });
 }
 
 function find(state, sel) {
@@ -37,7 +46,7 @@ function close(ui) {
   bus.emit('select:changed', { selected: null });
 }
 
-function row(label, node) { return h('div', { class: 'u-srow' }, h('span', { class: 'muted' }, label), node); }
+function row(label, node, cls) { return h('div', { class: 'u-srow' + (cls ? ' ' + cls : '') }, h('span', { class: 'muted' }, label), node); }
 
 function buildPatient(state, ui, e) {
   const P = PATIENT_TYPES[e.type] || {};
@@ -97,7 +106,7 @@ function buildStaff(state, ui, e) {
   refs.task = h('div', { class: 'muted u-seltask' }, refs.taskIco, refs.taskTxt);
   append(body, [
     h('div', { class: 'u-shead' }, refs.bust || h('span', { class: 'u-sico' }, ROLE_ICONS[e.role] || '🧑‍⚕️'),
-      h('div', { class: 'u-stitle' }, h('b', null, e.name), h('span', { class: 'muted' }, R.name || e.role)), refs.st),
+      h('div', { class: 'u-stitle' }, h('b', null, e.name), h('span', { class: 'muted', tip: operatesTip(e.role) }, R.name || e.role)), refs.st),
     row('技術', h('span', { class: 'u-bl' }, bar(e.skill / 10), h('em', { class: 'u-num' }, e.skill))),
     row('魅力', h('span', { class: 'u-bl' }, bar(e.charm / 10), h('em', { class: 'u-num' }, e.charm))),
     row('體力', refs.stam),
@@ -130,13 +139,16 @@ function updStaff(state, e) {
 
 function buildObject(state, ui, e) {
   const d = BUILDABLES[e.defId] || {};
-  refs = { wear: bar(), use: h('span') };
+  const rr = roleRow(state, e.defId);
+  refs = { wear: bar(), use: h('span', { class: 'u-sstat' }), rr, need: rr ? null : h('span', { class: 'muted' }, '不需要人員') };
   body.append(
     h('div', { class: 'u-shead' }, itemSprite(e.defId)
       ? artEl(itemSprite(e.defId), { size: 48, fallback: d.glyph || '📦', title: d.name })
       : thumbEl(e.defId, { width: 48, height: 48, fallback: h('span', { class: 'u-sico' }, d.glyph || '📦') }),
-      h('div', { class: 'u-stitle' }, h('b', null, d.name || e.defId), h('span', { class: 'muted' }, `${e.x}, ${e.y}`)), refs.use),
+      h('div', { class: 'u-stitle' }, h('b', null, d.name || e.defId), h('span', { class: 'muted' }, `${e.x}, ${e.y}`))),
     h('div', { class: 'muted u-p' }, d.desc || ''),
+    row('所需人員', refs.rr || refs.need, 'u-srow-wide'),
+    row('狀態', refs.use, 'u-srow-wide'),
     row('耗損', refs.wear),
     row('維護費', h('span', null, `${money(d.upkeep || 0)} / 月`)),
     h('div', { class: 'row' },
@@ -160,7 +172,12 @@ function buildObject(state, ui, e) {
 function updObject(state, e) {
   const w = e.wear > 1 ? e.wear / 100 : (e.wear || 0);
   setBar(refs.wear, w, w > 0.7 ? 'bad' : w > 0.4 ? 'warn' : '');
-  setText(refs.use, e.usedBy ? '使用中' : e.busy ? '忙碌' : '閒置');
+  if (refs.rr) updateRoleRow(refs.rr, state);
+  const unst = isUnstaffed(state, e);
+  const req = requiredRolesFor(e.defId);
+  setText(refs.use, e.broken ? '故障中' : unst ? (e.defId === 'reception' ? '缺人（掛號較慢）' : '缺人，無法運作') : e.usedBy ? (e.staffId ? '運作中' : '使用中') : e.busy ? '忙碌' : '閒置');
+  setClass(refs.use, 'bad', !!e.broken || unst);
+  refs.use.dataset.tip = unst ? `診所尚未僱用${req.map(roleShort).join('或')}：先到「一覽 → 員工清單」招聘` : '';
 }
 
 const BUILDERS = { patient: [buildPatient, updPatient], staff: [buildStaff, updStaff], object: [buildObject, updObject] };

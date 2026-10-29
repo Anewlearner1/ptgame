@@ -33,6 +33,9 @@ export const ACHIEVEMENTS = [
   { id: 'm_year3', name: '三週年', desc: '經營滿 3 年，順利進入第 4 年。', cat: 'milestone', tier: 2, hidden: false, badge: '🎂' },
   { id: 'm_five_roles', name: '五職齊備', desc: '同時聘有醫師、PT、OT、ST、護理師。', cat: 'milestone', tier: 1, hidden: false, badge: '🧑‍⚕️', reward: { pointKey: 'medical' } },
   { id: 'm_research_all', name: '學無止境', desc: '完成全部研發節點。', cat: 'milestone', tier: 3, hidden: false, badge: '🔬', title: '研發怪咖院長', goal: Object.keys(RESEARCH).length, metric: 'researchDone' },
+  { id: 'm_upg_10', name: '精益求精', desc: '「持續精進」六條路線的等級總和達到 10 級。', cat: 'milestone', tier: 1, hidden: false, badge: '📈', goal: 10, metric: 'upgradeLevels' },
+  { id: 'm_upg_40', name: '研究魂不滅', desc: '「持續精進」六條路線的等級總和達到 40 級。', cat: 'milestone', tier: 2, hidden: false, badge: '🔭', title: '終身學習院長', goal: 40, metric: 'upgradeLevels' },
+  { id: 'm_upg_cap', name: '登峰造極', desc: '任一條「持續精進」路線升到最高等級。', cat: 'milestone', tier: 3, hidden: false, badge: '🏔️', title: '登峰造極院長' },
 
   // ---------- 台灣在地特色 taiwan ----------
   { id: 't_cold_week', name: '寒流守護者', desc: '寒流週結束時，該週服務 15 位以上長輩。', cat: 'taiwan', tier: 2, hidden: false, badge: '🧣', title: '寒流守護者' },
@@ -53,6 +56,8 @@ export const ACHIEVEMENTS = [
   { id: 'c_zone_premium', name: '高階自費', desc: '啟動「高階自費專區」。', cat: 'challenge', tier: 1, hidden: false, badge: '☕' },
   { id: 'c_zone_kidpark', name: '放電樂園', desc: '啟動「早療放電樂園」。', cat: 'challenge', tier: 1, hidden: false, badge: '🎠', reward: { pointKey: 'medical' } },
   { id: 'c_zone_all', name: '專區大滿貫', desc: '黃金三寶區、高階自費專區、早療放電樂園同時啟動。', cat: 'challenge', tier: 2, hidden: false, badge: '🗺️', title: '專區規劃師' },
+  { id: 'c_zone_collect', name: '專區收藏家', desc: '累計啟動過 6 種不同的專區（不必同時）。', cat: 'challenge', tier: 2, hidden: false, badge: '🗂️', reward: { pointKey: 'service' } },
+  { id: 'c_zone_master', name: '專區大師', desc: '同時啟動 8 個以上的專區。', cat: 'challenge', tier: 3, hidden: false, badge: '🧭', title: '專區大師' },
   { id: 'c_zero_slip_year', name: '零滑倒一整年', desc: '一個完整年度（12 個月）內零人滑倒，且至少服務 200 位病患。', cat: 'challenge', tier: 3, hidden: false, badge: '🦶', title: '防滑達人' },
   { id: 'c_no_angry_month', name: '笑臉迎人', desc: '單月內沒有任何病患因滿意度低於 25 或候診超時而憤怒離開，且該月服務 20 人以上。', cat: 'challenge', tier: 2, hidden: false, badge: '😊' },
   { id: 'c_full_house', name: '門庭若市', desc: '擴建後，單週服務人數達到店面上限的 90% 以上。', cat: 'challenge', tier: 2, hidden: false, badge: '🈵' },

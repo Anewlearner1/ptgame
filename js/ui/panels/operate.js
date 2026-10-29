@@ -14,6 +14,7 @@ import { h, setClass, setText, tabbed, bar, setBar } from '../dom.js';
 import { money, fmt, POINT_ICONS, TRACK_COLORS } from '../fmt.js';
 import { POINT_LABELS } from '../../core/constants.js';
 import { chipList, section, boardsSection } from './common.js';
+import { buildUpgrades } from './upgrades.js';
 
 const store = { tab: 'research' };
 
@@ -41,13 +42,19 @@ function buildResearch(body, state) {
   const cur = h('div', { class: 'card u-curres' });
   const curName = h('b'), curInfo = h('span', { class: 'muted' }), curBar = bar();
   cur.append(h('div', { class: 'row' }, h('span', null, '🔬 研發中：'), curName, curInfo), curBar);
-  const pts = h('div', { class: 'row u-pts' });
+  // sticky balance row: the three point types stay visible while scrolling the tree / the 持續精進 cards
+  const pts = h('div', { class: 'row u-pts u-pts-sticky' });
   const ptEls = {};
   for (const tr of RESEARCH_TRACKS) {
     ptEls[tr.id] = h('b');
-    pts.appendChild(h('span', { class: 'tag' }, `${POINT_ICONS[tr.pointKey || tr.id]} ${tr.name}點 `, ptEls[tr.id]));
+    pts.appendChild(h('span', { class: 'tag u-ptchip', style: { '--pc': TRACK_COLORS[tr.id] }, dataset: { point: tr.id } }, `${POINT_ICONS[tr.pointKey || tr.id]} ${tr.name}點 `, ptEls[tr.id]));
   }
-  body.append(cur, pts);
+  const upg = buildUpgrades(state);
+  const jump = h('button', { class: 'btn small u-upg-jump', type: 'button', hidden: true, onclick: () => upg.el.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, '♾ 持續精進 ↓');
+  const tree = h('div', { class: 'u-tree' });
+  body.append(pts, jump, cur, tree, upg.el);
+  upg.el.hidden = true;
+  body = tree;
 
   const rows = {};
   for (const tr of RESEARCH_TRACKS) {
@@ -80,6 +87,16 @@ function buildResearch(body, state) {
   return {
     update() {
       for (const tr of RESEARCH_TRACKS) setText(ptEls[tr.id], fmt(Math.floor(state.points[tr.pointKey || tr.id] || 0)));
+      // 持續精進: appears once any line is unlocked; moves above the (exhausted) tree when every node is done
+      const showUpg = upg.anyUnlocked();
+      upg.el.hidden = !showUpg;
+      jump.hidden = !showUpg;
+      if (showUpg) {
+        setText(jump, `♾ 持續精進（已投入 ${RS.totalLevels(state)} 級）↓`);
+        upg.update();
+        const treeDone = Object.keys(RESEARCH).every(id => RS.isDone(state, id));
+        if (treeDone && tree.nextSibling === upg.el) tree.parentNode.insertBefore(upg.el, tree);
+      }
       const info = RS.progressInfo(state);
       cur.hidden = !info.node;
       if (info.node) {

@@ -5,9 +5,12 @@
 //   every numeric key is an ADDITIVE DELTA on the current value (multipliers have base 1, so +0.2 -> 1.2).
 //   dotted keys 'typeSpawn.<patientType>' are deltas on that type's multiplier (absent == 1).
 // Research mod effects carry an explicit op ('add' | 'mul').
+// Dotted keys 'typeSpawn.<t>' (base 1), 'typeSat.<t>' and 'typeCure.<t>' (base 0) address the per-patient-type maps.
+// 持續精進 levels (state.research.levels, data/upgrades.js) are applied right after the research tree, as additive deltas.
 import { defaultMods } from '../core/state.js';
 import { BUILDABLES } from '../data/buildables.js';
 import { RESEARCH } from '../data/research.js';
+import { UPGRADE_LINES } from '../data/upgrades.js';
 import { FOCUS } from '../data/patients.js';
 import * as EV from '../data/events.js';
 import { synergyList } from './synergy.js';
@@ -24,6 +27,20 @@ const TYPE_SPAWN_MAX = 3.5;
 const MULT_MIN = 0.1;                     // floor for multiplier-type mods
 const MODS_MIN_ZERO_OK = new Set(['selfPayConv', 'elderSat']);
 
+// Global bounds for the late-game mods (so zones + research + upgrades + events can never stack into a broken game).
+// [min, max]; null = unbounded on that side.
+export const MOD_BOUNDS = {
+  cureGain: [0.2, 1.6], treatTime: [0.6, 2], wearRate: [0.35, 3], satGain: [-12, 12], repGrowth: [-2, 1.2],
+};
+export const TYPE_CURE_BOUNDS = [-0.5, 0.6];
+export const TYPE_SAT_BOUNDS = [-12, 15];
+
+// dotted per-type maps: prefix -> [mods map name, base value when absent]
+const TYPE_MAPS = { 'typeSpawn.': ['typeSpawn', 1], 'typeSat.': ['typeSat', 0], 'typeCure.': ['typeCure', 0] };
+function dotted(key) {
+  for (const p of Object.keys(TYPE_MAPS)) if (key.startsWith(p)) return { map: TYPE_MAPS[p][0], base: TYPE_MAPS[p][1], t: key.slice(p.length) };
+  return null;
+}
 function typeBase(mods, t) { return mods.typeSpawn[t] == null ? 1 : mods.typeSpawn[t]; }
 
 export function applyPatch(mods, patch, scale = 1) {
@@ -31,9 +48,10 @@ export function applyPatch(mods, patch, scale = 1) {
   for (const key of Object.keys(patch)) {
     const v = patch[key] * scale;
     if (typeof v !== 'number' || Number.isNaN(v)) continue;
-    if (key.startsWith('typeSpawn.')) {
-      const t = key.slice('typeSpawn.'.length);
-      mods.typeSpawn[t] = typeBase(mods, t) + v;
+    const d = dotted(key);
+    if (d) {
+      if (!mods[d.map] || typeof mods[d.map] !== 'object') mods[d.map] = {};
+      mods[d.map][d.t] = (mods[d.map][d.t] == null ? d.base : mods[d.map][d.t]) + v;
     } else if (typeof mods[key] === 'number') {
       mods[key] += v;
     } else if (!(key in mods)) {
@@ -44,10 +62,11 @@ export function applyPatch(mods, patch, scale = 1) {
 
 export function applyOp(mods, key, op, value) {
   if (typeof value !== 'number') return;
-  if (key.startsWith('typeSpawn.')) {
-    const t = key.slice('typeSpawn.'.length);
-    const b = typeBase(mods, t);
-    mods.typeSpawn[t] = op === 'mul' ? b * value : b + value;
+  const d = dotted(key);
+  if (d) {
+    if (!mods[d.map] || typeof mods[d.map] !== 'object') mods[d.map] = {};
+    const b = mods[d.map][d.t] == null ? d.base : mods[d.map][d.t];
+    mods[d.map][d.t] = op === 'mul' ? b * value : b + value;
   } else if (typeof mods[key] === 'number') {
     mods[key] = op === 'mul' ? mods[key] * value : mods[key] + value;
   }
@@ -68,6 +87,14 @@ function clampMods(m) {
     }
   }
   for (const t of Object.keys(m.typeSpawn)) m.typeSpawn[t] = Math.max(0, Math.min(TYPE_SPAWN_MAX, m.typeSpawn[t]));
+  for (const k of Object.keys(MOD_BOUNDS)) {
+    if (typeof m[k] !== 'number') continue;
+    const [lo, hi] = MOD_BOUNDS[k];
+    if (lo != null && m[k] < lo) m[k] = lo;
+    if (hi != null && m[k] > hi) m[k] = hi;
+  }
+  if (m.typeCure) for (const t of Object.keys(m.typeCure)) m.typeCure[t] = Math.max(TYPE_CURE_BOUNDS[0], Math.min(TYPE_CURE_BOUNDS[1], m.typeCure[t]));
+  if (m.typeSat) for (const t of Object.keys(m.typeSat)) m.typeSat[t] = Math.max(TYPE_SAT_BOUNDS[0], Math.min(TYPE_SAT_BOUNDS[1], m.typeSat[t]));
   if (m.spawnMult > SPAWN_MULT_MAX) m.spawnMult = SPAWN_MULT_MAX;      // stacked buffs cannot run away
 }
 
@@ -88,6 +115,14 @@ export function recomputeMods(state) {
     const node = RESEARCH[id];
     if (!node) continue;
     for (const e of node.effects || []) if (e.type === 'mod') applyOp(m, e.key, e.op || 'add', e.value);
+  }
+
+  // 2b. 持續精進 levels (instant purchases, level x perLevel)
+  const lv = (state.research && state.research.levels) || {};
+  for (const line of UPGRADE_LINES) {
+    const n = Math.max(0, Math.min(line.cap, Math.floor(Number(lv[line.id]) || 0)));
+    if (!n) continue;
+    for (const e of line.effects) applyOp(m, e.key, e.op || 'add', Math.round(e.perLevel * n * 1e6) / 1e6);
   }
 
   // 3. weather

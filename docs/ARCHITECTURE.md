@@ -89,12 +89,14 @@ T = {
   id, name,
   kind: 'nhi' | 'self',
   objects: [buildableId],         // ANY-of: patient must stand on a walkable tile adjacent to one of these (free) objects
-  staffRole: null | [role],       // ANY-of staff roles needed to be adjacent too; null = self-service
+  staffRole: null | [role],       // ANY-of staff roles needed to be adjacent too; every treatment now names its roles (null = self-service is unused)
   duration,                       // game minutes (30..90; visible on screen ~2-6 real sec)
   nhiPoints,                      // for kind 'nhi': LISTED NHI points per claim (from data/fees.js; what is paid follows the single-claim rule + exam tiers), 95..500
   price,                          // for kind 'self': REAL NT$ per session (fees.js typical; policy.priceMult scales it 0.5..2.0; x PATIENT_WEIGHT when banked), 1700..17000
   points: { medical, device, service },   // base points produced per session
   staminaCost,                    // staff stamina per session (manual therapy high)
+  attend: 'full' | 'setup',       // 'full' = the qualified staff member is bound to the patient for the whole session; 'setup' = only for the first `setupMin` game-minutes (machines), then the treatment runs unattended
+  setupMin?: number,              // attend 'setup' only (heat/ir/tens 5, traction 8)
   requires: null | researchNodeId,
   cure: number,                   // 0..1 contribution to patient recovery when completed
   intro: '一句話'
@@ -128,16 +130,38 @@ FOCUS = { ortho: {name, spawnMult:{elder,office,sports,kid}}, ltc:{...}, peds:{.
 
 **`staffdefs.js`** → `export const STAFF_ROLES = { [role]: {name, baseSalary, hireCost, color, skillRange:[a,b], staminaMax, desc} }`, `export const STAFF_NAMES = { surnames:[...], given:[...] }` (台灣常見姓名), `export const TRAITS = [{id,name,desc,mods:{skill?,charm?,staminaMax?}}]` (e.g. 親切、細心、體力好、研究魂…).
 
-**`synergies.js`** → `export const SYNERGIES = [{ id, name, icon, needs:[defId,...], effects:{...mods patch}, desc }]`
-Adjacency rule (implemented by S-B `synergy.js`): two objects are *adjacent* if the Chebyshev distance between their footprints is ≤ 1 (touching, diagonal ok). A zone is active when a connected component of adjacent objects contains every defId in `needs` (multiple copies fine). Three required zones:
-* `golden3` 黃金三寶區: heatbox+tens+traction → `{nhiTurnover:+0.2, elderSat:+8}` (健保翻桌率 +20%, 長輩滿意度)
-* `premium` 高階自費專區: manual_room+shockwave+coffee → `{selfPayConv:+0.15, selfPayPrice:+0.1}`
-* `kidpark` 早療放電樂園: ball_pit+soft_mat+bookshelf → `{researchGain:+0.25}` (applies as multiplier 1.25 to points)
-Effects use additive deltas on `defaultMods()` keys (`nhiTurnover` is a multiplier base 1 so +0.2 → 1.2; stacking zones add).
+**`synergies.js`** → `export const SYNERGIES = [{ id, name, icon, desc, needs:[defId,...], needsCount?:{defId:n}, needsFloors?:{floorId:n}, effects:{...mods patch}, tier, group, unlock?, hint }]`, plus `ZONE_GROUPS` / `ZONE_TIERS` label tables.
+Adjacency rule (implemented by `sim/synergy.js`): two objects are *adjacent* if the Chebyshev distance between their footprints is ≤ 1 (touching, diagonal ok; flat objects such as `sign` / `soft_mat` count). A zone is active when ONE connected component of adjacent objects contains every defId in `needs` (≥ 1 copy each, or `needsCount[defId]` copies) and satisfies `needsFloors`. A zone id applies once however many copies of the zone exist; different zones stack additively (global caps live in `modifiers.js`).
+* `needsFloors: {ramp: 3}` (floor tiles are not objects, they never join the adjacency graph). The cluster's *member objects* (those whose defId is in `needs`) define **seed tiles** = tiles of that floor type inside the members' footprints grown by 1 (Chebyshev: edges and corners touch). Every same-type tile 8-connected to a seed (one contiguous strip) also counts, so only one tile of a strip has to touch a member. Tiles of other floor types, tiles that only touch a non-member object, and broken strips (gap ≥ 1 tile) do not count. The strip is walked breadth-first and stops after `need + 6` tiles, so the cost is O(need) per component; those tiles are appended to the zone's glow `cells`.
+* `state.zones[] = {id, name, icon, objectIds[], cells[{x,y}]}` (member footprints, + counted floor tiles). `build.paintFloor/removeAt(floor)` recompute zones + mods like object changes do.
+* `tier` basic/advanced/master and `group` (treatment/waiting/staff/kids/selfpay/sports/elder) only drive the dictionary UI; `unlock` (research node) + every needed buildable's own `requires` are merged by `zoneLocks(state, syn)`: a zone is listed 🔒 until those nodes are done (it is still computed whenever its buildables exist). `hint` = the one-line 「怎麼擺」 tip.
+* Helpers for the UI: `synergyProgress(state, syn)` → `[{kind:'obj'|'floor', id, need, have, ok}]`, `zoneLocks`, `isZoneActive`.
+
+15 zones (all use existing buildables only; magnitudes are additive deltas, sized with the economy harness — see "balance" below):
+| id | zone | needs | effects | tier |
+|---|---|---|---|---|
+| `golden3` | 黃金三寶區 | heatbox, tens, traction | nhiTurnover +0.2, elderSat +8 | basic |
+| `premium` | 高階自費專區 | manual_room, shockwave, coffee | selfPayConv +0.15, selfPayPrice +0.1 | advanced |
+| `kidpark` | 早療放電樂園 | ball_pit, soft_mat, bookshelf | researchGain +0.25 | advanced |
+| `waitRoom` | 候診舒適區 | sofa, water, plant, tv | patience +0.1, elderSat +2 | basic |
+| `restStation` | 員工喘息站 | rest_room, water | staffStamina −0.1 | basic |
+| `sportsRehab` | 運動復健專區 | redcord, bed, soft_mat | typeSpawn.sports +0.1, typeCure.sports +0.06, selfPayConv +0.02 | advanced |
+| `elderPath` | 長者友善動線 | sign, sofa + **ramp ×3** (needsFloors) | elderSat +6, slipRisk −0.15, walkSpeed +0.02 | basic |
+| `orthoStation` | 骨科評估站 | exam_room, us_room, bed | cureGain +0.04, researchGain +0.06 | advanced |
+| `hotCold` | 冷熱雙療區 | ir_lamp, heatbox, bed | patience +0.03, nhiTurnover +0.03, typeSat.office +3 | basic |
+| `kidLearn` | 共學早療室 | speech_room, si_room, fine_table | typeSpawn.kid +0.1, typeCure.kid +0.08, researchGain +0.08 | master |
+| `kidCorner` | 親子遊戲角 | fine_table, bookshelf, soft_mat | typeSat.kid +6, satGain +1 | advanced |
+| `flagship` | 自費旗艦廊 | laser_room, shockwave_room, manual_room | selfPayConv +0.035, selfPayPrice +0.03 | advanced |
+| `staffBack` | 員工友善後勤 | rest_room, coffee, water, plant | staffStamina −0.12, repGrowth +0.05 | advanced |
+| `cafeNook` | 候診咖啡角 | sofa, coffee, tv, plant | patience +0.05, selfPayConv +0.015, typeSat.office +4 | basic |
+| `regDesk` | 掛號便民區 | reception, sign, sofa, water | patience +0.04, walkSpeed +0.01 | basic |
+Hand-verified layouts for every zone (and a 33-object layout that lights 13 zones at once on the 12×10 start lot) live in `tools/zonelayouts.mjs`; `node tools/audit.mjs --only zones` forces each on/off through the real build rules. Unlock timeline: basic zones need only starter items (+ `rs_ultrasound` 30 pts for 骨科評估站), `rs_ot` (職能治療入門) opens 親子遊戲角, `rs_redcord`/`rs_shockwave`/`rs_laser`/`rs_st` the rest.
 
 **`lots.js`** → `export const LOTS = [ {name, lot:{x0,y0,w,h}, door:{x,y}, rent, nhiCap, maxPatientsPerWeek, maxStaff, maxPatients? (L3: 100), patientWeight? (L3: 20), expandCost, requires:{minReputation, minYear, minStaff, minAvgSat, needRamp?, minSeats?, ...}} ]`
 Nested lots, same bottom edge, door.y = lot.y0+lot.h, door.x = 15 for all:
 L0 `巷弄小診所` {x0:10,y0:10,w:12,h:10}; L1 `社區診所` {x0:9,y0:8,w:14,h:12}; L2 `地區復健中心` {x0:8,y0:6,w:16,h:14}; L3 `全台頂尖復健中心` {x0:6,y0:4,w:20,h:16}.
+
+**`upgrades.js`** → `UPGRADE_LINES`, `UPGRADE_BY_ID`, `UPGRADE_DOMAIN_NAMES`, `upgradeCost(line, level)`, `upgradeCostTotal(line, levels?)` (持續精進; see `sim/research.js` below).
 
 **`research.js`** → `export const RESEARCH = { [id]: Node }`, `export const RESEARCH_TRACKS`
 ```js
@@ -209,11 +233,18 @@ Every successful change sets `ui.dirtyOcc = true` and emits `map:changed`.
 `relocationCost(defId)` (= max(500, 10% of build cost), category 'build') · `canMove(state, objId, x, y, rot) -> {ok, reason, fee}` · `moveObject(state, objId, x, y, rot) -> bool` (keeps id/wear, releases users, recomputes zones/mods, emits `map:changed` + `object:moved {id}`) · `rotateObject(state, objId) -> bool` (free). UI: 「移動」tool (`ui.tool.mode='move'`, key **M**; 地圖 panel hotkey is **P**), touch long-press menu → 移動/旋轉.
 
 ### sim/synergy.js · sim/modifiers.js (S-B)
-`recomputeZones(state)` → fills `state.zones` (see §3.1 synergies) · `recomputeMods(state)` → `state.mods = defaultMods()` then applies, in order: active synergy zones, completed research `mod` effects, current weather mods, active events/community effects, enabled health boards, policy focus, environment comfort. Also exposes `comfortScoreAt(state, x, y) -> number` and `floorGripAt(state, x, y) -> number` used by patients.js (safe to import from `sim/modifiers.js`).
+`recomputeZones(state)` → fills `state.zones` (see §3.1 synergies) · `recomputeMods(state)` → `state.mods = defaultMods()` then applies, in order: active synergy zones, completed research `mod` effects, 持續精進 levels (`state.research.levels`), current weather mods, active events/community effects, enabled health boards, policy focus, environment comfort. Also exposes `comfortScoreAt(state, x, y) -> number` and `floorGripAt(state, x, y) -> number` used by patients.js (safe to import from `sim/modifiers.js`).
 
 ### sim/research.js (S-B)
 `isDone(state, id)`, `canStart(state, id) -> {ok, reason}`, `start(state, id) -> bool` (pays points immediately; takes `weeks` weeks; one at a time), `progressInfo(state)`, `list(state) -> [{node, status:'locked'|'available'|'current'|'done'}]`; listens `week:end` to progress; on done applies unlocks (computed on demand from `state.research.done`, not stored), emits `research:done`.
 Also `isTreatmentUnlocked(state, treatmentId) -> bool` (used by patients.js). Also export `initResearch()` (registers bus listeners; called once by main.js).
+
+**持續精進 (endless upgrade lines; `data/upgrades.js` + the "upgrades" half of `sim/research.js`).** The 26-node tree is exhausted after ~2–3 game years while points keep flowing, so each domain also has repeatable, capped, instant upgrades. `state.research.levels = { [lineId]: integer 0..cap }` (absent == `{}`; `rs()` creates it lazily, `save.js` sanitizes: known ids only, floor, 0..cap, non-objects -> `{}`).
+* `UPGRADE_LINES = [{ id, name, domain:'medical'|'device'|'service', icon, desc, note, effects:[{key, perLevel, op:'add'}], cap, baseCost, growth, unlock:{domainNodes:N} }]`; `upgradeCost(line, level) = round(baseCost × growth^level)` is the price of the NEXT level; `upgradeCostTotal(line)`. `effects[].key` is a `defaultMods()` key or dotted `typeCure.<patientType>` / `typeSat.<patientType>`; effect at level n = `perLevel × n`, applied by `modifiers.recomputeMods` right after the research tree as an additive delta (multiplier mods have base 1, so wearRate −0.03 × 10 → 0.70).
+* The six lines (ids `up_*`): 醫術 `up_clinical` 臨床經驗 (cureGain +2.5%/級, cap 16), `up_diagnosis` 專科診斷 (typeCure +1.5%/級 for each of the 4 patient types, cap 12); 儀器 `up_equipment` 設備精進 (wearRate −3%/級, cap 15), `up_workflow` 流程最佳化 (treatTime −1.2%/級, cap 12); 服務 `up_relations` 客戶關係 (satGain +0.6 and patience +1%/級, cap 15), `up_brand` 品牌聲望 (repGrowth +0.06 rep/week/級, cap 15). A line unlocks when `unlock.domainNodes` finished tree nodes of its domain exist (first line of a domain 3, second 5). Total at cap: +40% cure, +18% per-type cure, −45% wear, −14.4% treatment time, +9 satisfaction, +15% patience, +0.9 reputation/week.
+* API: `levelOf(state,id)`, `totalLevels(state)`, `domainNodesDone(state,domain)`, `nextCost(state,id)` (null at cap), `upgradeUnlock(state,id) -> {ok,have,need,reason}`, `canUpgrade(state,id) -> {ok,reason,cost?,locked?,poor?,capped?}`, `buyUpgrade(state,id) -> bool` (instant; pays the domain's point type, recomputes mods, emits `mods:dirty` + `research:upgrade {id, level, cost, total}` + a good toast), `upgradeEffectsAt(id, level)`, `applyRepGrowth(state)` (the `week:end` listener adds `mods.repGrowth` to `state.reputation`, clamp 0..1000, once per week).
+* Global bounds in `modifiers.MOD_BOUNDS` (applied last, so zones/events/boards/upgrades cannot stack past them): cureGain ≤ 1.6, treatTime ≥ 0.6, wearRate ≥ 0.35, satGain ≤ 12, repGrowth ≤ 1.2 (plus loose floors); `typeCure.<t>` ≤ +0.6, `typeSat.<t>` ≤ +15. `applyPatch`/`applyOp` understand the dotted keys `typeSpawn.` (base 1), `typeSat.` and `typeCure.` (base 0). Labels for the new keys live in `sim/efftext.js` (`MOD_LABELS`; treatTime/wearRate are in `LOWER_BETTER`).
+* UI: 運作 → 研發 shows a sticky point-balance row (醫術/儀器/服務) and, once any line is unlocked, a 「持續精進」 section (`ui/panels/upgrades.js`: 6 cards — icon, name, Lv n/cap, now → next effect text, cost chip in the point colour, 提升 button with a visible disabled reason, ⓘ tooltip; updated in place; the section moves above the tree once every node is done). Career: metrics `upgradeLevels` / `upgradeYear` (+ bonus goal `b_rd_upgrade3`, year ≥ 4); achievements `m_upg_10` 精益求精 (銅), `m_upg_40` 研究魂不滅 (銀), `m_upg_cap` 登峰造極 (金) → 56 total. Tests: `node tools/audit.mjs --only upgrades`, `node tools/upgradesui.mjs` (port 8216).
 
 ### sim/events.js (S-B)
 `initEvents()`; at `week:start` roll weather (`state.weather`), maybe a random event (modal via `dilemma:show`/`event:show`); `startCommunity(state, id) -> {ok, reason}`; `communityList(state)`; `setBoard(state, id, on) -> bool`; `setFocus(state, focus)`; `setPriceMult(state, treatmentId, mult)`; `resolveDilemma(state, choiceIndex)`; listens `dilemma:request` (from patients) and `patient:slip`. Maintains `state.events.active` entries `{id, kind, weeksLeft, mods}`; calls `recomputeMods` when they change.
@@ -239,9 +270,9 @@ DOM mount points (already in `index.html`): `#topbar #stage #game #sidebar #pane
 * **Topbar**: left `第 X 年 X 月 X 週` + clock + weather icon/name/temp (+ clinic name); right `NT$` money, 醫術/儀器/服務 points (with icons), reputation, current NHI point value. Money changes flash green/red.
 * **Sidebar** (vertical icon buttons on the left or right edge of `#stage`, pixel style): 建造 運作 診所 一覽 地圖 系統 → toggles `ui.panel`.
 * **建造 panel**: category tabs 環境/設施/特殊 → sub tabs → grid of item cards (name, price, glyph, locked state with requirement text); clicking an item sets `ui.tool={mode:'place'|'paint', defId, rot:0}`; plus a 「拆除」 toggle and rotate button; shows `Shift 連續放置`.
-* **運作 panel** tabs: 研發 (3 tracks tree-list; start research; progress), 自費定價 (sliders per self-pay treatment with live estimated income & conversion hint), 社區衛教 (community actions, board cooldowns/costs).
+* **運作 panel** tabs: 研發 (sticky point balance; 3 tracks tree-list; start research; progress; 持續精進 section with 6 repeatable upgrade cards), 自費定價 (sliders per self-pay treatment with live estimated income & conversion hint), 社區衛教 (community actions, board cooldowns/costs).
 * **診所 panel**: 經營方針 (長照/骨科/早療 radio with effects text), 衛教看板管理 (toggle boards), 擴建 (requirements checklist + 擴建 button via `inspection.canExpand/expand`), 院長稱號.
-* **一覽 panel** tabs: 病患病歷 (list of current patients: type, stage, satisfaction, plan progress; click to select/track), 員工清單 (+ 招聘 hire pool, 解僱, 訓練, stamina/skill/charm bars), 設備維護表 (objects list with wear/upkeep, sellable), 專區組合辭典 (all synergies, required buildables, whether currently active, how-to hints).
+* **一覽 panel** tabs: 病患病歷 (list of current patients: type, stage, satisfaction, plan progress; click to select/track), 員工清單 (+ 招聘 hire pool, 解僱, 訓練, stamina/skill/charm bars), 設備維護表 (objects list with wear/upkeep, sellable), 專區組合辭典 (`panels/overview.js` buildSyn: header 「已啟動 n / 共 N 個專區」 + status chips 全部／已啟動／未啟動／🔒需研發 + group chips; per zone a card with icon, name, tier + group chips, 效果 chips (typeSpawn/typeSat/typeCure use the patient-type names from `sim/efftext.js`), requirement chips ✔ owned / ✘ missing / 🔒 research needed (names the node) / 「坡道 2/3」 floor counts, a 「怎麼擺」 hint and 「📍 在地圖上看」: `camera.focusTiles` pans/zooms to the zone inside the free rect and sets `ui.zonePulse = {id, until}` which the renderer reads to flash that zone's glow for ~2 s; an inactive zone recentres on the clinic instead). Updates ride the ≤5 Hz `updateUI` tick, rows patch in place only when their signature changes. Renderer zone labels are stacked upwards in zone order so neighbouring zones never overlap.
 * **地圖 panel**: minimap of the lot (canvas) with flow heat (where patients wait/linger, traced per tile in `state`-independent cache) + 周邊客群熱點 (static colored district hints: 住宅區老人、辦公大樓、學校球場、托兒所 with arrival share bars driven by `FOCUS`/community).
 * **系統 panel**: 存檔/讀檔 (3 slots + 自動存檔), 匯出/匯入 JSON, 設定 (grid, sound toggle placeholder, speed default), 營運數據圖表 (canvas line/bar chart of `state.history`: 收入/支出/資金/病患數/滿意度/聲譽), 新遊戲.
 * Modals: month settlement report (on `nhi:settled`), inspection result (`inspection:result`), random event & dilemma (`dilemma:show` / `event:show`, call `events.resolveDilemma`), game over, intro tutorial (first launch).
@@ -269,9 +300,11 @@ Tile diamond 64×32 (`TILE_W`,`TILE_H`); object `height` px extruded upward; wor
 | `dilemma:show` / `event:show` | `{dilemma|event}` (state.events.pendingDilemma) | events |
 | `nhi:settled` | `{points, pointValue, basePointValue, patientWeight, income, expense, net, nhiIncome, selfIncome, copayIncome, otherIncome, diluted, …}` | economy |
 | `research:done` | `{id}` | research |
+| `research:upgrade` | `{id, level, cost, total}` | research (持續精進 purchase) |
 | `inspection:result` | `{pass, score, notes[], rewardOrFine}` | inspection |
 | `lot:expanded` | `{level}` | inspection |
 | `state:loaded` | `{}` | save |
+| `staff:changed` | `{action:'hire'\|'leave', id, role}` | staff (hire / fire / resign) - invalidates `sim/qualify.js`, refreshes role chips |
 | `game:over` | `{reason}` | economy |
 | `select:changed` | `{selected}` | input |
 | `ui:escape` | `{}` | input |
@@ -280,6 +313,28 @@ Tile diamond 64×32 (`TILE_W`,`TILE_H`); object `height` px extruded upward; wor
 ## 7. Definition of done
 * `python3 -m http.server` → open `index.html` → starter clinic visible, patients walk in, register, wait, get treated, pay, leave; week/month rolls; month report modal; build/demolish works; save/load works; no console errors for 10 minutes at ×3 speed; 60 fps-ish with ~40 agents.
 * Every PRD feature in the vertical slice is reachable from the UI. Everything in this doc is implemented or explicitly listed as deferred in the agent's report.
+
+## 設施人員資格（qualification rules）
+一個設施只有在**薪資名單上有符合資格的員工**時才能運作；`js/sim/qualify.js` 是唯一的判斷來源（`treatments.js` 的 `staffRole`／`attend`／`setupMin` + `buildables.js` 的 `stationFor`）。
+
+| 療程 | 可操作職類（任一） | 到場方式 |
+|---|---|---|
+| exam 門診、us 超音波、prp | 醫師 | full 全程 |
+| heat 熱敷、ir 紅外線 | 護理師、物理治療師 | setup 前 5 分鐘 |
+| tens 電療 | 物理治療師 | setup 前 5 分鐘 |
+| traction 牽引 | 物理治療師 | setup 前 8 分鐘 |
+| taping、manual_nhi、redcord、manual_self、insole | 物理治療師 | full 全程 |
+| shockwave 震波、laser 雷射 | 醫師、物理治療師 | full 全程 |
+| si、fine | 職能治療師 | full 全程 |
+| speech | 語言治療師 | full 全程 |
+| reception 掛號櫃檯（非療程） | 護理師（沒有護理師時病患慢慢自助掛號） | 掛號時 |
+
+* **setup**：療程時鐘從開機設定開始（`p.total/remaining` = 完整時長），員工以 `working` 狀態站在設備旁 `setupMin` 分鐘（`staff.task.remaining/total` = 設定時間；體力 `attendStamina = max(0.5, staminaCost × setupMin/duration)`），然後 `releaseStaff`，病患獨自跑完。機器不吃員工技術（時長、療效、點數不受技術影響）。**full**：與以往相同，員工綁到療程結束。
+* **API**（`sim/qualify.js`）：`requiredRolesFor(defId)`、`roleLabel(role)`（`ROLE_LABELS`）、`roleShort`、`isUnstaffed(state, obj)`（該建築所載療程**全部**都沒有符合職類的在職員工才算缺人，部分覆蓋沒問題）、`unstaffedIds(state)`、`missingRoles(state) -> [{role, objects, label}]`、`treatmentStaffed`、`roleChips`／`requirementText`、`toastIfUnstaffed`。快取靠 bus 事件 `staff:changed`／`map:changed`／`state:loaded`／`week:start` 失效（外加員工職類與物件數的簽章比對，直接改 `state.staff` 也安全）。
+* **patients.js**：`feasReason()` 區分 `none`（沒有可用設施／未解鎖）與 `role`（設施在但沒人能操作：馬上跳過該步驟、不排隊，扣較輕的 `SKIP_ROLE_PENALTY`；沒有設施才是完整的 `SKIP_STEP_PENALTY`）；自費加購、方案抽樣、到站途中職類消失都用同一個判斷。員工配對 `staffSlots(roles, eta, dur)` 以「與該療程員工時間重疊的待命者」扣名額（機器設定很短，不會被另一台還在走路的機器佔住）；排隊中的下一位病患（`p.pre`）會在前一位剩餘時間逼近時就先派員工。護理師只在沒人等掛號且機器在 `NURSE_RANGE` 格內時才被借去設定機器（診所完全沒有其他合格職類時不受距離限制）。
+* **平衡旋鈕**（只動抽象參數）：`staff.TUNE.STAFF_SPEED` 1.0 → 1.25（員工走得比長輩快：機器需要人走過去開機，走路時間才是主要成本）、`patients.TUNE.NURSE_SETUP / NURSE_RANGE(3) / NURSE_PREF`（護理師可幫忙開熱敷／紅外線，但只在沒人等掛號且機器在 3 格內；診所完全沒有物理治療師時不受距離限制）、`SKIP_ROLE_PENALTY(4)`、`SLOT_LONG / SLOT_SHORT`（長療程配對員工時忽略別人的短開機）。機器的 `setupMin`（5／5／5／8）與規則表相同。物理治療師從此是瓶頸：地圖上機器越多越需要多聘 PT（第 3 級診所滿配約 12 名）。
+* **升級修飾值**（`state.mods`，由 `modifiers.js` 計算）：`treatTime`（所有療程時長，夾 0.5–2，與 `nhiTurnover` 相乘）、`cureGain`（每次完成療程的療效，夾 0.5–3）、`typeCure{type}`（療效 ×(1+x)，夾 0.5–3）、`satGain`（每位病患離院 +滿意度，夾 ±20）、`typeSat{type}`（到院滿意度，與舊 `elderSat` 相加，夾 ±30）、`wearRate`（設備耗損累積，夾 0.3–3，`equipment.js`）。
+* **UI**：建造卡片／托盤／提示「需要：✔／⚠ 職類」（`ui/roles.js`）；放下沒人能操作的設施時 toast「尚未僱用○○，這台設備無法運作」（每職類一次）；地圖 ⚠ 浮動警示（`renderer.js`，離螢幕就不畫）；設備維護表「缺人」徽章與需要職類；應徵者「診所缺這個職類」；員工職類提示「可操作的設施」；選取設備顯示所需人員與狀態。測試：`node tools/audit.mjs --only qualify`、`tools/qualifyui.mjs`（連接埠 8215）。
 
 ## 美術包（概念圖圖集）
 - 素材：`assets/art/atlas.png` + `atlas.json`（79 個去背素材，由 `tools/build_atlas.py` 從使用者提供的概念圖切出；原圖在 `assets/art/source/`，不隨網站部署）。命名見 `assets/art/README.md`。

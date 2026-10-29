@@ -3,6 +3,8 @@ import { BUILDABLES } from '../data/buildables.js';
 import { RESEARCH } from '../data/research.js';
 import { h, clear } from './dom.js';
 import { money } from './fmt.js';
+import { ctx } from './ctx.js';
+import { roleLine } from './roles.js';
 
 let tipEl = null, stage = null, cur = null;
 
@@ -15,6 +17,8 @@ function contentFor(el) {
       h('div', null, `造價 ${money(d.cost)}${d.layer === 'floor' ? ' / 格' : ''}　維護 ${money(d.upkeep || 0)}/月`),
       h('div', { class: 'u-tip-s' }, `佔地 ${d.w}×${d.h}` + (d.seats ? `　座位 ${d.seats}` : '') + (d.comfort ? `　舒適 ${d.comfort}` : '')),
       h('div', null, d.desc || ''));
+    const rl = ctx.state ? roleLine(ctx.state, d.id) : '';
+    if (rl) box.appendChild(h('div', { class: 'u-tip-role' + (rl.indexOf('✔') < 0 ? ' lack' : '') }, rl));
     if (d.requires) {
       const n = RESEARCH[d.requires];
       box.appendChild(h('div', { class: 'u-tip-req' }, `🔒 需研發：${n ? n.name : d.requires}`));

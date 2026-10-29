@@ -52,9 +52,11 @@ import { earn, lotDef } from './economy.js';
 import { EXCELLENT_SCORE } from './inspection.js';
 import { ACHIEVEMENTS, ACHIEVEMENT_TIERS, BADGE_MILESTONES, MAX_BADGES } from '../data/achievements.js';
 import { RESEARCH } from '../data/research.js';
+import { UPGRADE_LINES } from '../data/upgrades.js';
 import { COMMUNITY } from '../data/events.js';
 import { TITLES } from '../data/texts.js';
 import { ENDINGS } from '../data/goals.js';
+import { SYNERGIES } from '../data/synergies.js';
 
 export const SUMMARY_TOAST_THRESHOLD = 5;
 export const DILEMMA_KINDS = ['painkiller', 'skip_doctor', 'overtreat', 'complain'];
@@ -69,7 +71,7 @@ function freshCounters() {
     totalSelfPayMonth: 0, dilemmasDone: { painkiller: 0, skip_doctor: 0, overtreat: 0, complain: 0 }, communityDone: {}, auditPassStreak: 0, chatCount: 0,
     slipThisYear: 0, angryThisMonth: 0, servedThisMonth: 0, servedThisYear: 0,
     servedThisWeek: 0, curedThisWeek: 0, elderThisWeek: 0, slipThisWeek: 0, weekSeen: [],
-    selfPayEver: false,
+    selfPayEver: false, zonesSeen: {},       // zonesSeen: {zoneId: 1} every synergy zone that was ever active (c_zone_collect)
   };
 }
 
@@ -87,6 +89,8 @@ export function ensure(state) {
   for (const k of DILEMMA_KINDS) if (typeof c.dilemmasDone[k] !== 'number') c.dilemmasDone[k] = 0;
   if (!c.communityDone || typeof c.communityDone !== 'object') c.communityDone = {};
   if (!Array.isArray(c.weekSeen)) c.weekSeen = [];
+  if (!c.zonesSeen || typeof c.zonesSeen !== 'object' || Array.isArray(c.zonesSeen)) c.zonesSeen = {};
+  { const known = new Set(SYNERGIES.map(z => z.id)); for (const k of Object.keys(c.zonesSeen)) if (!known.has(k) || !c.zonesSeen[k]) delete c.zonesSeen[k]; }
   const t = state.time || { year: 1, month: 1, week: 1, clock: 480 };
   const periodStart = t.week === 1 && t.clock <= 481;   // right at the first tick of a week 1
   if (c.trackMonth === undefined) c.trackMonth = periodStart ? monthIdx(t.year, t.month) : null;
@@ -108,6 +112,13 @@ export function totalCount() { return ACHIEVEMENTS.length; }
 const count = (state, defId) => (state.objects || []).reduce((n, o) => n + (o.defId === defId ? 1 : 0), 0);
 const roleSet = (state) => new Set((state.staff || []).map(s => s.role));
 const zoneOn = (state, id) => (state.zones || []).some(z => z.id === id);
+const zoneIds = (state) => [...new Set((state.zones || []).map(z => z.id))];
+// remember every zone id ever active (counter state.achv.counters.zonesSeen); called before the zone achievements are checked
+function noteZones(state) {
+  const c = ensure(state).counters;
+  for (const id of zoneIds(state)) c.zonesSeen[id] = 1;
+  return Object.keys(c.zonesSeen).length;
+}
 const communityKinds = (state) => {
   const done = state.achv.counters.communityDone || {};
   return (COMMUNITY || []).filter(c => (done[c.id] || 0) > 0).length;
@@ -116,6 +127,9 @@ const dilemmaKinds = (state) => DILEMMA_KINDS.filter(k => (state.achv.counters.d
 const dilemmaTotal = (state) => DILEMMA_KINDS.reduce((s, k) => s + (state.achv.counters.dilemmasDone[k] || 0), 0);
 const fullHouseNeed = (state) => Math.ceil(0.9 * ((lotDef(state).maxPatientsPerWeek) || 20));
 const researchTotal = () => Object.keys(RESEARCH).length;
+const upgLevel = (s, id) => Math.max(0, Math.floor(Number(((s.research || {}).levels || {})[id]) || 0));
+const upgradeTotal = (s) => UPGRADE_LINES.reduce((n, l) => n + Math.min(l.cap, upgLevel(s, l.id)), 0);
+const upgradeBest = (s) => UPGRADE_LINES.reduce((b, l) => { const r = Math.min(l.cap, upgLevel(s, l.id)) / l.cap; return r > b[0] / b[1] ? [Math.min(l.cap, upgLevel(s, l.id)), l.cap] : b; }, [0, 1]);
 const cnt = (state) => state.achv.counters;
 const careerOf = (s) => s.career || {};
 const goalsDone = (s) => Number((careerOf(s).counters || {}).goalsDone) || 0;
@@ -144,6 +158,10 @@ const R = {
     prog: (s) => { const r = roleSet(s); return [ROLES.filter(x => r.has(x)).length, ROLES.length]; } },
   m_research_all: { on: ['load', 'research:done', 'week:end'], check: (s) => (s.research.done || []).length >= researchTotal() && researchTotal() > 0 },
 
+  m_upg_10: { on: ['load', 'research:upgrade'], check: (s) => upgradeTotal(s) >= 10 },
+  m_upg_40: { on: ['load', 'research:upgrade'], check: (s) => upgradeTotal(s) >= 40 },
+  m_upg_cap: { on: ['load', 'research:upgrade'], check: (s) => UPGRADE_LINES.some(l => upgLevel(s, l.id) >= l.cap), prog: (s) => upgradeBest(s) },
+
   t_cold_week: { on: ['week:end'], check: (s) => s.weather.kind === 'cold' && cnt(s).elderThisWeek >= 15 },
   t_rain_safe: { on: ['week:end'], check: (s) => s.weather.kind === 'rain' && cnt(s).servedThisWeek >= 12 && cnt(s).slipThisWeek === 0 },
   t_typhoon: { on: ['week:end'], check: (s) => s.weather.kind === 'typhoon' && cnt(s).servedThisWeek >= 5 },
@@ -166,6 +184,8 @@ const R = {
   c_zone_kidpark: { on: ['map:changed', 'load', 'week:end'], check: (s) => zoneOn(s, 'kidpark') },
   c_zone_all: { on: ['map:changed', 'load', 'week:end'], check: (s) => zoneOn(s, 'golden3') && zoneOn(s, 'premium') && zoneOn(s, 'kidpark'),
     prog: (s) => [['golden3', 'premium', 'kidpark'].filter(z => zoneOn(s, z)).length, 3] },
+  c_zone_collect: { on: ['map:changed', 'load', 'week:end'], check: (s) => noteZones(s) >= 6, prog: (s) => [Math.min(6, noteZones(s)), 6] },
+  c_zone_master: { on: ['map:changed', 'load', 'week:end'], check: (s) => zoneIds(s).length >= 8, prog: (s) => [Math.min(8, zoneIds(s).length), 8] },
   c_zero_slip_year: { on: ['year:end'], check: (s, p) => {
     const y = p && p.year != null ? p.year : s.time.year;
     return cnt(s).trackYear === y && cnt(s).slipThisYear === 0 && cnt(s).servedThisYear >= 200;
@@ -206,6 +226,7 @@ const METRICS = {
   money: (s) => s.money,
   reputation: (s) => s.reputation,
   researchDone: (s) => (s.research.done || []).length,
+  upgradeLevels: upgradeTotal,
   chatCount: (s) => cnt(s).chatCount,
   communityKinds: communityKinds,
   dilemmasDone: dilemmaTotal,
@@ -415,7 +436,8 @@ export function initAchievements() {
     on('career:ending', () => {}),
     on('lot:expanded', () => {}),
     on('research:done', () => {}),
-    on('map:changed', () => {}),
+    on('research:upgrade', () => {}),
+    on('map:changed', (s) => { noteZones(s); }),
     on('mods:dirty', () => {}),
     on('year:start', () => {}),
     // week:end: weather achievements read this week's counters, then they reset
@@ -423,6 +445,7 @@ export function initAchievements() {
       const s = S();
       try {
         ensure(s); trackMoney(s);
+        noteZones(s);
         evaluate(s, 'week:end');
         const c = cnt(s);
         c.servedThisWeek = 0; c.curedThisWeek = 0; c.elderThisWeek = 0; c.slipThisWeek = 0; c.weekSeen = [];
@@ -452,7 +475,7 @@ export function initAchievements() {
     }),
     bus.on('state:loaded', () => {
       const s = S();
-      try { ensure(s); evaluateAll(s); } catch (e) { console.warn('[achv] load', e); }
+      try { ensure(s); noteZones(s); evaluateAll(s); } catch (e) { console.warn('[achv] load', e); }
     }),
   ];
   ensure(singleton);

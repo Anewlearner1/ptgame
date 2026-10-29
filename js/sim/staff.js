@@ -12,11 +12,12 @@ import { LINES } from '../data/texts.js';
 import { spend } from './economy.js';
 import { maxStaffOf } from './research.js';
 import { findPath, findPathToAdjacent, moveAlongPath, agentTileOk, receptionPost, rescueIfBlocked } from './pathfinding.js';
+import { attendRate } from './qualify.js';
 
 // ---- tuning knobs ----
 export const TUNE = {
   POOL_MIN: 3, POOL_MAX: 5,
-  STAFF_SPEED: 1.0,            // walk multiplier
+  STAFF_SPEED: 1.25,           // walk multiplier (was 1.0 before 設施人員資格: machines now need a staff member to walk over and set them up; a hustling therapist is faster than an elder)
   WALK_BOOST: 1.7,             // global walking-speed scale (patients + staff) on top of constants.WALK_TILES_PER_MIN
   REST_BELOW: 0.30,            // stamina fraction that sends a staff member to the rest room (after the current patient)
   REST_UNTIL: 0.85,
@@ -158,6 +159,7 @@ export function hire(state, cid) {
   s.stamina = s.staminaMax;
   state.staff.push(s);
   s.wait = 0;     // wander to the workplace right away
+  bus.emit('staff:changed', { action: 'hire', id: s.id, role: s.role });
   return s;
 }
 
@@ -170,8 +172,9 @@ export function removeStaff(state, staffId) {
   releaseStaff(state, s);
   freeRest(state, s);
   s.path = []; s.restObj = null; s.wantRest = false;
-  for (const o of state.objects) if (o.staffId === s.id && !o.usedBy) { o.busy = false; o.staffId = null; }
+  for (const o of state.objects) if (o.staffId === s.id) { o.staffId = null; if (!o.usedBy) o.busy = false; }     // (a patient still on it is released by patients.js reconcile())
   state.staff.splice(i, 1);
+  bus.emit('staff:changed', { action: 'leave', id: s.id, role: s.role });     // qualify.js cache, 設備維護表, ⚠ overlays
   return s;
 }
 
@@ -439,7 +442,8 @@ export function updateStaff(state, dtMin) {
     if (s.state === 'working') {
       if (!s.task) { s.state = 'idle'; continue; }
       const T = TREATMENTS[s.task.treatmentId];
-      const rate = T ? (T.staminaCost * stMul / Math.max(1, T.duration)) : (TUNE.REG_STAMINA * stMul);
+      // machines (attend 'setup') only cost stamina during the short setup; the rest of the session is unattended
+      const rate = T ? attendRate(T) * stMul : (TUNE.REG_STAMINA * stMul);
       s.stamina = Math.max(0, s.stamina - rate * dtMin);
       if (s.tired && !s.bubble && rnd() < TUNE.TIRED_BUBBLE * dtMin) say(s, 'tired');
       continue;

@@ -5,7 +5,12 @@ import { TREATMENTS } from '../../data/treatments.js';
 import { TREATMENT_FEES, SINGLE_CLAIM_NOTE } from '../../data/fees.js';
 import { STAFF_ROLES, TRAITS } from '../../data/staffdefs.js';
 import { BUILDABLES } from '../../data/buildables.js';
-import { SYNERGIES } from '../../data/synergies.js';
+import { SYNERGIES, ZONE_GROUPS, ZONE_TIERS } from '../../data/synergies.js';
+import { RESEARCH } from '../../data/research.js';
+import * as SY from '../../sim/synergy.js';
+import { focusTiles, recenter } from '../../render/camera.js';
+import { layout } from '../layout.js';
+import { SHEET_HALF, applySheet } from '../sheet.js';
 import { LOTS } from '../../data/lots.js';
 import * as ST from '../../sim/staff.js';
 import * as EQ from '../../sim/equipment.js';
@@ -17,6 +22,8 @@ import { chipList, section } from './common.js';
 import { confirmDialog } from '../modal.js';
 import { artEl, artOn, thumbEl, staffBust, patientMoodArt, STAFF_SPRITE, itemSprite } from '../artdom.js';
 import { gameMinutes, staffMood, staffMoodHint } from '../moods.js';
+import { isUnstaffed, isRoleMissing } from '../../sim/qualify.js';
+import { roleLine, operatesTip } from '../roles.js';
 
 const store = { tab: 'patients', filter: 'all' };
 
@@ -127,7 +134,7 @@ function buildStaff(body, state, ui) {
     const el = h('div', { class: 'card u-srow2', role: 'button', tabIndex: 0, dataset: { id: s.id }, onclick: e => { if (!e.target.closest('button')) select(ui, 'staff', s.id); } },
       h('div', { class: 'u-row2' },
         r.bust,
-        h('div', { class: 'u-grow' }, h('b', null, s.name), ' ', h('span', { class: 'muted u-small' }, R.name || s.role),
+        h('div', { class: 'u-grow' }, h('b', null, s.name), ' ', h('span', { class: 'muted u-small', tip: operatesTip(s.role) }, R.name || s.role),
           tr ? h('span', { class: 'tag u-tag2', tip: tr.desc }, tr.name) : null, r.mood),
         r.st),
       h('div', { class: 'u-bars3 u-bars4' },
@@ -192,17 +199,19 @@ function buildStaff(body, state, ui) {
       if (s) bus.emit('toast', { text: `${c.name} 加入團隊！`, kind: 'good' });
       else bus.emit('toast', { text: full ? '員工人數已達上限，請先擴建或研發行政效率' : state.money < c.hireCost ? '資金不足，無法招聘' : '無法招聘', kind: 'bad' });
     } }, '雇用');
+    const need = h('span', { class: 'tag u-tag2 u-need', hidden: true, tip: '診所裡有蓋好的設施，需要這個職類才能運作，但目前沒有人在職。' }, '診所缺這個職類');
     const el = h('div', { class: 'card u-row2', dataset: { cid: c.cid } },
       staffThumb(c.role),
-      h('div', { class: 'u-grow' }, h('b', null, c.name), ' ', h('span', { class: 'muted u-small' }, R.name || c.role),
-        tr ? h('span', { class: 'tag u-tag2', tip: tr.desc }, tr.name) : null,
+      h('div', { class: 'u-grow' }, h('b', null, c.name), ' ', h('span', { class: 'muted u-small', tip: operatesTip(c.role) }, R.name || c.role),
+        tr ? h('span', { class: 'tag u-tag2', tip: tr.desc }, tr.name) : null, need,
         h('div', { class: 'u-small' }, `技術 ${c.skill}　魅力 ${c.charm}　月薪 ${money(c.salary)}　簽約金 ${money(c.hireCost)}`)),
       btn);
-    el._btn = btn; el._c = c;
+    el._btn = btn; el._c = c; el._need = need;
     return el;
   }
   function updCand(el, c) {
     el._btn.disabled = state.money < c.hireCost || state.staff.length >= maxStaff(state);
+    el._need.hidden = !isRoleMissing(state, c.role);       // a built facility has nobody to run it
   }
   const noPool = h('div', { class: 'muted u-p' }, '目前沒有應徵者，下個月會有新的人選。');
   body.appendChild(noPool);
@@ -244,6 +253,7 @@ function buildEquip(body, state, ui) {
     const d = BUILDABLES[o.defId] || {};
     const wear = bar(), wearNum = h('em', { class: 'u-num' });
     const badges = h('span', { class: 'u-eqbadges' });
+    const reqTxt = h('div', { class: 'u-eqreq muted u-small' });
     const repair = h('button', { class: 'btn small primary', type: 'button', onclick: () => toast(EQ.repairObject(state, o.id), `已修復${d.name || ''}`) });
     const service = h('button', { class: 'btn small', type: 'button', onclick: () => toast(EQ.serviceObject(state, o.id), `已保養${d.name || ''}`) });
     const sell = h('button', { class: 'btn small danger', type: 'button', onclick: () => {
@@ -256,12 +266,12 @@ function buildEquip(body, state, ui) {
     const tr = h('tr', { dataset: { id: o.id }, onclick: e => { if (!e.target.closest('button')) select(ui, 'object', o.id); } },
       h('td', null, itemSprite(o.defId)
         ? h('span', { class: 'u-eqname u-eqart' }, artEl(itemSprite(o.defId), { size: 28, fallback: d.glyph || '', fbSize: 18 }), d.name || o.defId)
-        : h('span', { class: 'u-eqname' }, thumbEl(o.defId, { width: 30, height: 28, fallback: h('span', null, `${d.glyph || ''} `) }), d.name || o.defId), badges),
+        : h('span', { class: 'u-eqname' }, thumbEl(o.defId, { width: 30, height: 28, fallback: h('span', null, `${d.glyph || ''} `) }), d.name || o.defId), badges, reqTxt),
       h('td', { class: 'muted u-poscol' }, `${o.x},${o.y}`),
       wearCell,
       h('td', { class: 'num u-upcol' }, fmt(d.upkeep || 0)),
       h('td', { class: 'u-actcell' }, h('span', { class: 'u-acts' }, repair, service, sell)));
-    tr._r = { wear, wearNum, badges, repair, service, wearCell, wearable: EQ.isWearable(o.defId) };
+    tr._r = { wear, wearNum, badges, reqTxt, repair, service, wearCell, wearable: EQ.isWearable(o.defId) };
     return tr;
   }
   function upd(tr, o) {
@@ -274,15 +284,20 @@ function buildEquip(body, state, ui) {
       setText(r.wearNum, Math.round(w));
     }
     const maint = EQ.maintainedWeeksLeft(state, o);
-    const key = (o.broken ? 'B' : '') + (wearable && w >= EQ.WEAR_TUNE.OLD_AT ? 'O' : '') + (maint > 0 ? 'M' + maint : '');
+    const unst = isUnstaffed(state, o);
+    const key = (o.broken ? 'B' : '') + (unst ? 'U' : '') + (wearable && w >= EQ.WEAR_TUNE.OLD_AT ? 'O' : '') + (maint > 0 ? 'M' + maint : '');
     if (r.badges._k !== key) {
       r.badges._k = key;
       r.badges.replaceChildren(...[
         o.broken ? h('span', { class: 'tag u-eqb bad' }, '故障') : null,
+        unst ? h('span', { class: 'tag u-eqb bad u-eqmiss', tip: '診所沒有能操作這台設備的人員：病患不會使用它。到「員工清單」招聘對應職類。' }, '缺人') : null,
         !o.broken && wearable && w >= EQ.WEAR_TUNE.OLD_AT ? h('span', { class: 'tag u-eqb warn' }, '老舊') : null,
         maint > 0 ? h('span', { class: 'tag u-eqb good', tip: '保養合約中：耗損速度減半' }, `合約 ${maint} 週`) : null].filter(Boolean));
     }
     setClass(tr, 'u-broken', !!o.broken);
+    setClass(tr, 'u-unstaffed', unst);
+    const rl = roleLine(state, o.defId);
+    setText(r.reqTxt, rl); r.reqTxt.hidden = !rl;
     r.repair.hidden = !o.broken;
     r.service.hidden = !wearable || !!o.broken;
     if (o.broken) {
@@ -299,16 +314,17 @@ function buildEquip(body, state, ui) {
     update() {
       const objs = state.objects;
       reconcile(tbody, objs, o => o.id, create, upd);
-      let up = 0, nb = 0, nw = 0, nWear = 0;
+      let up = 0, nb = 0, nw = 0, nWear = 0, nu = 0;
       for (const o of objs) {
+        if (isUnstaffed(state, o)) nu++;
         up += (BUILDABLES[o.defId] || {}).upkeep || 0;
         if (EQ.isWearable(o.defId)) { nWear++; if (o.broken) nb++; else if (EQ.isWorn(o)) nw++; }
       }
-      const k = objs.length + '|' + up + '|' + nb + '|' + nw;
+      const k = objs.length + '|' + up + '|' + nb + '|' + nw + '|' + nu;
       if (sum._k !== k) {
         sum._k = k;
         sum.replaceChildren(h('span', null, `共 ${objs.length} 件設備`,
-          nb ? h('b', { class: 'bad' }, `　故障 ${nb}`) : null, nw ? h('b', { class: 'warn-text' }, `　老舊 ${nw}`) : null),
+          nb ? h('b', { class: 'bad' }, `　故障 ${nb}`) : null, nu ? h('b', { class: 'bad' }, `　缺人 ${nu}`) : null, nw ? h('b', { class: 'warn-text' }, `　老舊 ${nw}`) : null),
         h('b', null, `維護費合計 ${money(up)} / 月`));
       }
       // maintenance contract box
@@ -324,42 +340,156 @@ function buildEquip(body, state, ui) {
   };
 }
 
-// ---------------------------------------------------------------- synergies
-function buildSyn(body, state) {
-  body.append(h('div', { class: 'muted u-p' }, '把一組設施緊貼（含斜角）擺在一起，就會啟動專區加成。下方標示你已經擺了哪些、還缺什麼。'));
-  const rows = [];
+// ---------------------------------------------------------------- synergies (專區組合辭典)
+const SYN_STATUS = [['all', '全部'], ['on', '已啟動'], ['off', '未啟動'], ['lock', '🔒需研發']];
+
+// canvas rect (CSS px) the panel leaves free: the mobile free rect, or the stage right of the desktop panel
+function mapFreeRect(ui) {
+  if (ui.freeRect) return ui.freeRect;
+  const cv = document.getElementById('game'), pn = document.getElementById('panel');
+  if (!cv) return null;
+  const sr = cv.getBoundingClientRect();
+  let x0 = 0;
+  if (pn && !pn.hidden) { const pr = pn.getBoundingClientRect(); if (pr.width > 0) x0 = Math.max(0, pr.right - sr.left + 6); }
+  return { x: x0, y: 0, w: Math.max(80, sr.width - x0), h: sr.height };
+}
+
+// 「在地圖上看」: pan/zoom to the active zone (or back to the whole clinic when it is not active) and pulse its glow ~2 s
+function showZoneOnMap(state, ui, syn) {
+  const cv = document.getElementById('game');
+  const zn = (state.zones || []).filter(z => z.id === syn.id).sort((a, b) => b.cells.length - a.cells.length)[0];
+  const go = () => {
+    if (zn) { focusTiles(state, cv, zn.cells, mapFreeRect(ui), ui); ui.zonePulse = { id: syn.id, until: performance.now() + 2000 }; }
+    else { recenter(state, cv, ui); bus.emit('toast', { text: `「${syn.name}」還沒啟動：已回到診所全景，照下方「怎麼擺」試試看。`, kind: 'info' }); }
+  };
+  if (layout.mobile && layout.portrait && layout.sheetFrac > 0.7) { layout.sheetFrac = SHEET_HALF; applySheet(); setTimeout(go, 260); }   // un-cover the map first
+  else go();
+}
+
+function buildSyn(body, state, ui) {
+  const st = store.syn || (store.syn = { status: 'all', group: 'all' });
+  const title = h('b', { class: 'u-syn-title' });
+  const prog = bar(0);
+  const mkChip = (kind, val, label) => h('button', { class: 'u-fchip', type: 'button', dataset: { kind, val },
+    onclick: () => { st[kind] = val; refreshChips(); applyFilter(); } }, label);
+  const statusChips = SYN_STATUS.map(([v, l]) => mkChip('status', v, l));
+  const groupsUsed = Object.keys(ZONE_GROUPS).filter(g => SYNERGIES.some(s => s.group === g));
+  const groupChips = [mkChip('group', 'all', '全部類別'), ...groupsUsed.map(g => mkChip('group', g, ZONE_GROUPS[g]))];
+  const empty = h('div', { class: 'muted u-p', hidden: true }, '這個篩選條件下沒有專區。');
+  body.append(
+    h('div', { class: 'u-synhead' }, title, prog),
+    h('div', { class: 'muted u-small u-synnote' }, '設施緊貼（含斜角）擺在一起就會啟動，加成可疊加。✔ 已有　✘ 還缺　🔒 需研發'),
+    h('div', { class: 'u-fchips' }, statusChips), h('div', { class: 'u-fchips u-hscroll' }, groupChips));
+
+  const cards = [];
+  const list = h('div', { class: 'u-list2 u-synlist' });
   for (const s of SYNERGIES) {
-    const badge = h('span', { class: 'badge' }, '啟動中');
-    const needs = s.needs.map(n => {
+    const badge = h('span', { class: 'badge u-synbadge' });
+    const reqs = [];
+    const reqWrap = h('div', { class: 'u-chips u-synreq' });
+    for (const n of s.needs) {
       const d = BUILDABLES[n] || {};
-      return { id: n, el: h('span', { class: 'tag u-need' }, `${d.glyph || ''}${d.name || n}`) };
-    });
-    const hint = h('div', { class: 'u-small' });
-    const el = h('div', { class: 'card u-syn' },
-      h('div', null, h('span', { class: 'u-sico' }, s.icon || '✨'), h('b', null, ' ' + s.name), ' ', badge),
-      h('div', { class: 'u-small' }, s.desc),
-      h('div', { class: 'u-chips' }, needs.map(n => n.el)),
-      h('div', { class: 'u-small u-efrow' }, '效果：', chipList(modChips(s.effects))), hint);
-    rows.push({ s, el, badge, needs, hint, key: null });
-    body.appendChild(el);
+      const el = h('span', { class: 'tag u-need' });
+      reqs.push({ kind: 'obj', id: n, name: `${d.glyph || ''}${d.name || n}`, el });
+      reqWrap.appendChild(el);
+    }
+    for (const f of Object.keys(s.needsFloors || {})) {
+      const d = BUILDABLES[f] || {};
+      const el = h('span', { class: 'tag u-need' });
+      reqs.push({ kind: 'floor', id: f, name: `${d.glyph || ''}${d.name || f}`, el });
+      reqWrap.appendChild(el);
+    }
+    const status = h('div', { class: 'u-small u-synstat' });
+    const btn = h('button', { class: 'btn small u-synmap', type: 'button', onclick: () => showZoneOnMap(state, ui, s) }, '📍 在地圖上看');
+    const tier = s.tier ? h('span', { class: 'tag u-syntier', dataset: { tier: s.tier } }, ZONE_TIERS[s.tier] || s.tier) : null;
+    const grp = s.group ? h('span', { class: 'tag u-syngrp' }, ZONE_GROUPS[s.group] || s.group) : null;
+    const el = h('div', { class: 'card u-syn', dataset: { zone: s.id } },
+      h('div', { class: 'u-synh' }, h('span', { class: 'u-sico' }, s.icon || '✨'), h('b', { class: 'u-synname' }, s.name), tier, grp, badge),
+      h('div', { class: 'u-small u-syndesc' }, s.desc),
+      h('div', { class: 'u-small u-efrow' }, h('span', { class: 'muted' }, '效果'), chipList(modChips(s.effects))),
+      h('div', { class: 'u-small u-efrow' }, h('span', { class: 'muted' }, '需要'), reqWrap),
+      status,
+      s.hint ? h('div', { class: 'u-small muted u-synhint' }, '📐 怎麼擺：' + s.hint) : null,
+      h('div', { class: 'u-synact' }, btn));
+    cards.push({ s, el, badge, reqs, status, key: null, active: false, locked: false });
+    list.appendChild(el);
   }
+  body.append(list, empty);
+
+  function refreshChips() {
+    for (const c of [...statusChips, ...groupChips]) {
+      const on = st[c.dataset.kind] === c.dataset.val;
+      setClass(c, 'on', on); c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  }
+  function applyFilter() {
+    let shown = 0;
+    for (const c of cards) {
+      const okS = st.status === 'all' || (st.status === 'on' && c.active) || (st.status === 'off' && !c.active && !c.locked) || (st.status === 'lock' && !c.active && c.locked);
+      const okG = st.group === 'all' || c.s.group === st.group;
+      const vis = okS && okG;
+      if (c.el.hidden === vis) c.el.hidden = !vis;
+      if (vis) shown++;
+    }
+    empty.hidden = shown > 0;
+  }
+  refreshChips();
+
   return {
     update() {
-      const have = new Set(state.objects.map(o => o.defId));
-      for (const r of rows) {
-        const active = (state.zones || []).some(z => z.id === r.s.id);
-        const miss = r.s.needs.filter(n => !have.has(n));
-        const key = active + '|' + miss.join(',');
-        if (r.key === key) continue;
-        r.key = key;
-        r.badge.hidden = !active;
-        setClass(r.el, 'selected', active);
-        for (const n of r.needs) { n.el.className = 'tag u-need ' + (have.has(n.id) ? 'have' : 'lack'); n.el.dataset.mark = have.has(n.id) ? '✓' : '✗'; }
-        r.hint.className = 'u-small ' + (active ? 'good' : 'muted');
-        r.hint.textContent = active ? '✅ 已啟動，效果生效中。'
-          : miss.length ? `還缺：${miss.map(n => (BUILDABLES[n] || {}).name || n).join('、')}（需先解鎖並建造）`
-            : '設施都有了，但還沒連在一起：請讓它們彼此相鄰擺放。';
+      const owned = new Map();
+      for (const o of state.objects) owned.set(o.defId, (owned.get(o.defId) || 0) + 1);
+      const doneRs = new Set(state.research.done || []);
+      const activeIds = new Set((state.zones || []).map(z => z.id));
+      let nOn = 0, nLock = 0, nOff = 0;
+      for (const c of cards) {
+        const s = c.s;
+        const active = activeIds.has(s.id);
+        const locks = active ? [] : SY.zoneLocks(state, s);
+        const prog = SY.synergyProgress(state, s);
+        // key = everything the card shows that can change
+        const key = active + '|' + locks.join(',') + '|' + prog.map(p => p.have + '/' + p.need).join(',');
+        c.active = active; c.locked = locks.length > 0;
+        if (active) nOn++; else if (c.locked) nLock++; else nOff++;
+        if (c.key === key) continue;
+        c.key = key;
+        c.badge.hidden = false;
+        c.badge.textContent = active ? '啟動中' : c.locked ? '🔒 需研發' : '未啟動';
+        c.badge.dataset.st = active ? 'on' : c.locked ? 'lock' : 'off';
+        setClass(c.el, 'selected', active);
+        setClass(c.el, 'u-synlock', !active && c.locked);
+        const missing = [];
+        c.reqs.forEach((r, i) => {
+          const p = prog[i];
+          const bdef = BUILDABLES[r.id] || {};
+          const lockNode = r.kind === 'obj' && bdef.requires && !doneRs.has(bdef.requires) ? bdef.requires : null;
+          const mark = p.ok ? '✔' : lockNode ? '🔒' : '✘';
+          const cls = p.ok ? 'have' : lockNode ? 'lock' : 'lack';
+          let txt = r.name;
+          if (p.need > 1) txt += ` ${p.have}/${p.need}`;
+          if (!p.ok && lockNode) txt += `（需研發「${(RESEARCH[lockNode] || {}).name || lockNode}」）`;
+          r.el.className = 'tag u-need ' + cls;
+          r.el.dataset.mark = mark;
+          r.el.textContent = txt;
+          if (!p.ok) missing.push(txt);
+        });
+        let msg, tone;
+        if (active) { msg = '✅ 已啟動，效果生效中。'; tone = 'good'; }
+        else if (locks.length) {
+          msg = `🔒 先研發：${locks.map(id => `「${(RESEARCH[id] || {}).name || id}」`).join('、')}，才能建齊所有設施。`; tone = 'muted';
+        } else if (missing.length) { msg = `還缺：${missing.join('、')}。`; tone = 'muted'; }
+        else { msg = '東西都備齊了，但還沒連成一區：請讓它們彼此緊貼擺放（斜角也算）。'; tone = 'muted'; }
+        c.status.className = 'u-small u-synstat ' + tone;
+        c.status.textContent = msg;
       }
+      setText(title, `已啟動 ${nOn} / 共 ${cards.length} 個專區`);
+      setBar(prog, nOn / Math.max(1, cards.length));
+      for (const ch of statusChips) {
+        const n = ch.dataset.val === 'all' ? cards.length : ch.dataset.val === 'on' ? nOn : ch.dataset.val === 'off' ? nOff : nLock;
+        const label = (SYN_STATUS.find(x => x[0] === ch.dataset.val) || [])[1];
+        setText(ch, `${label} ${n}`);
+      }
+      applyFilter();
     },
   };
 }
@@ -369,7 +499,7 @@ export function mountOverview(root, state, ui) {
     { id: 'patients', label: '🧑 病患病歷', build: b => buildPatients(b, state, ui) },
     { id: 'staff', label: '🩺 員工', build: b => buildStaff(b, state, ui) },
     { id: 'equip', label: '🔧 設備維護', build: b => buildEquip(b, state, ui) },
-    { id: 'syn', label: '✨ 專區辭典', build: b => buildSyn(b, state) },
+    { id: 'syn', label: '✨ 專區辭典', build: b => buildSyn(b, state, ui) },
   ], store);
   root.appendChild(t.el);
   return { update() { t.update(); } };

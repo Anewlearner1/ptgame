@@ -38,6 +38,7 @@ import { unlockedCount, totalCount, displayTitle } from './achievements.js';
 import { LOTS } from '../data/lots.js';
 import { TREATMENTS } from '../data/treatments.js';
 import { RESEARCH } from '../data/research.js';
+import { totalLevels as upgradeTotal } from './research.js';
 import * as G from '../data/goals.js';
 
 export const CAREER_YEARS = G.CAREER_YEARS;
@@ -73,7 +74,7 @@ export function defaultCareer() {
 }
 const YEAR_KEYS = ['yrCured', 'yrSlip', 'yrResign', 'yrTrain', 'yrBreak', 'yrCommunity', 'yrDilemma', 'yrEvents', 'moraleSum', 'moraleN', 'wearSum', 'wearN'];
 const BASE_KEYS = ['treat', 'elderCured', 'kidCured', 'sportsServed', 'events', 'incomeTotal', 'peakRep', 'goalsDone', 'expandTab', 'trainSum',
-  'kidServed', 'fOrtho', 'fLtc', 'fPeds', 'yrYear', 'moneyStart', 'lotStart', 'repStart', 'rdStart'];
+  'kidServed', 'fOrtho', 'fLtc', 'fPeds', 'yrYear', 'moneyStart', 'lotStart', 'repStart', 'rdStart', 'upgStart'];
 
 function seedCounters(state, c) {
   const k = c.counters;
@@ -92,6 +93,7 @@ function rollYear(state, c) {
   k.lotStart = state.lotLevel || 0;
   k.repStart = Math.round(state.reputation);
   k.rdStart = ((state.research && state.research.done) || []).length;
+  k.upgStart = upgradeTotal(state);
   k.trainSum = levelSum(state);
   const prev = (c.goals && c.goals.list) || [];
   c.prevBonus = prev.filter(g => g.kind === 'bonus').map(g => g.id);
@@ -215,6 +217,8 @@ const METRICS = {
 
   researchDone: (s) => (s.research.done || []).length,
   researchYear: (s) => Math.max(0, (s.research.done || []).length - ctr(s).rdStart),
+  upgradeLevels: (s) => upgradeTotal(s),
+  upgradeYear: (s) => Math.max(0, upgradeTotal(s) - ctr(s).upgStart),
 };
 
 export function metricValue(state, key) {
@@ -723,6 +727,7 @@ export function initCareer() {
     on('community:started', (s, c) => { c.counters.yrCommunity++; tick(s); }),
     on('dilemma:resolved', (s, c, p) => { c.counters.events++; c.counters.yrEvents++; if (p.kind === 'dilemma') c.counters.yrDilemma++; }),
     on('research:done', (s) => { tick(s); }),
+    on('research:upgrade', (s) => { tick(s); }),
     on('lot:expanded', (s) => { tick(s); }),
     on('map:changed', (s) => { tick(s); }),
     on('inspection:result', (s) => { tick(s); }),

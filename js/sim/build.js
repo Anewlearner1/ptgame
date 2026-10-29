@@ -176,7 +176,7 @@ export function paintFloor(state, floorId, x, y) {
   if (!canPlace(state, floorId, x, y, 0).ok) return false;
   if (!spend(state, def.cost, 'build')) return false;
   state.map.floor[y][x] = floorId;
-  afterChange(state, false);
+  afterChange(state, true);          // floor tiles can complete a zone (needsFloors), so zones + mods are recomputed
   return true;
 }
 
@@ -238,7 +238,7 @@ export function removeAt(state, x, y) {
   if (fid && inLot(state, x, y)) {
     row[x] = null;
     refund(state, placementCost(fid) * REFUND_FRAC);
-    afterChange(state, false);
+    afterChange(state, true);
     return true;
   }
   return false;

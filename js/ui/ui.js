@@ -98,6 +98,7 @@ export function initUI(state, ui) {
   });
   bus.on('patient:slip', () => bus.emit('toast', { text: '⚠ 有病患滑倒了！地面記得鋪防滑墊', kind: 'bad' }));
   bus.on('week:start', () => { dirty = true; });
+  bus.on('staff:changed', () => { dirty = true; lastTick = 0; });      // hire / fire / resign: role chips, 缺人 badges, hire-pool tags
   bus.on('map:changed', () => { dirty = true; });
   bus.on('tool:changed', () => { dirty = true; lastTick = 0; });
   document.addEventListener('keydown', e => onKey(e, state, ui));

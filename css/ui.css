@@ -94,6 +94,53 @@
 .badge.u-b-done { background: #b7e1c0; }
 .badge.u-b-cur { background: var(--teal); color: #fff; }
 .badge.u-b-lock { background: #cfc6b3; color: #6b6354; }
+/* ---- 持續精進 (upgrade lines) ---- */
+:root { --u-tabs-h: 38px; }
+.u-pts-sticky {
+  position: sticky; top: calc(var(--u-title-h) + var(--u-tabs-h)); z-index: 1;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 6px; padding: 6px 0 6px; background: var(--cream);
+}
+.u-pts-sticky .u-ptchip { font-size: 13px; padding: 1px 8px; background: #fff; color: var(--ink); box-shadow: 0 0 0 2px var(--pc, var(--ink)); }
+.u-pts-sticky .u-ptchip b { font-variant-numeric: tabular-nums; }
+.u-upg-jump { display: block; width: 100%; margin: 0 0 6px; white-space: normal; text-align: center; }
+.u-upg-jump[hidden], .u-upg[hidden] { display: none; }
+.u-upg-jump.btn { min-height: 34px; }
+.u-tree { min-width: 0; }
+.u-upg { margin-top: 6px; scroll-margin-top: calc(var(--u-title-h) + var(--u-tabs-h) + 48px); }
+.u-upg-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
+.u-upg-head .u-upg-sum { margin-left: auto; font-size: 12px; }
+.u-upg-intro { margin: 0 0 6px; }
+.u-upg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; margin: 4px 2px 12px; }
+.u-upg-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; min-width: 0; overflow: hidden; }
+.u-upg-card.locked { opacity: 0.62; }
+.u-upg-card.u-done { box-shadow: 0 0 0 2px var(--gold, #e8b83a); }
+.u-upg-ico { font-size: 24px; line-height: 1; flex: 0 0 auto; }
+.u-upg-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.u-upg-dom { font-size: 11px; padding: 0 6px; background: #fff; color: var(--ink); box-shadow: 0 0 0 1.5px var(--pc, var(--ink)); }
+.u-upg-info { flex: 0 0 auto; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; color: var(--muted); cursor: help; font-size: 15px; margin: -4px -6px 0 0; }
+.u-upg-lvrow { display: flex; align-items: center; gap: 8px; }
+.u-upg-lvrow .bar { flex: 1 1 auto; height: 10px; }
+.u-upg-lv { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 13px; }
+.u-upg-eff { font-size: 13px; line-height: 1.5; font-weight: 700; }
+.u-upg-now { color: var(--ink); }
+.u-upg-next { color: var(--teal-dark); }
+.u-upg-act { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
+.tag.u-upg-cost { font-size: 14px; font-weight: 900; padding: 1px 10px; background: #fff; color: var(--ink); box-shadow: 0 0 0 2px var(--pc, var(--ink)); }
+.tag.u-upg-cost.lack { color: var(--bad); background: #fdf0f1; }
+.tag.u-upg-cost.done { color: var(--muted); }
+.u-upg-why { color: var(--bad); font-weight: 700; }
+.u-upg-why[hidden] { display: none; }
+.u-upg-flash { animation: u-upg-pop 0.8s ease-out 1; }
+@keyframes u-upg-pop { 0% { transform: scale(1); } 20% { transform: scale(1.025); background: #fff6cf; } 100% { transform: scale(1); } }
+.u-upg-spark { position: absolute; right: 12px; top: 8px; font-size: 20px; pointer-events: none; animation: u-upg-spark 0.9s ease-out 1 forwards; }
+@keyframes u-upg-spark { 0% { opacity: 0; transform: translateY(6px) scale(0.6); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px) scale(1.3) rotate(18deg); } }
+@media (prefers-reduced-motion: reduce) { .u-upg-flash, .u-upg-spark { animation: none; } }
+html.style-concept .u-pts-sticky { background: var(--cream); }
+html.style-concept .u-pts-sticky .u-ptchip { box-shadow: 0 0 0 1.5px var(--pc, var(--c-navy)); background: #fff; color: var(--c-ink); }
+html.style-concept .u-upg-dom, html.style-concept .tag.u-upg-cost { box-shadow: 0 0 0 1.5px var(--pc, var(--c-navy)); }
+html.style-concept .tag.u-upg-cost.lack { background: #fbe0e5; color: #8f2a38; }
+html.style-concept .u-upg-card.u-done { box-shadow: 0 0 0 2px #e0a92a; }
+
 .u-price .u-slide { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
 .u-price .u-slide input[type="range"] { flex: 1 1 auto; min-width: 80px; }
 .u-price .u-slide b { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
@@ -752,3 +799,85 @@ html.style-concept .u-rvmodal .modal-title, html.style-concept .u-endmodal .moda
 html.style-concept .u-review[data-grade="S"] .u-rv-year, html.style-concept .u-review[data-grade="A"] .u-rv-year { color: #14553a; }
 html.style-concept .u-review[data-grade="D"] .u-rv-year, html.style-concept .u-review[data-grade="C"] .u-rv-year { color: #8f2a38; }
 html.style-concept .u-intro-goal { color: var(--c-teal); }
+
+/* ---------- 專區組合辭典 (overview → ✨ 專區辭典) -------------------------------- */
+.u-synhead { display: flex; align-items: center; gap: 10px; margin: 2px 0 6px; flex-wrap: wrap; }
+.u-synhead .bar { flex: 1 1 80px; height: 10px; min-width: 60px; }
+.u-synnote { margin: 0 0 6px; line-height: 1.5; }
+.u-fchips { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
+.u-fchip {
+  appearance: none; border: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; padding: 3px 8px; min-height: 28px;
+  background: var(--paper); color: var(--ink); box-shadow: 0 0 0 2px var(--wood);
+}
+.u-fchip.on { background: var(--gold); box-shadow: 0 0 0 2px var(--ink); }
+.u-synlist { margin-top: 6px; }
+.u-syn { gap: 5px; margin-bottom: 0; }
+.u-synh { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.u-synname { font-size: 15px; }
+.u-syntier, .u-syngrp { font-size: 12px; padding: 0 6px; }
+.u-syntier[data-tier="advanced"] { background: #d9e6f7; }
+.u-syntier[data-tier="master"] { background: #f6e0a0; }
+.u-synbadge { margin-left: auto; }
+.u-synbadge[data-st="off"] { background: #ece4d0; color: var(--muted); }
+.u-synbadge[data-st="lock"] { background: #dcdce6; color: #4a4a66; }
+.u-syn .u-efrow { align-items: flex-start; gap: 6px; }
+.u-syn .u-efrow > .muted { flex: 0 0 auto; padding-top: 2px; }
+.u-synreq { gap: 4px; }
+.u-need.lock { background: #dcdce6; color: #4a4a66; box-shadow: 0 0 0 2px #7a7a99; }
+.u-need { max-width: 100%; white-space: normal; line-height: 1.35; }
+.u-synstat.good { color: #1d5c2a; font-weight: 700; }
+.u-synhint { line-height: 1.45; }
+.u-synact { display: flex; justify-content: flex-end; margin-top: 2px; }
+.u-synlock { opacity: 0.88; }
+.u-syn[hidden] { display: none; }
+html.style-concept .u-fchip { border-radius: 999px; background: #fff; color: var(--c-navy); box-shadow: 0 0 0 1.5px var(--c-line-2); }
+html.style-concept .u-fchip.on { background: var(--c-blue); color: #fff; box-shadow: 0 0 0 1.5px var(--c-navy); }
+html.style-concept .u-syntier[data-tier="advanced"] { background: #d3e5fb; color: var(--c-navy); }
+html.style-concept .u-syntier[data-tier="master"] { background: #ffe9a6; color: #5a4200; box-shadow: 0 0 0 1.5px #c98a14; }
+html.style-concept .u-syngrp { background: #e8eef5; color: var(--muted); box-shadow: 0 0 0 1.5px var(--c-line-2); }
+html.style-concept .u-synbadge[data-st="off"] { background: #e8eef5; color: var(--muted); box-shadow: 0 0 0 1.5px var(--c-line-2); }
+html.style-concept .u-synbadge[data-st="lock"] { background: #e3e3f1; color: #4a4a78; box-shadow: 0 0 0 1.5px #9a9ac6; }
+html.style-concept .u-need.lock { background: #e3e3f1; color: #4a4a78; box-shadow: 0 0 0 1.5px #9a9ac6; border-radius: 999px; }
+html.style-concept .u-synstat.good { color: #14553a; }
+html.style-concept .u-syn.selected { box-shadow: 0 0 0 2px #3aa56a, 0 3px 8px rgba(58, 165, 106, 0.2); }
+
+/* dictionary header: compact on phones (status chips wrap, group chips become one swipeable row) */
+.lay-mobile .u-fchips { gap: 3px; margin-bottom: 4px; }
+.lay-mobile .u-fchip { font-size: 12px; padding: 1px 9px; min-height: 40px; }
+.lay-mobile .u-fchips.u-hscroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.lay-mobile .u-fchips.u-hscroll::-webkit-scrollbar { display: none; }
+.lay-mobile .u-fchips.u-hscroll .u-fchip { flex: 0 0 auto; white-space: nowrap; }
+.lay-mobile .u-synnote { display: none; }
+.lay-mobile .u-synact .btn { min-height: 40px; }
+.lay-mobile .u-synhead { margin-bottom: 4px; }
+
+/* ---------- 設施人員資格 (js/ui/roles.js, sim/qualify.js): role chips, 缺人 badge ------------------------------------ */
+.u-roles { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; font-size: 11px; line-height: 1.3; }
+.u-roles-l { font-weight: 700; color: var(--ink-soft, #6b5a3a); }
+.tag.u-role { font-size: 11px; padding: 0 5px; white-space: nowrap; }
+.tag.u-role.ok { background: var(--u-good-bg); color: #1d5c2a; box-shadow: 0 0 0 1.5px #1d5c2a; }
+.tag.u-role.lack { background: #fff0c4; color: #7a5200; box-shadow: 0 0 0 1.5px #b88a1a; }
+.u-roles.lack .u-roles-l { color: #8a5a00; }
+.u-tray-role { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 700; color: #1d5c2a; line-height: 1.3; }
+.u-tray-role.lack { color: #8a5a00; }
+.u-tray-role[hidden] { display: none; }
+.u-tip-role { margin-top: 3px; font-weight: 700; color: #1d5c2a; }
+.u-tip-role.lack { color: #8a5a00; }
+.u-eqreq { margin-top: 1px; font-weight: 400; }
+.u-eqreq[hidden] { display: none; }
+.u-eq tbody tr.u-unstaffed:not(.u-broken) { background: #fff6dc; }
+.tag.u-eqmiss { white-space: nowrap; }
+.tag.u-need { background: #fff0c4; color: #7a5200; box-shadow: 0 0 0 1.5px #b88a1a; white-space: nowrap; }
+.tag.u-need[hidden] { display: none; }
+.lay-compact #stage[data-bmode="strip"] .u-roles-l, .lay-compact #stage[data-bmode="strip"] .u-roles .u-role.ok { display: none; }
+.lay-compact #stage[data-bmode="strip"] .u-item .u-roles { font-size: 10px; }
+html.style-concept .tag.u-role.ok { background: #d7f0e0; color: #14553a; box-shadow: 0 0 0 1.5px #3aa56a; }
+html.style-concept .tag.u-role.lack, html.style-concept .tag.u-need { background: #fff0c4; color: #6b4a00; box-shadow: 0 0 0 1.5px #d9a21a; }
+html.style-concept .u-eq tbody tr.u-unstaffed:not(.u-broken) { background: #fff6dc; }
+.u-srow > * { min-width: 0; }
+.u-srow .u-roles { justify-content: flex-start; }
+.u-srow .u-roles .u-roles-l { display: none; }
+.u-sstat { font-weight: 700; }
+.u-sstat.bad { color: #8a5a00; }
+.lay-mobile .u-selbody > .u-srow-wide { grid-column: 1 / -1; }
+.u-srow .tag.u-role { white-space: nowrap; }

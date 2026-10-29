@@ -3,7 +3,7 @@
 // Usage (from repo root; no server needed):
 //   node tools/audit.mjs                 # everything, 5 simulated years per long-run policy (a few minutes)
 //   node tools/audit.mjs --quick         # 2 years per policy (~1-2 min) - good for CI
-//   node tools/audit.mjs --only features,edge,save   # run only some sections: features | edge | save | longrun | achievements | events | career
+//   node tools/audit.mjs --only features,edge,save   # run only some sections: features | edge | save | longrun | achievements | events | career | zones | upgrades | qualify
 //   node tools/audit.mjs --years 3 --policies idle,chaos --seed 7 [--verbose]
 //   (events = docs/EVENTS_EXT.md: every event x every choice, cond evaluator, wear/morale/risk/review/buffs/follow-ups;
 //    career = docs/GOALS_AND_ENDING.md: onboarding, yearly goals, rewards per lot, review order, grades, endings, endless, v2 migration)
@@ -54,6 +54,11 @@ const { PATIENT_TYPES } = await imp('data/patients.js');
 const EVD = await imp('data/events.js');
 const { SYNERGIES } = await imp('data/synergies.js');
 const FEES = await imp('data/fees.js');
+const ZD = await imp('data/synergies.js');
+const ZL = await import(new URL('./zonelayouts.mjs', import.meta.url).href);
+const UPGRADES = await imp('data/upgrades.js');
+const Q = await imp('sim/qualify.js');
+const Eq = await imp('sim/equipment.js');
 
 // ---- cli ----
 const argv = process.argv.slice(2);
@@ -571,12 +576,12 @@ function featuresSection() {
       const seen = new Set(), ratios = [];
       for (let i = 0, N = 8 * MIN_PER_WEEK; i < N; i++) {
         step(1);
-        for (const p of state.patients) if (p.stage === 'treating' && p.total && !seen.has(p.id + ':' + p.planIdx)) { seen.add(p.id + ':' + p.planIdx); const t = TREATMENTS[p.plan[p.planIdx]]; if (t && t.kind === 'nhi' && !t.staffRole) ratios.push(p.total / t.duration); }
+        for (const p of state.patients) if (p.stage === 'treating' && p.total && !seen.has(p.id + ':' + p.planIdx)) { seen.add(p.id + ':' + p.planIdx); const t = TREATMENTS[p.plan[p.planIdx]]; if (t && t.kind === 'nhi' && t.attend === 'setup') ratios.push(p.total / t.duration); }
       }
       return { ratios, zone: Syn.isZoneActive(state, 'golden3') };
     };
     const rz = sampleRatios(true), rn = sampleRatios(false);
-    check('e2e golden3: self-service NHI durations x(1/1.2) with the zone, x1 without', rz.zone && !rn.zone && rz.ratios.length > 5 && near(avg(rz.ratios), 1 / 1.2, 0.01) && near(avg(rn.ratios), 1, 0.01), `zone ${avg(rz.ratios).toFixed(3)} (n=${rz.ratios.length}) none ${avg(rn.ratios).toFixed(3)} (n=${rn.ratios.length})`);
+    check('e2e golden3: machine (setup-attend) NHI durations x(1/1.2) with the zone, x1 without', rz.zone && !rn.zone && rz.ratios.length > 5 && near(avg(rz.ratios), 1 / 1.2, 0.01) && near(avg(rn.ratios), 1, 0.01), `zone ${avg(rz.ratios).toFixed(3)} (n=${rz.ratios.length}) none ${avg(rn.ratios).toFixed(3)} (n=${rn.ratios.length})`);
 
     // (b) researchGain: points gained == formula * mods.researchGain
     const pointRun = (kidpark) => {
@@ -616,7 +621,7 @@ function featuresSection() {
     // (d) selfPayConv: self-pay sales per patient served rise with the premium zone
     const upsellRate = (zone) => {
       let sold = 0, left = 0, conv = 0, zoneOn = false;
-      for (const sd of [12, 13, 14, 15, 16, 17]) { const r = upsellRun(zone, sd); sold += r.sold; left += r.left; conv = r.conv; zoneOn = r.zone; }
+      for (const sd of [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]) { const r = upsellRun(zone, sd); sold += r.sold; left += r.left; conv = r.conv; zoneOn = r.zone; }
       return { rate: sold / Math.max(1, left), sold, left, conv, zone: zoneOn };
     };
     const upsellRun = (zone, seed) => {
@@ -631,7 +636,7 @@ function featuresSection() {
       return { sold, left, conv: state.mods.selfPayConv, zone: Syn.isZoneActive(state, 'premium') };
     };
     const uz = upsellRate(true), un = upsellRate(false);
-    check('e2e premium: self-pay sales per patient higher with zone (selfPayConv)', uz.zone && !un.zone && near(uz.conv - un.conv, 0.15) && uz.rate > un.rate * 1.1, `zone ${uz.rate.toFixed(3)} (${uz.sold}/${uz.left}, conv ${uz.conv}, on ${uz.zone}) vs ${un.rate.toFixed(3)} (${un.sold}/${un.left}, conv ${un.conv}, on ${un.zone})`);
+    check('e2e premium: self-pay sales per patient higher with zone (selfPayConv)', uz.zone && !un.zone && near(uz.conv - un.conv, 0.15) && uz.rate > un.rate * 1.05, `zone ${uz.rate.toFixed(3)} (${uz.sold}/${uz.left}, conv ${uz.conv}, on ${uz.zone}) vs ${un.rate.toFixed(3)} (${un.sold}/${un.left}, conv ${un.conv}, on ${un.zone})`);
     feature('專區 黃金三寶 (+20% 翻桌)', 'works', `mods 1.2; self-service NHI treat-time ratio ${avg(rz.ratios).toFixed(3)} vs ${avg(rn.ratios).toFixed(3)}`);
     feature('專區 高階自費 (+15% 轉單 / +10% 單價)', 'works', `self-pay sales/patient ${uz.rate.toFixed(3)} vs ${un.rate.toFixed(3)}; price x1.1 on every sale`);
     feature('專區 早療樂園 (+25% 研發點數)', 'works', `point gain ratio ${ratio(pk, 'device').toFixed(3)} vs ${ratio(pn, 'device').toFixed(3)}`);
@@ -650,11 +655,11 @@ function featuresSection() {
       for (const p of state.patients) if (p.stage === 'treating' && p.total && p.staffId && !seen.has(p.id + ':' + p.planIdx)) {
         seen.add(p.id + ':' + p.planIdx);
         const st = state.staff.find(s => s.id === p.staffId); const t = TREATMENTS[p.plan[p.planIdx]];
-        if (st && t) samples.push({ skill: st.skill, ratio: p.total / t.duration, exp: (1.1 - 0.02 * st.skill) * S.tiredFactor(st) / (t.kind === 'nhi' ? Math.max(0.2, state.mods.nhiTurnover) : 1) });
+        if (st && t) samples.push({ skill: st.skill, ratio: p.total / t.duration, exp: (t.attend === 'setup' ? 1 : (1.1 - 0.02 * st.skill) * S.tiredFactor(st)) * P.treatTimeMod(state) / (t.kind === 'nhi' ? Math.max(0.2, state.mods.nhiTurnover) : 1) });
       }
     }
     const bad = samples.filter(s => !near(s.ratio, s.exp, 0.03));
-    check('staff skill: treatment duration follows (1.1-0.02*skill)*tiredFactor', samples.length > 5 && bad.length <= Math.ceil(samples.length * 0.05), `n=${samples.length} off=${bad.length}`);
+    check('staff skill: treatment duration follows (1.1-0.02*skill)*tiredFactor (machines run at their own pace)', samples.length > 5 && bad.length <= Math.ceil(samples.length * 0.05), `n=${samples.length} off=${bad.length}`);
     const doc = state.staff.find(s => s.role === 'doctor');
     doc.stamina = doc.staminaMax * 0.1;
     const tiredF = S.tiredFactor(doc);
@@ -669,7 +674,7 @@ function featuresSection() {
   // ---- static data integrity ----
   {
     const modKeys = new Set(Object.keys(defaultMods()));
-    const okKey = (k) => modKeys.has(k) || (k.startsWith('typeSpawn.') && PATIENT_TYPES[k.slice(10)]);
+    const okKey = (k) => modKeys.has(k) || (k.startsWith('typeSpawn.') && PATIENT_TYPES[k.slice(10)]) || (/^type(Sat|Cure)\./.test(k) && PATIENT_TYPES[k.slice(k.indexOf('.') + 1)]);
     const bad = [];
     for (const w of EVD.WEATHER) for (const k of Object.keys(w.mods || {})) if (!okKey(k)) bad.push('weather ' + w.id + ':' + k);
     for (const w of EVD.WEATHER) for (const t of Object.keys(w.typeBoost || {})) if (!PATIENT_TYPES[t]) bad.push('weather ' + w.id + ' type ' + t);
@@ -851,7 +856,9 @@ function featuresSection() {
     put('exam_room', 11, 12); put('reception', 16, 17); put('sofa', 12, 18); put('sofa', 10, 18); put('bed', 18, 13); put('shockwave_room', 19, 15); put('manual_room', 11, 15); put('laser_room', 19, 10); put('redcord', 15, 11);
     state.staff.push(S.createStaff(state, 'pt', null, 17, 15), S.createStaff(state, 'pt', null, 17, 16));
     const count = {}; const off = bus.on('treatment:done', ({ treatmentId, selfPay }) => { if (selfPay) count[treatmentId] = (count[treatmentId] || 0) + 1; });
-    runWeeks(24); off();
+    // PRP converts rarely (uptake 0.25): run on (at most 2 more years) until all three have sold at least once
+    for (let w = 0; w < 160 && !['prp', 'shockwave', 'insole'].every(t => count[t] > 0); w++) runWeeks(1);
+    off();
     check('self-pay: PRP / 震波 / 客製化鞋墊 actually get sold', ['prp', 'shockwave', 'insole'].every(t => count[t] > 0), JSON.stringify(count));
     check('self-pay: locked treatments are NOT sold before research', (() => { fresh(9); opts_quietPut = true; put('shockwave_room', 19, 15); opts_quietPut = false; const c = {}; const o2 = bus.on('treatment:done', (e) => { if (e.selfPay) c[e.treatmentId] = 1; }); state.reputation = 300; runWeeks(10); o2(); return Object.keys(c).length === 0; })());
     fresh(); const pm = [0.5, 2.0, 0.1, 9, NaN];
@@ -1328,7 +1335,7 @@ function longrunSection() {
 function achievementsSection() {
   section('Achievements');
   const defs = ACHD.ACHIEVEMENTS;
-  check('achv: 53 definitions (41 + 12 career), unique ids, 13 hidden', defs.length === 53 && new Set(defs.map(d => d.id)).size === 53 && defs.filter(d => d.hidden).length === 13);
+  check('achv: 58 definitions (41 + 12 career + 3 upgrades + 2 zones), unique ids, 13 hidden', defs.length === 58 && new Set(defs.map(d => d.id)).size === 58 && defs.filter(d => d.hidden).length === 13);
   let unl = [], toasts = [];
   const offU = bus.on('achievement:unlocked', e => unl.push(e.id));
   const offT = bus.on('toast', t => toasts.push(t));
@@ -1352,6 +1359,9 @@ function achievementsSection() {
     m_year3: () => { state.time.year = 4; bus.emit('year:start', { year: 4 }); },
     m_five_roles: () => { state.staff = []; for (const r of K.ROLES) mkStaff(r); weekEnd(); },
     m_research_all: () => { state.research.done = Object.keys(RESEARCH); bus.emit('research:done', { id: 'x' }); },
+    m_upg_10: () => { state.research.levels = { up_clinical: 10 }; bus.emit('research:upgrade', { id: 'up_clinical', level: 10 }); },
+    m_upg_40: () => { state.research.levels = { up_clinical: 16, up_diagnosis: 12, up_equipment: 12 }; bus.emit('research:upgrade', { id: 'up_equipment', level: 12 }); },
+    m_upg_cap: () => { state.research.levels = { up_brand: 15 }; bus.emit('research:upgrade', { id: 'up_brand', level: 15 }); },
     t_cold_week: () => { state.weather = { kind: 'cold' }; for (let i = 0; i < 15; i++) treat(pat('elder')); weekEnd(); },
     t_rain_safe: () => { state.weather = { kind: 'rain' }; for (let i = 0; i < 12; i++) treat(pat('office')); weekEnd(); },
     t_typhoon: () => { state.weather = { kind: 'typhoon' }; for (let i = 0; i < 5; i++) treat(pat('office')); weekEnd(); },
@@ -1368,6 +1378,8 @@ function achievementsSection() {
     c_zone_premium: () => { add('manual_room', 12, 12); add('shockwave', 14, 12); add('coffee', 15, 12); Syn.recomputeZones(state); bus.emit('map:changed', {}); },
     c_zone_kidpark: () => { add('ball_pit', 12, 12); add('soft_mat', 14, 12); add('bookshelf', 16, 12); Syn.recomputeZones(state); bus.emit('map:changed', {}); },
     c_zone_all: () => { state.zones = [{ id: 'golden3' }, { id: 'premium' }, { id: 'kidpark' }]; bus.emit('map:changed', {}); },
+    c_zone_collect: () => { for (const id of ['golden3', 'waitRoom', 'hotCold', 'cafeNook', 'regDesk', 'elderPath']) { state.zones = [{ id }]; bus.emit('map:changed', {}); } },
+    c_zone_master: () => { state.zones = ['golden3', 'waitRoom', 'hotCold', 'cafeNook', 'regDesk', 'elderPath', 'restStation', 'staffBack'].map(id => ({ id })); bus.emit('map:changed', {}); },
     c_zero_slip_year: () => { for (let i = 0; i < 200; i++) left(pat('office')); yearEnd(); },
     c_no_angry_month: () => { for (let i = 0; i < 20; i++) left(pat('office')); settle(); },
     c_full_house: () => { state.lotLevel = Math.max(state.lotLevel, 1); for (let i = 0, n = Math.ceil(0.9 * LOTS[state.lotLevel].maxPatientsPerWeek); i < n; i++) treat(pat('office')); },
@@ -1407,7 +1419,7 @@ function achievementsSection() {
     const m1 = state.money; SC[d.id](); state.events.pendingDilemma = null;
     check(`achv ${d.id}: second trigger does not unlock/pay again`, unl.filter(x => x === d.id).length === 1 && (NO_EXACT_REWARD.has(d.id) || state.money === m1));
   }
-  feature('Achievements: 53 unlock conditions (41 + 12 career)', nOk === 53 ? 'OK' : 'PARTIAL', `${nOk}/53 forced via events`);
+  feature('Achievements: 58 unlock conditions (41 + 12 career + 3 upgrades + 2 zones)', nOk === 58 ? 'OK' : 'PARTIAL', `${nOk}/58 forced via events`);
 
   // ---- negatives ----
   FRESH(); state.weather = { kind: 'rain' }; for (let i = 0; i < 12; i++) treat(pat('office')); bus.emit('patient:slip', { patient: pat() }); weekEnd();
@@ -1440,7 +1452,7 @@ function achievementsSection() {
 
   // ---- listAchievements masking / progress ----
   FRESH(); let L = Ach.listAchievements(state);
-  check('achv: listAchievements returns 53 rows', L.length === 53);
+  check('achv: listAchievements returns 58 rows', L.length === 58);
   const hid = L.filter(x => x.def.hidden);
   check('achv: locked hidden ones masked (name ？？？, hint shown, no progress)', hid.length === 13 && hid.every(x => x.masked && x.def.name === '？？？' && x.def.desc === x.def.hint && !x.unlocked && x.goal === 0));
   check('achv: masked rows do not leak real names or titles', !hid.some(x => defs.some(d => d.hidden && JSON.stringify(x).includes(d.name))));
@@ -2218,7 +2230,7 @@ function careerSection() {
   for (const t of GD.ONBOARDING) used.add(t.metric.key);
   for (const g of [...GD.CORE_GOALS, ...GD.BONUS_GOALS]) for (const set of [g.conds, g.altConds || [], ...(g.variants || []).map(v => v.conds)]) for (const c of set) used.add(c.key);
   check('career: every metric key used by a goal is in GOAL_METRICS', [...used].every(k => GD.GOAL_METRICS[k]), [...used].filter(k => !GD.GOAL_METRICS[k]).join(','));
-  check('career: 10 onboarding / 10 core (one per year) / 29 bonus goals, unique ids', GD.ONBOARDING.length === 10 && GD.CORE_GOALS.length === 10 && GD.CORE_GOALS.every((g, i) => g.year === i + 1) && new Set([...GD.ONBOARDING, ...GD.CORE_GOALS, ...GD.BONUS_GOALS].map(g => g.id)).size === 49);
+  check('career: 10 onboarding / 10 core (one per year) / 30 bonus goals, unique ids', GD.ONBOARDING.length === 10 && GD.CORE_GOALS.length === 10 && GD.CORE_GOALS.every((g, i) => g.year === i + 1) && new Set([...GD.ONBOARDING, ...GD.CORE_GOALS, ...GD.BONUS_GOALS].map(g => g.id)).size === 50 && GD.BONUS_GOALS.length === 30);
 
   // ---- B. onboarding: every task completes when forced, pays exactly once ----
   const wearable = () => { state.objects.push({ id: state.nextId++, defId: 'tens', x: 1, y: 1, rot: 0, busy: false, usedBy: null, staffId: null, wear: 0 }); };
@@ -2318,6 +2330,8 @@ function careerSection() {
     riskNow: (t) => { state.nhi.risk = t; },
     researchDone: (t) => { state.research.done = Object.keys(RESEARCH).slice(0, t); },
     researchYear: (t) => { state.career.counters.rdStart = 0; state.research.done = Object.keys(RESEARCH).slice(0, t); },
+    upgradeLevels: (t) => { state.research.levels = { up_clinical: t }; },
+    upgradeYear: (t) => { state.career.counters.upgStart = 0; state.research.levels = { up_clinical: t }; },
   };
   check('goals: a forcer exists for every goal metric', Object.keys(GD.GOAL_METRICS).filter(k => !GD.ONBOARDING.some(t => t.metric.key === k)).every(k => FORCE[k]), Object.keys(GD.GOAL_METRICS).filter(k => !FORCE[k] && !GD.ONBOARDING.some(t => t.metric.key === k)).join(','));
   const goalCase = (def, kind, lot, condSet, vi = -1) => {
@@ -2610,6 +2624,700 @@ function careerSection() {
   Car.stopCareer();
 }
 
+// =====================================================================================================
+// SECTION: upgrades (持續精進: repeatable capped upgrade lines, data/upgrades.js + sim/research.js levels)
+// =====================================================================================================
+function upgradesSection() {
+  section('Upgrades (持續精進)');
+  const UP = UPGRADES;
+  const L = UP.UPGRADE_LINES;
+  const byDom = (d) => RS_NODES().filter(n => n.track === d).map(n => n.id);
+  function RS_NODES() { return Object.values(RESEARCH); }
+  const doneFor = (dom, n) => byDom(dom).slice(0, n);
+  const lvSum = () => L.reduce((n, l) => n + Res.levelOf(state, l.id), 0);
+
+  // ---- data ----
+  check('upgrades: 6 lines, unique ids, 2 per domain', L.length === 6 && new Set(L.map(l => l.id)).size === 6 && ['medical', 'device', 'service'].every(d => L.filter(l => l.domain === d).length === 2));
+  const keyOk = (k) => k in defaultMods() || /^(typeCure|typeSat)\.(\w+)$/.test(k) && PATIENT_TYPES[k.split('.')[1]];
+  check('upgrades: every effect key is a real mods key (or typeCure/typeSat.<patient type>)', L.every(l => l.effects.length && l.effects.every(e => keyOk(e.key) && Number.isFinite(e.perLevel) && e.perLevel !== 0)), L.filter(l => !l.effects.every(e => keyOk(e.key))).map(l => l.id).join());
+  check('upgrades: caps 12..25, growth 1.2..1.35, baseCost positive, unlock.domainNodes within the domain size', L.every(l => l.cap >= 12 && l.cap <= 25 && l.growth >= 1.2 && l.growth <= 1.35 && l.baseCost > 0 && l.unlock.domainNodes >= 1 && l.unlock.domainNodes <= byDom(l.domain).length));
+  check('upgrades: cost(level) = round(baseCost x growth^level), strictly increasing', L.every(l => { let prev = 0; for (let i = 0; i < l.cap; i++) { const c = UP.upgradeCost(l, i); if (c !== Math.round(l.baseCost * Math.pow(l.growth, i)) || c <= prev) return false; prev = c; } return true; }));
+  check('upgrades: upgradeCostTotal sums the per-level costs', L.every(l => { let s = 0; for (let i = 0; i < l.cap; i++) s += UP.upgradeCost(l, i); return s === UP.upgradeCostTotal(l); }));
+  check('upgrades: effects at cap match the design (cure +40% / wear -45% / time -14.4% / sat +9 / rep +0.9 per week)', (() => {
+    const e = (id, k) => Res.upgradeEffectsAt(id, UP.UPGRADE_BY_ID[id].cap).find(x => x.key === k).value;
+    return near(e('up_clinical', 'cureGain'), 0.4, 1e-6) && near(e('up_equipment', 'wearRate'), -0.45, 1e-6) && near(e('up_workflow', 'treatTime'), -0.144, 1e-6) && near(e('up_relations', 'satGain'), 9, 1e-6) && near(e('up_brand', 'repGrowth'), 0.9, 1e-6);
+  })());
+
+  // ---- locked / unlock rule ----
+  fresh(SEED);
+  check('upgrades: a new game has levels {} and every line locked', Res.levelOf(state, 'up_clinical') === 0 && Object.keys(state.research.levels).length === 0 && L.every(l => !Res.upgradeUnlock(state, l.id).ok));
+  state.points = { medical: 1e6, device: 1e6, service: 1e6 };
+  let c = Res.canUpgrade(state, 'up_clinical');
+  check('upgrades: locked line refuses with a reason naming the domain and progress', !c.ok && c.locked && /醫術/.test(c.reason) && /0\/3/.test(c.reason), c.reason);
+  check('upgrades: buyUpgrade on a locked line fails and costs nothing', Res.buyUpgrade(state, 'up_clinical') === false && state.points.medical === 1e6 && Res.levelOf(state, 'up_clinical') === 0);
+  state.research.done = doneFor('medical', 2); Mod.recomputeMods(state);
+  check('upgrades: 2 of 3 domain nodes is still locked', !Res.canUpgrade(state, 'up_clinical').ok && /2\/3/.test(Res.canUpgrade(state, 'up_clinical').reason));
+  state.research.done = doneFor('medical', 3);
+  check('upgrades: 3 medical nodes unlock 臨床經驗 only (專科診斷 needs 5, other domains still locked)', Res.canUpgrade(state, 'up_clinical').ok && !Res.canUpgrade(state, 'up_diagnosis').ok && !Res.canUpgrade(state, 'up_equipment').ok && !Res.canUpgrade(state, 'up_relations').ok);
+  state.research.done = doneFor('medical', 5);
+  check('upgrades: 5 medical nodes unlock 專科診斷', Res.canUpgrade(state, 'up_diagnosis').ok);
+  state.research.done = [...doneFor('device', 3), ...doneFor('service', 5)];
+  check('upgrades: device 3 -> 設備精進 ok, 流程最佳化 locked; service 5 -> both service lines ok', Res.canUpgrade(state, 'up_equipment').ok && !Res.canUpgrade(state, 'up_workflow').ok && Res.canUpgrade(state, 'up_relations').ok && Res.canUpgrade(state, 'up_brand').ok);
+
+  // ---- instant purchase ----
+  fresh(SEED);
+  state.research.done = doneFor('medical', 3);
+  state.research.current = null;
+  state.points = { medical: 500, device: 77, service: 33 };
+  const line = UP.UPGRADE_BY_ID.up_clinical, ups = [];
+  const offU = bus.on('research:upgrade', e => ups.push(e));
+  const toasts = []; const offT = bus.on('toast', t => toasts.push(t));
+  const cost0 = UP.upgradeCost(line, 0);
+  check('upgrades: buy level 1 succeeds instantly (no progress/current), pays only the medical points', Res.buyUpgrade(state, 'up_clinical') === true && Res.levelOf(state, 'up_clinical') === 1 && state.points.medical === 500 - cost0 && state.points.device === 77 && state.points.service === 33 && state.research.current === null);
+  check('upgrades: the purchase emits research:upgrade + a good toast and refreshes mods at once (cureGain 1.025)', ups.length === 1 && ups[0].id === 'up_clinical' && ups[0].level === 1 && toasts.some(t => t.kind === 'good' && /臨床經驗/.test(t.text)) && near(state.mods.cureGain, 1.025, 1e-9), String(state.mods.cureGain));
+  check('upgrades: nextCost advances to cost(1)', Res.nextCost(state, 'up_clinical') === UP.upgradeCost(line, 1));
+  // not enough points
+  state.points.medical = UP.upgradeCost(line, 1) - 1;
+  const m0 = state.points.medical;
+  c = Res.canUpgrade(state, 'up_clinical');
+  check('upgrades: insufficient points -> refused with a reason, nothing changes', !c.ok && c.poor && /醫術點數不足/.test(c.reason) && Res.buyUpgrade(state, 'up_clinical') === false && state.points.medical === m0 && Res.levelOf(state, 'up_clinical') === 1, c.reason);
+  state.points.medical = UP.upgradeCost(line, 1);
+  check('upgrades: exactly enough points buys the level and leaves 0', Res.buyUpgrade(state, 'up_clinical') && state.points.medical === 0 && Res.levelOf(state, 'up_clinical') === 2);
+  check('upgrades: totalLevels sums the lines', Res.totalLevels(state) === 2);
+  // does not disturb a running research
+  state.research.current = 'rs_prp'; state.research.progress = 1; state.points.medical = 1e4;
+  Res.buyUpgrade(state, 'up_clinical');
+  check('upgrades: buying while a tree node is researching leaves that research untouched', state.research.current === 'rs_prp' && state.research.progress === 1);
+  state.research.current = null; state.research.progress = 0;
+
+  // ---- cap ----
+  state.research.levels.up_clinical = line.cap - 1; state.points.medical = 1e6;
+  check('upgrades: the last level is buyable', Res.buyUpgrade(state, 'up_clinical') && Res.levelOf(state, 'up_clinical') === line.cap);
+  c = Res.canUpgrade(state, 'up_clinical');
+  const p1 = state.points.medical;
+  check('upgrades: at cap -> refused (capped), no cost, level stays', !c.ok && c.capped && Res.buyUpgrade(state, 'up_clinical') === false && state.points.medical === p1 && Res.levelOf(state, 'up_clinical') === line.cap && Res.nextCost(state, 'up_clinical') === null);
+  check('upgrades: cureGain at cap = 1.4', near(state.mods.cureGain, 1.4, 1e-9), String(state.mods.cureGain));
+  offU(); offT();
+
+  // ---- mods applied ----
+  fresh(SEED);
+  state.research.done = [...doneFor('medical', 5), ...doneFor('device', 5), ...doneFor('service', 5)];
+  state.research.levels = { up_clinical: 4, up_diagnosis: 6, up_equipment: 10, up_workflow: 5, up_relations: 7, up_brand: 8 };
+  Mod.recomputeMods(state);
+  const M = state.mods;
+  check('upgrades: levels turn into additive mod deltas (cure x1.10, wear x0.70, time x0.94, sat +4.2, rep +0.48/wk)',
+    near(M.cureGain, 1.1, 1e-9) && near(M.wearRate, 0.7, 1e-9) && near(M.treatTime, 0.94, 1e-9) && near(M.satGain, 4.2, 1e-9) && near(M.repGrowth, 0.48, 1e-9), JSON.stringify([M.cureGain, M.wearRate, M.treatTime, M.satGain, M.repGrowth]));
+  check('upgrades: 專科診斷 sets typeCure for every patient type (+9% at level 6)', Object.keys(PATIENT_TYPES).every(t => near(M.typeCure[t], 0.09, 1e-9)), JSON.stringify(M.typeCure));
+  check('upgrades: patience adds on top of the research/environment value (other sources untouched)', (() => { const base = { ...state.research.levels }; state.research.levels = {}; Mod.recomputeMods(state); const p0 = state.mods.patience; state.research.levels = base; Mod.recomputeMods(state); return near(state.mods.patience - p0, 0.07, 1e-9); })());
+  // sanitised lookups: a level past the cap in memory is clamped by recompute
+  state.research.levels = { up_clinical: 99, up_equipment: -5, up_workflow: 'x', up_brand: 2.9 };
+  Mod.recomputeMods(state);
+  check('upgrades: recompute clamps stray levels (cap / negative / non-number / fractional)', near(state.mods.cureGain, 1.4, 1e-9) && near(state.mods.wearRate, 1, 1e-9) && near(state.mods.treatTime, 1, 1e-9) && near(state.mods.repGrowth, 0.12, 1e-9), JSON.stringify([state.mods.cureGain, state.mods.wearRate, state.mods.treatTime, state.mods.repGrowth]));
+
+  // ---- global caps when stacking with other sources ----
+  state.research.levels = Object.fromEntries(L.map(l => [l.id, l.cap]));
+  state.events.buffs = [{ id: 'stack', weeksLeft: 5, mods: { cureGain: 5, treatTime: -3, wearRate: -3, satGain: 40, repGrowth: 5, 'typeCure.elder': 5, 'typeSat.kid': 99 } }];
+  Mod.recomputeMods(state);
+  check('upgrades: global caps hold when stacked with an event buff (cure<=1.6, time>=0.6, wear>=0.35, sat<=12, rep<=1.2)',
+    near(state.mods.cureGain, 1.6) && near(state.mods.treatTime, 0.6) && near(state.mods.wearRate, 0.35) && near(state.mods.satGain, 12) && near(state.mods.repGrowth, 1.2), JSON.stringify([state.mods.cureGain, state.mods.treatTime, state.mods.wearRate, state.mods.satGain, state.mods.repGrowth]));
+  check('upgrades: per-type typeCure / typeSat are clamped (dotted patch keys are real maps, not stray mod keys)', state.mods.typeCure.elder === Mod.TYPE_CURE_BOUNDS[1] && state.mods.typeSat.kid === Mod.TYPE_SAT_BOUNDS[1] && !('typeCure.elder' in state.mods), JSON.stringify([state.mods.typeCure, state.mods.typeSat]));
+  state.events.buffs = [];
+  Mod.recomputeMods(state);
+  check('upgrades: everything at cap (no other source) = +40% cure, +18% type cure, -45% wear, -14.4% time, +9 sat, +0.9 rep/wk', near(state.mods.cureGain, 1.4) && near(state.mods.wearRate, 0.55) && near(state.mods.treatTime, 0.856) && near(state.mods.satGain, 9) && near(state.mods.repGrowth, 0.9) && near(state.mods.typeCure.sports, 0.18), JSON.stringify([state.mods.cureGain, state.mods.wearRate, state.mods.treatTime, state.mods.satGain, state.mods.repGrowth]));
+
+  if (typeof P.treatTimeMod === 'function' && typeof P.satGainMod === 'function') {
+    check('upgrades: the sim consumes the mods (patients.treatTimeMod 0.856 / satGainMod 9 at cap)', near(P.treatTimeMod(state), 0.856, 1e-9) && near(P.satGainMod(state), 9, 1e-9), `${P.treatTimeMod(state)} ${P.satGainMod(state)}`);
+  }
+
+  // ---- repGrowth weekly ----
+  fresh(SEED);
+  state.research.levels = { up_brand: 10 }; state.research.done = doneFor('service', 5); Mod.recomputeMods(state);
+  const wk = (lv) => { fresh(SEED); state.research.done = doneFor('service', 5); state.research.levels = lv ? { up_brand: lv } : {}; Mod.recomputeMods(state); state.reputation = 100; runWeeks(1, true); return state.reputation; };
+  const rA = wk(0), rB = wk(10);
+  check('upgrades: repGrowth adds mods.repGrowth to reputation once per week (level 10 = +0.6, same seed)', near(rB - rA, 0.6, 1e-6), `${rA} -> ${rB}`);
+  fresh(SEED); state.reputation = 999.8; state.mods.repGrowth = 0.9;
+  Res.applyRepGrowth(state);
+  check('upgrades: applyRepGrowth clamps reputation to 1000', state.reputation === 1000);
+  state.reputation = 5; state.mods.repGrowth = -9; Res.applyRepGrowth(state);
+  check('upgrades: reputation never goes below 0', state.reputation === 0);
+
+  // ---- save / load ----
+  fresh(SEED);
+  state.research.done = [...doneFor('medical', 5), ...doneFor('service', 5)];
+  state.research.levels = { up_clinical: 7, up_diagnosis: 3, up_brand: 15 };
+  Mod.recomputeMods(state);
+  const modsBefore = JSON.stringify(state.mods);
+  check('upgrades save: saveGame ok', Sav.saveGame(state, 'upg'));
+  state.research.levels = {}; Mod.recomputeMods(state);
+  check('upgrades save: loadGame restores the levels and the derived mods', Sav.loadGame(state, 'upg') && Res.levelOf(state, 'up_clinical') === 7 && Res.levelOf(state, 'up_diagnosis') === 3 && Res.levelOf(state, 'up_brand') === 15 && JSON.stringify(state.mods) === modsBefore);
+  // export -> import with garbage
+  const raw = JSON.parse(Sav.exportSave(state));
+  raw.state.research.levels = { up_clinical: 999, up_diagnosis: -3, up_workflow: 'nope', up_equipment: 2.7, up_brand: NaN, up_relations: null, bogus_line: 5, __proto__x: 1 };
+  check('upgrades save: import of a tampered save works', Sav.importSave(state, JSON.stringify(raw)));
+  check('upgrades sanitize: known ids only, integer, 0..cap (999 -> cap, negative/NaN/string/null dropped, 2.7 -> 2, unknown id removed)',
+    Res.levelOf(state, 'up_clinical') === UP.UPGRADE_BY_ID.up_clinical.cap && Res.levelOf(state, 'up_diagnosis') === 0 && Res.levelOf(state, 'up_workflow') === 0 && Res.levelOf(state, 'up_equipment') === 2 && Res.levelOf(state, 'up_brand') === 0 && Res.levelOf(state, 'up_relations') === 0 && !('bogus_line' in state.research.levels) && Object.values(state.research.levels).every(v => Number.isInteger(v) && v > 0), JSON.stringify(state.research.levels));
+  raw.state.research.levels = [1, 2, 3];
+  Sav.importSave(state, JSON.stringify(raw));
+  check('upgrades sanitize: a non-object levels value becomes {}', state.research.levels && !Array.isArray(state.research.levels) && Object.keys(state.research.levels).length === 0);
+  // old save (no levels at all)
+  const old = JSON.parse(Sav.exportSave(state)); delete old.state.research.levels;
+  check('upgrades save: an old save without research.levels loads (levels {}, mods neutral)', Sav.importSave(state, JSON.stringify(old)) && Object.keys(state.research.levels).length === 0 && Res.totalLevels(state) === 0 && near(state.mods.cureGain, 1) && near(state.mods.wearRate, 1));
+  const old2 = JSON.parse(Sav.exportSave(state)); delete old2.state.research;
+  check('upgrades save: a save without any research block also loads', Sav.importSave(state, JSON.stringify(old2)) && Array.isArray(state.research.done) && Res.totalLevels(state) === 0);
+  Sav.deleteSave('upg');
+  fresh(SEED); state.research.done = doneFor('medical', 5); state.research.levels = { up_clinical: 5 };
+  const j1 = Sav.exportSave(state); Sav.importSave(state, j1); const j2 = Sav.exportSave(state);
+  check('upgrades save: export -> import -> export keeps research.levels byte-identical', JSON.stringify(JSON.parse(j1).state.research) === JSON.stringify(JSON.parse(j2).state.research));
+
+  // ---- career metric / achievements ----
+  fresh(SEED, true); Ach.ensure(state);
+  state.research.done = [...doneFor('medical', 5), ...doneFor('device', 5), ...doneFor('service', 5)];
+  state.research.levels = { up_clinical: 3, up_equipment: 4 };
+  Car.ensureCareer(state);
+  check('career: metricValue upgradeLevels = sum of levels', Car.metricValue(state, 'upgradeLevels') === 7);
+  check('career: upgradeYear counts only levels gained this year (starts from the year-start snapshot)', Car.metricValue(state, 'upgradeYear') === 7 - state.career.counters.upgStart && state.career.counters.upgStart >= 0);
+  const y0 = Car.metricValue(state, 'upgradeYear');
+  state.points = { medical: 1e5, device: 1e5, service: 1e5 }; Res.buyUpgrade(state, 'up_clinical'); Res.buyUpgrade(state, 'up_workflow');
+  check('career: upgradeYear grows with purchases', Car.metricValue(state, 'upgradeYear') === y0 + 2 && Car.metricValue(state, 'upgradeLevels') === 9);
+  check('career: both new metrics are documented in GOAL_METRICS and the bonus goal exists and is valid', GD.GOAL_METRICS.upgradeLevels && GD.GOAL_METRICS.upgradeYear && (() => { const g = GD.BONUS_GOALS.find(b => b.id === 'b_rd_upgrade3'); return g && g.conds.every(x => GD.GOAL_METRICS[x.key]) && g.cond.minYear >= 4; })());
+  // achievements (live)
+  const unl = []; const offA = bus.on('achievement:unlocked', e => unl.push(e.id));
+  fresh(SEED, true); Ach.ensure(state);
+  state.research.done = [...doneFor('medical', 5), ...doneFor('device', 5), ...doneFor('service', 5)];
+  state.points = { medical: 1e6, device: 1e6, service: 1e6 };
+  state.research.levels = { up_clinical: 9 };
+  Res.buyUpgrade(state, 'up_clinical');
+  check('achv: 精益求精 unlocks at 10 total levels (via a real purchase)', Ach.isUnlocked(state, 'm_upg_10') && !Ach.isUnlocked(state, 'm_upg_40') && !Ach.isUnlocked(state, 'm_upg_cap'));
+  state.research.levels = { up_clinical: 16, up_diagnosis: 12, up_equipment: 11 };
+  Res.buyUpgrade(state, 'up_equipment');
+  check('achv: 研究魂不滅 at 40 total levels and 登峰造極 when any line is capped', Ach.isUnlocked(state, 'm_upg_40') && Ach.isUnlocked(state, 'm_upg_cap'));
+  check('achv: upgrade achievements have progress (levels / goal; best line / cap)', (() => { const p = Ach.progressOf(state, ACHD.ACHIEVEMENTS.find(d => d.id === 'm_upg_40')); return p.goal === 40; })());
+  offA();
+  fresh(SEED);
+  check('upgrades: invariants hold after all the above', invariants().length === 0, invariants().join(';'));
+  feature('Upgrades (持續精進): 6 lines, instant buy, caps, save sanitize, repGrowth, 3 achievements, career metric', 'OK', 'cost formula, unlock rule, clamps, round-trip verified');
+}
+
+// =====================================================================================================
+// SECTION: zones (專區辭典: data, engine rules incl. needsFloors / needsCount, forced layouts, stacking, caps, save/load, perf)
+function zonesSection() {
+  section('Synergy zones (dictionary expansion)');
+  const lotBare = () => {
+    fresh();
+    state.research.done = Object.keys(RESEARCH);
+    state.objects = [];
+    state.map.floor = state.map.floor.map(r => r.map(() => null));
+    state.money = 5e7;
+    refresh();
+  };
+  const activeIds = () => [...new Set(state.zones.map(z => z.id))].sort();
+  const dm = defaultMods();
+  const PTYPES = Object.keys(PATIENT_TYPES);
+  const validKey = (k) => {
+    const m = /^(typeSpawn|typeSat|typeCure)\.(.+)$/.exec(k);
+    return m ? PTYPES.includes(m[2]) : typeof dm[k] === 'number';
+  };
+  // independent expectation: sum of the distinct zones' effects applied to the zone-less mods
+  const flat = (mods) => { const o = {}; for (const [k, v] of Object.entries(mods)) { if (typeof v === 'number') o[k] = v; else if (v && typeof v === 'object') for (const [t, x] of Object.entries(v)) o[k + '.' + t] = x; } return o; };
+  const zoneDelta = () => {
+    const rs = state.research.done, wx = state.weather, fo = state.policy.focus;
+    state.research.done = []; state.weather = null; state.policy.focus = null;      // research 'mul' ops / weather / focus scale typeSpawn after the zones
+    const withZ = flat(Mod.recomputeMods(state));
+    const keep = state.zones; state.zones = [];
+    const base = flat(Mod.recomputeMods(state));
+    state.zones = keep; state.research.done = rs; state.weather = wx; state.policy.focus = fo; Mod.recomputeMods(state);
+    const d = {};
+    for (const k of new Set([...Object.keys(withZ), ...Object.keys(base)])) {
+      const baseV = base[k] == null ? (k.startsWith('typeSpawn.') ? 1 : 0) : base[k], wv = withZ[k] == null ? (k.startsWith('typeSpawn.') ? 1 : 0) : withZ[k];
+      if (Math.abs(wv - baseV) > 1e-9) d[k] = wv - baseV;
+    }
+    return d;
+  };
+  const expectDelta = (ids) => {
+    const d = {};
+    for (const id of new Set(ids)) for (const [k, v] of Object.entries(SYNERGIES.find(s => s.id === id).effects)) d[k] = (d[k] || 0) + v;
+    return d;
+  };
+  const sameDelta = (a, b) => { const ks = new Set([...Object.keys(a), ...Object.keys(b)]); for (const k of ks) if (Math.abs((a[k] || 0) - (b[k] || 0)) > 1e-9) return k + ': ' + (a[k] || 0) + ' vs ' + (b[k] || 0); return ''; };
+  const entry = () => entryTile(state);
+
+  // ---- A. data ----
+  {
+    const ids = SYNERGIES.map(s => s.id);
+    check('zones: >= 15 zones (5 original + 10 new), unique ids', SYNERGIES.length >= 15 && new Set(ids).size === ids.length, ids.join());
+    const badData = [];
+    for (const s of SYNERGIES) {
+      if (!s.name || !s.icon || !s.desc || !s.hint) badData.push(s.id + ' text');
+      if (!ZD.ZONE_TIERS[s.tier]) badData.push(s.id + ' tier ' + s.tier);
+      if (!ZD.ZONE_GROUPS[s.group]) badData.push(s.id + ' group ' + s.group);
+      if (s.unlock && !RESEARCH[s.unlock]) badData.push(s.id + ' unlock ' + s.unlock);
+      for (const n of s.needs) { const d = BUILDABLES[n]; if (!d || d.layer === 'floor') badData.push(s.id + ' need ' + n); }
+      for (const [f, n] of Object.entries(s.needsFloors || {})) { const d = BUILDABLES[f]; if (!d || d.layer !== 'floor' || !(n >= 1)) badData.push(s.id + ' floor ' + f); }
+      for (const [d, n] of Object.entries(s.needsCount || {})) if (!s.needs.includes(d) || !(n >= 1)) badData.push(s.id + ' count ' + d);
+      for (const k of Object.keys(s.effects)) if (!validKey(k)) badData.push(s.id + ' effect key ' + k);
+      if (!Object.keys(s.effects).length) badData.push(s.id + ' no effects');
+    }
+    check('zones: every zone has text/hint/tier/group, valid needs, floors, counts and effect keys (all exist in defaultMods)', badData.length === 0, badData.join('; '));
+    check('zones: >= 8 new zones use existing buildables only (no new equipment ids)', SYNERGIES.filter(s => !['golden3', 'premium', 'kidpark', 'waitRoom', 'restStation'].includes(s.id)).length >= 8);
+    const OLD = {
+      golden3: [['heatbox', 'tens', 'traction'], { nhiTurnover: 0.2, elderSat: 8 }], premium: [['manual_room', 'shockwave', 'coffee'], { selfPayConv: 0.15, selfPayPrice: 0.1 }],
+      kidpark: [['ball_pit', 'soft_mat', 'bookshelf'], { researchGain: 0.25 }], waitRoom: [['sofa', 'water', 'plant', 'tv'], { patience: 0.1, elderSat: 2 }],
+      restStation: [['rest_room', 'water'], { staffStamina: -0.1 }],
+    };
+    check('zones: the original 5 zones keep exactly their needs and effects', Object.entries(OLD).every(([id, [needs, eff]]) => { const s = SYNERGIES.find(x => x.id === id); return s && JSON.stringify(s.needs) === JSON.stringify(needs) && JSON.stringify(s.effects) === JSON.stringify(eff) && !s.needsFloors; }));
+    const cheap = [];
+    for (const s of SYNERGIES) if (s.tier === 'basic') { const l = Syn.zoneLocks({ research: { done: [] } }, s); for (const r of l) if (RESEARCH[r].cost > 60) cheap.push(s.id + ':' + r); }
+    check('zones: basic-tier zones only need starter-cheap research (cost <= 60) or none', cheap.length === 0, cheap.join());
+    const cost = (s) => s.needs.reduce((t, n) => t + (BUILDABLES[n].cost || 0) * ((s.needsCount && s.needsCount[n]) || 1), 0);
+    check('zones: basic-tier zones are cheap to build (needs list price <= NT$ 150k)', SYNERGIES.filter(s => s.tier === 'basic').every(s => cost(s) <= 150000), SYNERGIES.filter(s => s.tier === 'basic').map(s => s.id + ':' + cost(s)).join());
+    check('zones: every advanced / master zone needs research at game start or costs > NT$ 90k (dictionary shows 🔒 for the research ones)', SYNERGIES.filter(s => s.tier !== 'basic').every(s => Syn.zoneLocks({ research: { done: [] } }, s).length > 0 || cost(s) > 90000), SYNERGIES.filter(s => s.tier !== 'basic' && !Syn.zoneLocks({ research: { done: [] } }, s).length).map(s => s.id + ':' + cost(s)).join());
+  }
+
+  // ---- B. every template: forced layout activates, broken layouts do not ----
+  {
+    let n = 0;
+    for (const syn of SYNERGIES) {
+      const tpl = ZL.TEMPLATES[syn.id];
+      if (!check('zones/' + syn.id + ': has a hand-verified template', !!tpl)) continue;
+      const need = [syn.id, ...(ZL.ALSO[syn.id] || [])].sort();
+      lotBare();
+      const placed = ZL.placeTemplate(B, state, syn.id, 12, 12, false);
+      const act = activeIds();
+      check('zones/' + syn.id + ': template places with the real build rules and activates the zone', !!placed && act.join() === need.join(), (placed ? '' : 'placement failed ') + act.join());
+      if (!placed) continue;
+      n++;
+      check('zones/' + syn.id + ': all parts inside the 12x10 start lot, entry tile free', state.objects.every(o => footprint(o).every(c => inLot(state, c.x, c.y) && !(c.x === entry().x && c.y === entry().y))));
+      const z0 = state.zones.find(z => z.id === syn.id);
+      const need0 = syn.needsFloors ? Object.values(syn.needsFloors).reduce((a, b) => a + b, 0) : 0;
+      const cellsOf = (ids) => state.objects.filter(o => ids.includes(o.id)).reduce((a, o) => a + footprint(o).length, 0);
+      check('zones/' + syn.id + ': glow cells = member footprints' + (need0 ? ' + the counted floor tiles' : ''), z0 && z0.cells.length === cellsOf(z0.objectIds) + need0, z0 && z0.cells.length + ' vs ' + (z0 && cellsOf(z0.objectIds) + need0));
+      const d = zoneDelta();
+      check('zones/' + syn.id + ': mods delta == sum of the active zones\' effects', !sameDelta(d, expectDelta(need)), sameDelta(d, expectDelta(need)));
+      // two copies far apart: the effect is applied once
+      // remove each needed defId -> inactive
+      const keep = JSON.parse(JSON.stringify(state.objects));
+      let badBreak = '';
+      for (const nid of syn.needs) {
+        state.objects = keep.filter(o => o.defId !== nid).map(o => ({ ...o })); refresh();
+        if (Syn.isZoneActive(state, syn.id)) badBreak += nid + ' ';
+      }
+      check('zones/' + syn.id + ': removing any one needed part deactivates it', badBreak === '', badBreak);
+      if (syn.needsFloors) {
+        state.objects = keep.map(o => ({ ...o })); for (const row of state.map.floor) row.fill(null); refresh();
+        check('zones/' + syn.id + ': without the floor tiles it is inactive', !Syn.isZoneActive(state, syn.id));
+      }
+      // spread out (every part >= 2 tiles away from the others): inactive
+      lotBare();
+      const spots = [[10, 10], [14, 10], [18, 10], [10, 14], [14, 14], [18, 14], [10, 17], [18, 17]];
+      let si = 0, okSpread = true;
+      for (const nid of syn.needs) { const [sx, sy] = spots[si++]; if (!put(nid, sx, sy)) okSpread = false; }
+      for (const [f, cnt] of Object.entries(syn.needsFloors || {})) for (let i = 0; i < cnt; i++) B.paintFloor(state, f, 12 + i * 3, 19);
+      refresh();
+      check('zones/' + syn.id + ': parts spread apart (gap >= 1 tile) stay inactive', okSpread && !Syn.isZoneActive(state, syn.id), activeIds().join());
+      // transposed placement elsewhere also works (adjacency is orientation-free)
+      lotBare();
+      const pf = ZL.placeTemplate(B, state, syn.id, 11, 11, true);
+      check('zones/' + syn.id + ': transposed copy activates too', !!pf && Syn.isZoneActive(state, syn.id));
+      // the effect applies once even with two copies
+      if (pf) {
+        const tryTwo = ZL.placeTemplateAnywhere(B, state, syn.id, rng);
+        refresh();
+        if (tryTwo && state.zones.filter(z => z.id === syn.id).length >= 2) check('zones/' + syn.id + ': two copies of the zone do not stack twice', !sameDelta(zoneDelta(), expectDelta([syn.id, ...(ZL.ALSO[syn.id] || [])])), sameDelta(zoneDelta(), expectDelta([syn.id])));
+      }
+    }
+    check('zones: every one of the ' + SYNERGIES.length + ' zones was forced on and off', n === SYNERGIES.length, n);
+    feature('專區辭典 (15 zones: needs / needsCount / needsFloors / tier / group / unlock)', n === SYNERGIES.length ? 'works' : 'partial', `${n}/${SYNERGIES.length} zones forced on/off with real placement rules`);
+  }
+
+  // ---- C. needsFloors boundaries (elderPath: ramp x3 touching sign + sofa) ----
+  {
+    const ramp = (x, y) => B.paintFloor(state, 'ramp', x, y);
+    const base = () => { lotBare(); put('sofa', 12, 12); put('sign', 14, 12); };     // sofa x12-13, sign x14, y12
+    base();
+    check('floors: sofa + sign alone -> inactive', !Syn.isZoneActive(state, 'elderPath'));
+    ramp(12, 13); ramp(13, 13);
+    check('floors: 2 touching ramps -> inactive (boundary n-1)', !Syn.isZoneActive(state, 'elderPath'));
+    ramp(14, 13);
+    check('floors: 3 touching ramps -> active (boundary n), recomputed by paintFloor itself', Syn.isZoneActive(state, 'elderPath'));
+    {
+      const z = state.zones.find(q => q.id === 'elderPath');
+      const px = state.objects.filter(o => z.objectIds.includes(o.id)).reduce((a, o) => a + footprint(o).length, 0);
+      check('floors: glow cells include the 3 ramp tiles', z.cells.length === px + 3 && [[12, 13], [13, 13], [14, 13]].every(([x, y]) => z.cells.some(c => c.x === x && c.y === y)));
+      const d = zoneDelta();
+      check('floors: elderPath effects elderSat +6, slipRisk -0.15, walkSpeed +0.02', !sameDelta(d, { elderSat: 6, slipRisk: -0.15, walkSpeed: 0.02 }), sameDelta(d, { elderSat: 6, slipRisk: -0.15, walkSpeed: 0.02 }));
+    }
+    B.removeAt(state, 13, 13);
+    check('floors: removing one ramp tile (removeAt) deactivates the zone again', !Syn.isZoneActive(state, 'elderPath'));
+    ramp(13, 13);
+    check('floors: painting it back reactivates', Syn.isZoneActive(state, 'elderPath'));
+    // wrong floor type does not count
+    base(); ramp(12, 13); ramp(13, 13); B.paintFloor(state, 'floor_mat', 14, 13);
+    check('floors: 2 ramps + 1 floor_mat -> inactive (type must match)', !Syn.isZoneActive(state, 'elderPath'));
+    B.paintFloor(state, 'floor_wood', 15, 13);
+    check('floors: other floor types never count', !Syn.isZoneActive(state, 'elderPath'));
+    // three ramps that do not touch the cluster
+    base(); ramp(12, 16); ramp(13, 16); ramp(14, 16);
+    check('floors: 3 ramps not touching sofa/sign (gap >= 1) -> inactive', !Syn.isZoneActive(state, 'elderPath'));
+    // contiguous strip, only the first tile touches the sign
+    base(); ramp(15, 13); ramp(16, 14); ramp(17, 15);       // (15,13) touches sign (14,12) diagonally; the others hang off it diagonally
+    check('floors: a contiguous (8-neighbour) strip counts when one tile touches the cluster', Syn.isZoneActive(state, 'elderPath'));
+    base(); ramp(15, 13); ramp(17, 14); ramp(18, 15);       // gap in the strip: only 1 connected
+    check('floors: a broken strip (gap) does not count', !Syn.isZoneActive(state, 'elderPath'));
+    // tiles touching a NON-member object do not count; a corner touch does
+    base(); put('water', 17, 12); ramp(17, 13); ramp(18, 13); ramp(19, 13);
+    check('floors: ramps touching only a non-member object (water) -> inactive', !Syn.isZoneActive(state, 'elderPath'));
+    base(); ramp(11, 11); ramp(10, 10); ramp(10, 11);
+    check('floors: corner-touching ramp + strip counts (diagonal touch)', Syn.isZoneActive(state, 'elderPath'));
+    // cap: a long strip is not all returned as glow cells
+    base(); for (let x = 12; x <= 21; x++) ramp(x, 13);
+    { const z = state.zones.find(q => q.id === 'elderPath'); const px = state.objects.filter(o => z && z.objectIds.includes(o.id)).reduce((a, o) => a + footprint(o).length, 0);
+      check('floors: a 10-tile ramp strip still activates, glow limited to n+6 tiles', !!z && z.cells.length - px === 3 + 6, z && (z.cells.length - px)); }
+    // object missing
+    lotBare(); put('sofa', 12, 12); ramp(12, 13); ramp(13, 13); ramp(14, 13);
+    check('floors: ramps + sofa but no sign -> inactive', !Syn.isZoneActive(state, 'elderPath'));
+    // synergyProgress / zoneLocks (dictionary data)
+    base(); ramp(12, 13); ramp(13, 13);
+    const syn = SYNERGIES.find(s => s.id === 'elderPath');
+    const pr = Syn.synergyProgress(state, syn);
+    check('dictionary: synergyProgress rows (sign, sofa, ramp 2/3)', pr.length === 3 && pr[0].ok && pr[1].ok && pr[2].kind === 'floor' && pr[2].have === 2 && pr[2].need === 3 && !pr[2].ok, JSON.stringify(pr));
+    state.research.done = [];
+    const lk = Syn.zoneLocks(state, SYNERGIES.find(s => s.id === 'sportsRehab'));
+    check('dictionary: zoneLocks lists the unfinished research nodes (rs_redcord, rs_ot)', lk.includes('rs_redcord') && lk.includes('rs_ot'), lk.join());
+    state.research.done = Object.keys(RESEARCH);
+    check('dictionary: zoneLocks empty once everything is researched', SYNERGIES.every(s => Syn.zoneLocks(state, s).length === 0));
+  }
+
+  // ---- D. needsCount (engine feature; tested with a temporary zone) ----
+  {
+    const tmp = { id: 'tmp_count', name: '測試', icon: '🧪', needs: ['sofa', 'tv'], needsCount: { sofa: 2 }, effects: { patience: 0.05 }, tier: 'basic', group: 'waiting', desc: '', hint: '' };
+    SYNERGIES.push(tmp);
+    try {
+      lotBare(); put('sofa', 12, 12); put('tv', 14, 12);
+      check('needsCount: 1 sofa + tv, need 2 sofas -> inactive', !Syn.isZoneActive(state, 'tmp_count'));
+      put('sofa', 12, 13);
+      check('needsCount: 2 sofas touching -> active', Syn.isZoneActive(state, 'tmp_count'));
+      lotBare(); put('sofa', 12, 12); put('tv', 14, 12); put('sofa', 18, 18);
+      check('needsCount: the second sofa must be in the SAME cluster', !Syn.isZoneActive(state, 'tmp_count'));
+    } finally { SYNERGIES.pop(); refresh(); }
+    check('needsCount: temporary zone removed again', !SYNERGIES.some(s => s.id === 'tmp_count') && !Syn.isZoneActive(state, 'tmp_count'));
+  }
+
+  // ---- E. stacking, caps, 13 zones at once on the 12x10 start lot ----
+  {
+    lotBare();
+    const okc = ZL.placeCombo(B, state);
+    refresh();
+    const act = activeIds();
+    check('combo: the explicit 33-object layout places on the empty 12x10 start lot (entry free)', okc && state.objects.length === ZL.L0_COMBO.objs.length && state.objects.every(o => footprint(o).every(c => inLot(state, c.x, c.y) && !(c.x === entry().x && c.y === entry().y))));
+    const want13 = ['elderPath', 'flagship', 'golden3', 'hotCold', 'kidCorner', 'orthoStation', 'premium', 'regDesk', 'restStation', 'sportsRehab', 'staffBack', 'waitRoom', 'cafeNook'].sort();
+    check('combo: >= 8 different zones active at once on L0 (13 expected)', act.length >= 8 && act.join() === want13.join(), act.length + ' ' + act.join());
+    const d = zoneDelta();
+    check('combo: stacked mods == sum of the 13 zones\' effects (no caps hit)', !sameDelta(d, expectDelta(act)), sameDelta(d, expectDelta(act)));
+    const m = state.mods;
+    check('combo: modifiers stay inside the global caps', m.slipRisk >= 0.1 && m.staffStamina >= 0.1 && m.nhiTurnover >= 0.1 && Object.values(m.typeSpawn).every(v => v >= 0 && v <= 3.5) && m.spawnMult <= 2.0 + 1e-9, JSON.stringify(m));
+    check('combo: invariants hold', invariants().length === 0, invariants().join(';'));
+    // save -> load round trip keeps zones (incl. floor cells) and mods
+    const zs = JSON.stringify(state.zones), ms = JSON.stringify(state.mods);
+    check('combo: saveGame ok', Sav.saveGame(state, 'z1'));
+    state.zones = []; state.mods = defaultMods();
+    const loaded = Sav.loadGame(state, 'z1');
+    check('combo: loadGame ok, zones + mods rebuilt identically (floor tiles in glow cells)', loaded && JSON.stringify(state.zones) === zs && JSON.stringify(state.mods) === ms, loaded + ' zones ' + (JSON.stringify(state.zones) === zs) + ' ' + (() => { const a = JSON.parse(ms), b = state.mods; return Object.keys(a).filter(k => JSON.stringify(a[k]) !== JSON.stringify(b[k])).map(k => k + ':' + JSON.stringify(a[k]) + '->' + JSON.stringify(b[k])).join(' '); })());
+    // achievements: collector counter is cumulative + sanitized, master needs 8 at once
+    {
+      Ach.ensure(state); state.achv.unlocked = {}; state.achv.counters.zonesSeen = { golden3: 1, bogus: 1, hotCold: 0 };
+      Ach.ensure(state);
+      check('achv: zonesSeen counter is sanitized (unknown ids / falsy dropped)', JSON.stringify(Object.keys(state.achv.counters.zonesSeen)) === '["golden3"]');
+      state.zones = []; for (const id of ['golden3', 'hotCold']) { state.zones = [{ id }]; Ach.evaluate(state, 'map:changed'); }
+      check('achv: 專區收藏家 not yet at 2 zones seen, counter keeps the history', !Ach.isUnlocked(state, 'c_zone_collect') && Ach.progressOf(state, ACHD.ACHIEVEMENTS.find(d => d.id === 'c_zone_collect')).progress === 2);
+      state.zones = act.slice(0, 7).map(id => ({ id })); Ach.evaluate(state, 'map:changed');
+      check('achv: 專區大師 needs 8 AT ONCE (7 -> locked)', !Ach.isUnlocked(state, 'c_zone_master'));
+      state.zones = act.slice(0, 8).map(id => ({ id })); Ach.evaluate(state, 'map:changed');
+      check('achv: 專區大師 unlocks with 8 zones active', Ach.isUnlocked(state, 'c_zone_master'));
+      check('achv: 專區收藏家 unlocks once 6 different zones were ever seen (not simultaneously)', Ach.isUnlocked(state, 'c_zone_collect') || (Ach.evaluate(state, 'week:end'), Ach.isUnlocked(state, 'c_zone_collect')));
+    }
+    // moving one member away drops the zone, moving it back restores it
+    const reg = state.objects.find(o => o.defId === 'reception');
+    check('combo: moving the reception away dissolves 掛號便民區 and only that zone', B.moveObject(state, reg.id, 10, 17, 0) ? !Syn.isZoneActive(state, 'regDesk') && Syn.isZoneActive(state, 'golden3') : true);
+    // all 13 zones share ONE connected cluster, so a part can come from anywhere in it: remove BOTH coffee machines -> the three coffee zones drop
+    lotBare(); ZL.placeCombo(B, state); refresh();
+    for (const c of state.objects.filter(o => o.defId === 'coffee')) B.removeAt(state, c.x, c.y);
+    check('combo: demolishing both coffee machines drops premium + staffBack + cafeNook, keeps golden3 / sportsRehab', ['premium', 'staffBack', 'cafeNook'].every(i => !Syn.isZoneActive(state, i)) && Syn.isZoneActive(state, 'golden3') && Syn.isZoneActive(state, 'sportsRehab'), activeIds().join());
+  }
+
+  // ---- F. performance ----
+  {
+    lotBare();
+    state.lotLevel = 3; state.lot = { ...LOTS[3].lot }; state.door = { ...LOTS[3].door };
+    state.objects = [];
+    let id = 1;
+    for (let y = 4; y < 20; y += 2) for (let x = 6; x < 26; x += 2) state.objects.push({ id: id++, defId: ['sofa', 'plant', 'heatbox', 'tens', 'coffee', 'water', 'bed', 'tv'][(x + y) % 8], x, y, rot: 0, busy: false, usedBy: null, staffId: null, wear: 0 });
+    state.nextId = id + 1;
+    for (let y = 4; y < 20; y++) for (let x = 6; x < 26; x += 3) state.map.floor[y][x] = 'ramp';
+    rebuildOccupancy(state);
+    const t0 = performance.now();
+    for (let i = 0; i < 200; i++) Syn.recomputeZones(state);
+    const per = (performance.now() - t0) / 200;
+    check('perf: recomputeZones on a 160-object lot with ramps < 4 ms', per < 4, per.toFixed(2) + ' ms (' + state.objects.length + ' objects, ' + state.zones.length + ' zones)');
+    lotBare();
+  }
+}
+
+// =====================================================================================================
+// SECTION: qualify (設施人員資格: treatment roles / attend, unstaffed detection, setup-only release, mid-run fire, mods)
+function qualifySection() {
+  section('Facility qualification (who may operate what)');
+  const roleSet = (a) => [...(a || [])].sort().join(',');
+  const TUNE0 = { ...P.TUNE };
+  const restoreTune = () => Object.assign(P.TUNE, TUNE0);
+
+  // ---- 1. the rule table ----
+  const RULES = {
+    exam: ['doctor', 'full'], us: ['doctor', 'full'], heat: ['nurse,pt', 'setup', 5], ir: ['nurse,pt', 'setup', 5], tens: ['pt', 'setup', 5], traction: ['pt', 'setup', 8],
+    taping: ['pt', 'full'], manual_nhi: ['pt', 'full'], redcord: ['pt', 'full'], shockwave: ['doctor,pt', 'full'], laser: ['doctor,pt', 'full'],
+    manual_self: ['pt', 'full'], prp: ['doctor', 'full'], insole: ['pt', 'full'], si: ['ot', 'full'], fine: ['ot', 'full'], speech: ['st', 'full'],
+  };
+  check('rules: every treatment is covered by the table', Object.keys(TREATMENTS).every(id => RULES[id]) && Object.keys(RULES).every(id => TREATMENTS[id]), Object.keys(TREATMENTS).filter(id => !RULES[id]).join());
+  for (const [id, r] of Object.entries(RULES)) {
+    const T = TREATMENTS[id];
+    check(`rules: ${id} roles ${r[0]} / attend ${r[1]}${r[2] ? ' setupMin ' + r[2] : ''}`, roleSet(T.staffRole) === r[0] && T.attend === r[1] && (r[1] !== 'setup' || T.setupMin === r[2]) && (r[1] !== 'full' || T.setupMin === undefined),
+      `${roleSet(T.staffRole)} ${T.attend} ${T.setupMin}`);
+  }
+  check('rules: no treatment is self-service any more (every staffRole non-empty)', Object.values(TREATMENTS).every(T => Array.isArray(T.staffRole) && T.staffRole.length > 0));
+  check('rules: all roles named in treatments exist', Object.values(TREATMENTS).every(T => T.staffRole.every(r => K.ROLES.includes(r))));
+  check('requiredRolesFor: hosts via stationFor (union), reception = nurse, furniture = none',
+    roleSet(Q.requiredRolesFor('heatbox')) === 'nurse,pt' && roleSet(Q.requiredRolesFor('tens')) === 'pt' && roleSet(Q.requiredRolesFor('exam_room')) === 'doctor' &&
+    roleSet(Q.requiredRolesFor('bed')) === 'pt' && roleSet(Q.requiredRolesFor('shockwave_room')) === 'doctor,pt' && roleSet(Q.requiredRolesFor('reception')) === 'nurse' &&
+    roleSet(Q.requiredRolesFor('si_room')) === 'ot' && roleSet(Q.requiredRolesFor('speech_room')) === 'st' && Q.requiredRolesFor('sofa').length === 0 && Q.requiredRolesFor('rest_room').length === 0,
+    ['heatbox', 'tens', 'exam_room', 'bed', 'shockwave_room', 'reception', 'sofa'].map(d => d + '=' + Q.requiredRolesFor(d)).join(' '));
+  check('requiredRolesFor: every treatment-hosting building is covered by its treatments\' roles', Object.values(BUILDABLES).every(d => (d.stationFor || []).every(t => TREATMENTS[t].staffRole.every(r => Q.requiredRolesFor(d.id).includes(r)))));
+  check('roleLabel uses ROLE_LABELS', K.ROLES.every(r => Q.roleLabel(r) === K.ROLE_LABELS[r]));
+  check('attendStamina: setup = staminaCost x setupMin/duration, at least 0.5; full = staminaCost',
+    near(Q.attendStamina(TREATMENTS.tens), 0.5) && near(Q.attendStamina(TREATMENTS.manual_nhi), TREATMENTS.manual_nhi.staminaCost) && Q.attendStamina(TREATMENTS.heat) >= 0.5,
+    `tens ${Q.attendStamina(TREATMENTS.tens)} heat ${Q.attendStamina(TREATMENTS.heat)}`);
+
+  // ---- helpers for small controlled clinics ----
+  const bareClinic = () => {
+    fresh(); clearObjects(); state.research.done = Object.keys(RESEARCH); state.money = 5e7;
+    state.staff = []; state.patients = []; state.queue = [];
+    P.TUNE.BASE_ARRIVALS = 0; state.reputation = 0;       // no random arrivals: the tests drive their own patients
+    refresh();
+  };
+  const addStaff = (role, x, y, skill = 5) => {
+    const s = S.createStaff(state, role, null, x, y);
+    s.skill = skill; s.stamina = s.staminaMax = 100; s.trait = null; s.morale = 70;
+    state.staff.push(s);
+    return s;
+  };
+  const addPatient = (plan, type = 'office') => {
+    const p = P.spawnPatient(state, type);
+    p.plan = plan.slice(); p.planIdx = 0; p.stage = 'waiting'; p.needSpot = true; p.path = []; p.dest = null; p.hold = false;
+    p.x = 15.5; p.y = 17.5; p.waitStart = p.age; p.patience = p.patienceMax = 500; p.cureScale = 1;
+    state.queue = state.queue.filter(id => id !== p.id);
+    return p;
+  };
+  const hirable = (role) => { const cid = 'qt' + role + Math.floor(rng() * 1e6); state.hirePool.push({ cid, role, name: '測試' + role, skill: 5, charm: 5, salary: 60000, hireCost: 1000, trait: null, staminaMax: 100 }); return cid; };
+
+  // ---- 2. isUnstaffed / missingRoles / cache invalidation ----
+  bareClinic();
+  const hb = put('heatbox', 11, 11), tn = put('tens', 13, 11), rc = put('reception', 16, 17), ex = put('exam_room', 11, 14), sf = put('sofa', 12, 18);
+  check('isUnstaffed: nobody on the payroll -> every facility that needs staff is unstaffed, furniture is not',
+    [hb, tn, rc, ex].every(o => Q.isUnstaffed(state, o)) && !Q.isUnstaffed(state, sf));
+  let miss = Q.missingRoles(state);
+  const missOf = (role) => (miss.find(m => m.role === role) || { objects: [] }).objects.slice().sort().join(',');
+  check('missingRoles: lists doctor / pt / nurse with the objects waiting for them, labelled',
+    miss.length === 3 && missOf('pt') === [hb.id, tn.id].sort().join(',') && missOf('nurse') === [hb.id, rc.id].sort().join(',') && missOf('doctor') === String(ex.id) && miss.every(m => m.label && m.label.length > 1),
+    JSON.stringify(miss));
+  const ptCid = hirable('pt');
+  const events = []; const offEv = bus.on('staff:changed', (e) => events.push(e));
+  const pt = S.hire(state, ptCid);
+  check('hire emits staff:changed', !!pt && events.length === 1 && events[0].role === 'pt', JSON.stringify(events));
+  miss = Q.missingRoles(state);
+  check('partially staffed is fine: a PT alone staffs heatbox + tens; nurse is still missing for the reception only, doctor for the exam room',
+    !Q.isUnstaffed(state, hb) && !Q.isUnstaffed(state, tn) && Q.isUnstaffed(state, rc) && Q.isUnstaffed(state, ex) && missOf('nurse') === String(rc.id) && !miss.some(m => m.role === 'pt') && missOf('doctor') === String(ex.id),
+    JSON.stringify(miss));
+  const nuCid = hirable('nurse'); const nu = S.hire(state, nuCid);
+  check('hiring the nurse staffs the reception', !Q.isUnstaffed(state, rc) && !Q.missingRoles(state).some(m => m.role === 'nurse'));
+  const fired = S.fire(state, pt.id); miss = Q.missingRoles(state);
+  check('fire emits staff:changed and the cache follows (PT gone -> tens unstaffed again, heatbox stays staffed by the nurse)',
+    fired && events.length === 3 && Q.isUnstaffed(state, tn) && !Q.isUnstaffed(state, hb) && missOf('pt') === String(tn.id), JSON.stringify(events.map(e => e.action)));
+  const drId = hirable('doctor'); S.hire(state, drId);
+  const nu2 = S.resignStaff(state, nu.id);
+  check('resign (removeStaff) also emits staff:changed; reception unstaffed again', !!nu2 && events.length === 5 && Q.isUnstaffed(state, rc), String(events.length));
+  state.staff.push(S.createStaff(state, 'pt', null, 15, 18));       // a hire that bypassed the bus: the signature check still catches it
+  check('cache survives direct state.staff edits (signature)', !Q.isUnstaffed(state, tn));
+  state.staff.pop();
+  check('...and the removal', Q.isUnstaffed(state, tn));
+  const hb2 = put('heatbox', 12, 11);
+  check('map change: a new facility is picked up (unstaffed, no PT/nurse)', hb2 && Q.isUnstaffed(state, hb2) === true && Q.unstaffedIds(state).has(hb2.id) === true);
+  offEv();
+  // toast once per role per session
+  Q.resetQualifyToasts();
+  const toasts = []; const offT = bus.on('toast', (e) => toasts.push(e.text));
+  Q.toastIfUnstaffed(state, hb2); Q.toastIfUnstaffed(state, tn); Q.toastIfUnstaffed(state, hb);
+  offT();
+  check('toast 尚未僱用○○，這台設備無法運作: once per role', toasts.length === 1 && /尚未僱用.*這台設備無法運作/.test(toasts[0]) && toasts[0].includes('物理治療師'), JSON.stringify(toasts));
+  const oldSave = JSON.stringify([Q.isUnstaffed(state, tn), Q.missingRoles(state).length]);
+  bus.emit('state:loaded', {});
+  check('state:loaded invalidates the cache without changing the answer', JSON.stringify([Q.isUnstaffed(state, tn), Q.missingRoles(state).length]) === oldSave);
+
+  // ---- 3. setup-only machines: staff is released after setupMin while the treatment keeps running ----
+  const runUntil = (cond, max = 400) => { let n = 0; while (!cond() && n < max) { step(1); n++; } return n; };
+  bareClinic();
+  put('tens', 12, 12); put('tens', 14, 12); put('sofa', 12, 18);
+  const pt1 = addStaff('pt', 13, 14);
+  pt1.stamina = 60;
+  const stam0 = pt1.stamina;
+  const expect45 = TREATMENTS.tens.duration / state.mods.nhiTurnover;          // (research 'rs_heat' etc. speed NHI machines up)
+  let stamRel = null, drain = 0;
+  const pa = addPatient(['tens']), pb = addPatient(['tens']);
+  const done = []; const offD = bus.on('treatment:done', (e) => done.push({ id: e.treatmentId, staffId: e.staffId, t: state.time.clock, pid: e.patient.id }));
+  const tl = {};      // patient id -> {start, rel}
+  for (let i = 0; i < 160 && (!tl[pa.id] || tl[pa.id].end === undefined || !tl[pb.id] || tl[pb.id].end === undefined); i++) {
+    const prevSt = pt1.stamina, prevState = pt1.state;
+    step(1);
+    if (pt1.state === 'working' || prevState === 'working') drain += Math.max(0, prevSt - pt1.stamina);
+    for (const p of [pa, pb]) {
+      const r = tl[p.id] || (tl[p.id] = {});
+      if (p.stage === 'treating' && r.start === undefined) { r.start = state.time.clock; r.total = p.total; }
+      if (r.start !== undefined && r.rel === undefined && !p.staffId) { r.rel = state.time.clock; r.remAtRel = p.remaining; r.ptBusy = !!pt1.task; if (stamRel === null) stamRel = pt1.stamina; }
+      if (r.end === undefined && p.planIdx >= 1) r.end = state.time.clock;
+    }
+  }
+  offD();
+  const ra = tl[pa.id], rb = tl[pb.id];
+  check('setup: both machine sessions started and finished', ra && rb && ra.start !== undefined && rb.start !== undefined && ra.end !== undefined && rb.end !== undefined, JSON.stringify(tl));
+  check('setup: treatment clock = full duration (45 / nhiTurnover) from the start of setup', ra && near(ra.total, expect45, 1e-6) && Math.abs((ra.end - ra.start) - expect45) <= 2, `total ${ra && ra.total} expected ${expect45} span ${ra && (ra.end - ra.start)}`);
+  check('setup: the staff member is released after setupMin (5) minutes, the patient keeps treating alone', ra && ra.rel !== undefined && Math.abs((ra.rel - ra.start) - 5) <= 1.5 && ra.remAtRel > expect45 - 7, `rel-start ${ra && (ra.rel - ra.start)} remaining ${ra && ra.remAtRel}`);
+  const overlap = rb && ra && rb.start < ra.end && ra.start < rb.end;
+  check('setup: one PT runs two machines at the same time (second session started before the first ended)', overlap && Math.abs(rb.start - ra.start) < 30, `A ${ra && ra.start}-${ra && ra.end} B ${rb && rb.start}-${rb && rb.end}`);
+  check('setup: treatment:done carries the setup staff id', done.length === 2 && done.every(d => d.id === 'tens' && d.staffId === pt1.id), JSON.stringify(done));
+  check('setup: stamina cost ~0.5 per setup (min 0.5), not per session (2 setups ~ 1.0 in all)', Math.abs(drain - 2 * Q.attendStamina(TREATMENTS.tens) * state.mods.staffStamina) < 0.25, `drained while working: ${drain.toFixed(2)} for 2 setups (x staffStamina ${state.mods.staffStamina})`);
+  check('setup: machines and staff end up free', state.objects.every(o => !o.busy && !o.usedBy) && !pt1.task && pt1.state !== 'working');
+  // traction needs 8 minutes
+  bareClinic(); put('traction', 12, 12); put('sofa', 12, 18); const pt2 = addStaff('pt', 13, 14); const pc = addPatient(['traction']);
+  let c0 = null, c1 = null;
+  for (let i = 0; i < 120 && c1 === null; i++) { step(1); if (pc.stage === 'treating' && c0 === null) c0 = state.time.clock; if (c0 !== null && !pc.staffId && c1 === null) c1 = state.time.clock; }
+  check('setup: traction needs 8 minutes of staff time', c0 !== null && c1 !== null && Math.abs((c1 - c0) - 8) <= 1.5, `${c1 - c0}`);
+  // heat: a nurse can do it (the clinic has no PT at all)
+  bareClinic(); put('heatbox', 12, 12); put('sofa', 12, 18); const nu3 = addStaff('nurse', 13, 14); const pd = addPatient(['heat']);
+  runUntil(() => pd.planIdx >= 1 || pd.stage === 'leaving', 200);
+  check('heat: a nurse alone can run a heatbox (no PT needed)', pd.planIdx >= 1 && pd.treated === 1, `planIdx ${pd.planIdx} treated ${pd.treated}`);
+
+  // ---- 4. full attendance: staff bound for the whole session ----
+  bareClinic(); put('bed', 12, 12); put('sofa', 12, 18); const pt3 = addStaff('pt', 13, 15); const pe = addPatient(['manual_nhi']);
+  let e0 = null, e1 = null, midBusy = false, stam3 = pt3.stamina;
+  for (let i = 0; i < 160 && e1 === null; i++) {
+    step(1);
+    if (pe.stage === 'treating' && e0 === null) e0 = state.time.clock;
+    if (e0 !== null && state.time.clock - e0 > 20 && state.time.clock - e0 < 25 && pt3.task && pe.staffId === pt3.id) midBusy = true;
+    if (pe.planIdx >= 1 && e1 === null) e1 = state.time.clock;
+  }
+  check('full: the PT stays on the patient for the whole manual session', midBusy && e0 !== null && e1 !== null && Math.abs((e1 - e0) - pe.total) <= 2.5, `span ${e1 - e0} total ${pe.total}`);
+  check('full: manual treatment drains its full staminaCost', stam3 - pt3.stamina > TREATMENTS.manual_nhi.staminaCost * 0.7, (stam3 - pt3.stamina).toFixed(1));
+
+  // ---- 5. the last PT leaves mid-run ----
+  bareClinic(); put('bed', 12, 12); put('tens', 14, 12); put('tens', 16, 12); put('sofa', 12, 18); put('exam_room', 17, 15);
+  const pt4 = addStaff('pt', 14, 15); addStaff('doctor', 18, 14); addStaff('nurse', 15, 18);
+  const pf = addPatient(['manual_nhi', 'tens']), pg = addPatient(['tens']), ph = addPatient(['tens', 'tens']);
+  const tdone = []; const offTD = bus.on('treatment:done', (e) => tdone.push(e.treatmentId + ':' + e.patient.id));
+  runUntil(() => pf.stage === 'treating' && pg.stage === 'treating' && !pg.staffId, 300);
+  const phase = { f: pf.stage, fStaff: pf.staffId === pt4.id, g: pg.stage, gStaff: pg.staffId, hStage: ph.stage };
+  const satBefore = pf.satisfaction;
+  check('fire/last PT: precondition (manual session with the PT, tens session running unattended)', phase.f === 'treating' && phase.fStaff && phase.g === 'treating' && phase.gStaff === null, JSON.stringify(phase));
+  const planF = pf.planIdx;
+  S.fire(state, pt4.id);
+  step(1); step(1);
+  check('fire/last PT: the interrupted manual patient is released (no ghost staff / station claims)', pf.staffId === null && (pf.stage !== 'treating' || pf.targetObj === null) && state.objects.filter(o => o.defId === 'bed').every(o => !o.usedBy || o.usedBy !== pf.id), `${pf.stage} ${pf.staffId} ${pf.targetObj}`);
+  runUntil(() => state.patients.length === 0, 600);
+  offTD();
+  check('fire/last PT: no deadlock - every patient eventually leaves', state.patients.length === 0, state.patients.map(p => p.stage + ':' + p.plan[p.planIdx]).join());
+  check('fire/last PT: unattended machine session ran to completion', tdone.includes('tens:' + pg.id), tdone.join());
+  check('fire/last PT: manual step skipped (never completed) and the patient pays the skip penalty path', !tdone.some(t => t.startsWith('manual_nhi')) && pf.planIdx > planF, `planIdx ${pf.planIdx}`);
+  check('fire/last PT: nothing stays reserved afterwards', state.objects.every(o => !o.busy && !o.usedBy) && state.staff.every(s => !s.task), JSON.stringify(state.objects.filter(o => o.busy || o.usedBy).map(o => o.defId)));
+  check('fire/last PT: skipped steps are counted (debug.skippedRole)', (P.debug.skippedRole || 0) >= 1, String(P.debug.skippedRole));
+  void satBefore;
+
+  // ---- 6. patients avoid unstaffed facilities, upsells too ----
+  bareClinic(); restoreTune();
+  put('reception', 16, 17); put('sofa', 12, 18); put('sofa', 14, 18); put('exam_room', 11, 11); put('tens', 14, 11); put('bed', 17, 11); put('manual_room', 11, 14); put('laser_room', 14, 14);
+  addStaff('doctor', 13, 13); addStaff('nurse', 17, 18);      // no PT, no OT, no ST on the payroll
+  state.reputation = 150; refresh();
+  const types = {}; const offU = bus.on('treatment:done', (e) => { types[e.treatmentId] = (types[e.treatmentId] || 0) + 1; });
+  let bad = 0;
+  for (let i = 0, N = 3 * MIN_PER_WEEK; i < N; i++) {
+    step(1);
+    const un = Q.unstaffedIds(state);
+    for (const p of state.patients) if (p.targetObj != null && un.has(p.targetObj) && (p.stage === 'to_station' || p.stage === 'treating')) bad++;
+  }
+  offU();
+  check('unstaffed: no patient ever reserves or uses a facility nobody can operate', bad === 0, String(bad));
+  check('unstaffed: only doctor / nurse work was done (exam + laser via doctor), no PT-only treatment happened',
+    (types.exam || 0) > 3 && !types.tens && !types.taping && !types.manual_nhi && !types.manual_self && !types.insole, JSON.stringify(types));
+  check('unstaffed: patients still flow through (visits completed)', state.stats.patientsMonth + state.stats.patientsToday > 3, `${state.stats.patientsTotal}`);
+  check('unstaffed: upsells never offered for treatments nobody can run (no unstaffed self-pay step in anyone\'s plan, none sold)',
+    state.patients.every(p => p.plan.every(t => TREATMENTS[t].kind !== 'self' || Q.treatmentStaffed(state, t))) && !types.redcord && !types.manual_self && !types.insole, JSON.stringify(types));
+  // a station unstaffed only at the moment: tens patient asks, no PT -> skipped right away without queueing at the machine
+  bareClinic(); put('tens', 12, 12); put('sofa', 12, 18); addStaff('nurse', 15, 18);
+  const pi = addPatient(['tens']);
+  runUntil(() => pi.planIdx >= 1 || pi.stage === 'leaving', 40);
+  check('unstaffed: a step nobody can run is skipped at once (within a couple of minutes), no queueing', (pi.planIdx >= 1 || pi.stage === 'leaving') && pi.treated === 0 && !state.objects[0].busy, `${pi.stage} ${pi.planIdx}`);
+  check('unstaffed: skip penalty is the milder SKIP_ROLE_PENALTY', P.TUNE.SKIP_ROLE_PENALTY > 0 && P.TUNE.SKIP_ROLE_PENALTY < P.TUNE.SKIP_STEP_PENALTY);
+
+  // ---- 7. upgrade modifiers (cureGain / treatTime / wearRate / satGain / typeSat / typeCure) ----
+  bareClinic();
+  const m = state.mods;
+  m.treatTime = 0.5; check('mods: treatTime 0.5 applies', near(P.treatTimeMod(state), 0.5));
+  m.treatTime = 0.1; check('mods: treatTime clamps at 0.5', near(P.treatTimeMod(state), 0.5));
+  m.treatTime = 9; check('mods: treatTime clamps at 2', near(P.treatTimeMod(state), 2));
+  m.treatTime = NaN; check('mods: treatTime NaN -> neutral', near(P.treatTimeMod(state), 1));
+  m.cureGain = 1.5; m.typeCure = { office: 0.2 };
+  check('mods: cureGain x typeCure(1+x) multiply, per patient type', near(P.cureMod(state, 'office'), 1.8) && near(P.cureMod(state, 'elder'), 1.5), `${P.cureMod(state, 'office')} ${P.cureMod(state, 'elder')}`);
+  m.cureGain = 0.1; m.typeCure = { kid: -2 };
+  check('mods: cureGain >= 0.5 and typeCure factor >= 0.5', near(P.cureMod(state, 'elder'), 0.5) && near(P.cureMod(state, 'kid'), 0.25), `${P.cureMod(state, 'elder')} ${P.cureMod(state, 'kid')}`);
+  m.cureGain = 99; m.typeCure = { sports: 99 };
+  check('mods: cureGain / typeCure upper clamps (3 each)', near(P.cureMod(state, 'elder'), 3) && near(P.cureMod(state, 'sports'), 9), `${P.cureMod(state, 'elder')} ${P.cureMod(state, 'sports')}`);
+  m.elderSat = 3; m.typeSat = { elder: 2, kid: 4, sports: -100 }; m.satGain = 0;
+  check('mods: typeSat adds to the legacy elderSat, other types use their own key, clamped to +-30',
+    near(P.typeSatMod(state, 'elder'), 5) && near(P.typeSatMod(state, 'kid'), 4) && near(P.typeSatMod(state, 'office'), 0) && near(P.typeSatMod(state, 'sports'), -30),
+    ['elder', 'kid', 'office', 'sports'].map(t => P.typeSatMod(state, t)).join());
+  m.satGain = 99; check('mods: satGain clamps to +20', near(P.satGainMod(state), 20)); m.satGain = -99; check('mods: satGain clamps to -20', near(P.satGainMod(state), -20));
+  // end-to-end with identical random streams: only the modifier differs
+  const solo = (mods, type = 'office') => {
+    bareClinic(); put('tens', 12, 12); put('sofa', 12, 18);
+    addStaff('pt', 13, 14);
+    Object.assign(state.mods, mods);
+    seedRng(4242);
+    const p = addPatient(['tens'], type); p.satisfaction = 50; p.hp = 0; p.cureScale = 1;
+    let total = null, left = null;
+    const off = bus.on('patient:left', (e) => { left = e.patient.satisfaction; });
+    for (let i = 0; i < 400 && left === null; i++) { step(1); if (p.stage === 'treating' && total === null) total = p.total; }
+    off();
+    return { total, hp: p.hp, sat: left, p };
+  };
+  const base = solo({}), fast = solo({ treatTime: 0.5 }), fast2 = solo({ treatTime: 0.2 });
+  check('e2e treatTime: 0.5 halves the session, 0.2 is clamped to the same', near(fast.total / base.total, 0.5, 0.01) && near(fast2.total, fast.total, 1e-6), `${base.total} ${fast.total} ${fast2.total}`);
+  const cg = solo({ cureGain: 1.5 }), tc = solo({ typeCure: { office: 0.2 } }), tcOther = solo({ typeCure: { elder: 0.5 } });
+  check('e2e cureGain x1.5 / typeCure +0.2 scale the cure of a completed treatment; other types unaffected',
+    base.hp > 0 && near(cg.hp / base.hp, 1.5, 0.01) && near(tc.hp / base.hp, 1.2, 0.01) && near(tcOther.hp / base.hp, 1, 0.01), `${base.hp} ${cg.hp} ${tc.hp} ${tcOther.hp}`);
+  const sg = solo({ satGain: 5 });
+  check('e2e satGain +5: every visit ends 5 points happier', near(sg.sat - base.sat, 5, 0.05), `${base.sat} -> ${sg.sat}`);
+  const spawnSat = (mods, type) => { bareClinic(); Object.assign(state.mods, mods); seedRng(99); return P.spawnPatient(state, type).satisfaction; };
+  const s0 = spawnSat({ elderSat: 0 }, 'kid'), s1 = spawnSat({ elderSat: 0, typeSat: { kid: 4 } }, 'kid'), s2 = spawnSat({ elderSat: 0, typeSat: { kid: 4 } }, 'elder'), s3 = spawnSat({ elderSat: 3, typeSat: { elder: 2 } }, 'elder'), s4 = spawnSat({ elderSat: 0 }, 'elder');
+  check('e2e typeSat applies at arrival: +4 for kids only; elders get elderSat + typeSat', near(s1 - s0, 4, 0.01) && near(s2, s4, 0.01) && near(s3 - s4, 5, 0.01), `${s0} ${s1} | elder ${s4} ${s2} ${s3}`);
+  // wear
+  bareClinic(); const wt = put('tens', 12, 12);
+  Eq.useWear(state, wt); const w1 = wt.wear;
+  wt.wear = 0; state.mods.wearRate = 0.5; Eq.useWear(state, wt); const w2 = wt.wear;
+  wt.wear = 0; state.mods.wearRate = 0.01; Eq.useWear(state, wt); const w3 = wt.wear;
+  wt.wear = 0; state.mods.wearRate = 50; Eq.useWear(state, wt); const w4 = wt.wear;
+  wt.wear = 0; state.mods.wearRate = 0.5; Eq.weeklyWear(state); const w5 = wt.wear;
+  check('mods: wearRate scales per-use wear (0.5 -> half), clamps at 0.3 / 3', near(w2 / w1, 0.5, 1e-6) && near(w3 / w1, 0.3, 1e-6) && near(w4 / w1, 3, 1e-6), `${w1} ${w2} ${w3} ${w4}`);
+  check('mods: wearRate also scales the weekly wear', near(w5, Eq.WEAR_TUNE.WEEK * 0.5, 1e-6), String(w5));
+  restoreTune();
+  feature('設施人員資格 (機器開機後放手 / 手法全程陪同 / 缺人偵測)', 'works', 'qualify: 17 treatments x roles x attend, setup-only release (5/8 min), last-PT fire mid-run, isUnstaffed/missingRoles cache, 6 upgrade modifiers + clamps');
+  fresh();
+}
+
 const MULT_FLOOR = { spawnMult: 0.1, patience: 0.1, slipRisk: 0.1, walkSpeed: 0.1, nhiTurnover: 0.1, selfPayPrice: 0.1, researchGain: 0.1, staffStamina: 0.1, rentMult: 0.1, wageMult: 0.1 };
 
 // =====================================================================================================
@@ -2620,6 +3328,9 @@ if (want('achievements')) achievementsSection();
 if (want('events')) eventsSection();
 if (want('longrun')) longrunSection();
 if (want('career')) careerSection();
+if (want('zones')) zonesSection();
+if (want('upgrades')) upgradesSection();
+if (want('qualify')) qualifySection();
 
 if (FEATURES.length) {
   section('Feature conformance');

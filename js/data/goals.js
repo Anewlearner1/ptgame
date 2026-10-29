@@ -71,6 +71,8 @@ export const GOAL_METRICS = {
   // ---- 研發 ----
   researchDone: { label: '累計完成研發', unit: '項', higherIsBetter: true, desc: '生涯中累計完成的研發節點數。' },
   researchYear: { label: '本年完成研發', unit: '項', higherIsBetter: true, desc: '本年完成的研發節點數。' },
+  upgradeLevels: { label: '累計持續精進等級', unit: '級', higherIsBetter: true, desc: '六條「持續精進」路線的等級總和。' },
+  upgradeYear: { label: '本年投入持續精進', unit: '級', higherIsBetter: true, desc: '本年新增的「持續精進」等級數。' },
 };
 
 // ---------------------------------------------------------------------------
@@ -702,6 +704,17 @@ export const BONUS_GOALS = [
     reward: { money: 20000, points: { medical: 10 } },
     weight: 4,
     cond: { minYear: 2, notIfDone: true },
+  },
+  {
+    id: 'b_rd_upgrade3',
+    group: 'research',
+    name: '精進不懈',
+    desc: '本年投入 3 級「持續精進」（運作 → 研發）。',
+    conds: [{ key: 'upgradeYear', target: 3, cmp: 'gte' }],
+    window: 'year',
+    reward: { money: 20000, points: { service: 10 } },
+    weight: 3,
+    cond: { minYear: 4, needResearch: 'rs_chronic' },
   },
 ];
 

@@ -7,6 +7,7 @@ import { h, setClass, setText, tabbed } from '../dom.js';
 import { money } from '../fmt.js';
 import { layout, setBMode } from '../layout.js';
 import { artEl, artOn, itemSprite, thumbEl } from '../artdom.js';
+import { roleRow, updateRoleRow, roleLine } from '../roles.js';
 
 const store = { tab: 'env', sub: {} };
 let keepPref = false;     // 📌 keep-tool pin (ui.tool.keep, consumed by render/input.js): stay armed after each placement
@@ -41,6 +42,7 @@ export function mountBuild(root, state, ui) {
   // mobile tray (portrait) / strip controls (landscape): selected item, pin, rotate, cancel, expand
   const trayName = h('b', { class: 'u-tray-name' });
   const trayCost = h('span', { class: 'u-tray-cost muted' });
+  const trayRole = h('span', { class: 'u-tray-role', hidden: true });
   const trayGlyph = h('span', { class: 'u-tray-glyph' });
   const trayArt = artEl(null, { size: 44, noReserve: true, cls: 'u-tray-art' });
   const trayThumb = thumbEl(null, { width: 44, height: 44, fallback: trayGlyph });
@@ -54,7 +56,7 @@ export function mountBuild(root, state, ui) {
   const bFull = h('button', { class: 'btn u-tray-btn u-tray-full', type: 'button', 'aria-label': '展開建造清單', onclick: () => setBMode('full') }, '⤢', h('span', { class: 'u-tray-lbl' }, ' 展開'));
   const bChip = h('button', { class: 'btn u-tray-btn u-tray-chipbtn', type: 'button', 'aria-label': '收合', onclick: () => setBMode('chip') }, '▾');
   const tray = h('div', { class: 'u-tray' },
-    h('div', { class: 'u-tray-item' }, trayArt, trayThumb, h('div', { class: 'u-tray-txt' }, trayName, trayCost)),
+    h('div', { class: 'u-tray-item' }, trayArt, trayThumb, h('div', { class: 'u-tray-txt' }, trayName, trayCost, trayRole)),
     h('div', { class: 'u-tray-btns' }, bPin, bRot, bAgain, bCancel, bFull, bChip));
   root.appendChild(tray);
 
@@ -96,6 +98,7 @@ export function mountBuild(root, state, ui) {
           setClass(c.el, 'locked', !open);
           setClass(c.el, 'selected', ui.tool.defId === id && (ui.tool.mode === 'place' || ui.tool.mode === 'paint'));
           setClass(c.cost, 'bad', open && state.money < d.cost);
+          if (c.roles) updateRoleRow(c.roles, state);
           if (c.open !== open) {
             c.open = open;
             const n = d.requires && RESEARCH[d.requires];
@@ -112,6 +115,7 @@ export function mountBuild(root, state, ui) {
   function makeCard(d) {
     const cost = h('div', { class: 'u-cost' }, money(d.cost) + (d.layer === 'floor' ? ' /格' : ''));
     const req = h('div', { class: 'u-req' });
+    const roles = roleRow(state, d.id);      // 需要：✔／⚠ 職類 (null for furniture and floors)
     const el = h('div', {
       class: 'card u-item', role: 'button', tabIndex: 0, dataset: { id: d.id, tipDef: d.id },
       onclick: () => pickItem(d),
@@ -124,8 +128,9 @@ export function mountBuild(root, state, ui) {
       h('div', { class: 'u-iname' }, d.name),
       cost,
       h('div', { class: 'u-sub muted' }, `${d.w}×${d.h} · 維護 ${money(d.upkeep || 0)}`),
+      roles,
       req);
-    cardEls[d.id] = { el, cost, req, open: undefined };
+    cardEls[d.id] = { el, cost, req, roles, open: undefined };
     return el;
   }
 
@@ -175,6 +180,9 @@ export function mountBuild(root, state, ui) {
       setText(trayCost, m === 'demolish' ? '點擊物件或地板'
         : m === 'move' ? (carried ? `搬移費 ${money(relocationCost(ui.tool.carryDef))}` : '點選要搬移的設備')
           : td ? money(td.cost) + (td.layer === 'floor' ? ' /格' : '') + (armed ? '' : '　已放置') : '');
+      const rl = m !== 'demolish' && m !== 'move' && td ? roleLine(state, td.id) : '';
+      setText(trayRole, rl); trayRole.hidden = !rl;
+      setClass(trayRole, 'lack', !!rl && rl.indexOf('✔') < 0);
       bAgain.hidden = armed || !lastDef;
       bPin.hidden = !(m === 'place' || m === 'paint' || m === 'move');
       const pinOn = m === 'move' ? !!ui.tool.keep : keepPref;

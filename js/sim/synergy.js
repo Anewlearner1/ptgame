@@ -51,18 +51,59 @@ export function adjacencyComponents(objects) {
   return [...groups.values()];
 }
 
+// ---- floor-tile requirement (needsFloors) ----
+// Rule (docs/ARCHITECTURE.md §3.1): for `needsFloors: {ramp: 3}` the cluster's member objects (the ones whose defId is in `needs`)
+// define SEED tiles = floor tiles of that type inside the member footprints grown by 1 (Chebyshev, so edges and corners touch).
+// Every same-type tile 8-connected to a seed (a contiguous strip) also counts, so only ONE tile of a strip has to touch a member.
+// The strip is walked breadth-first and stops after FLOOR_SCAN_CAP(n) tiles (>= n), so the cost is O(n) per zone; those tiles are
+// returned as extra glow cells. Returns the tile list (length >= n for every floor type) or null when a requirement is not met.
+const floorCap = (n) => n + 6;
+function collectFloors(state, members, needsFloors) {
+  const grid = state.map && state.map.floor;
+  if (!grid) return null;
+  const rects = members.map(rectOf).filter(Boolean);
+  const out = [];
+  for (const type of Object.keys(needsFloors)) {
+    const need = needsFloors[type], cap = floorCap(need);
+    const seen = new Set(), queue = [];
+    const at = (x, y) => (grid[y] ? grid[y][x] : null);
+    const push = (x, y) => {
+      const k = y * 4096 + x;
+      if (seen.has(k) || at(x, y) !== type) return;
+      seen.add(k); queue.push(x, y);
+    };
+    for (const r of rects) for (let y = r.y0 - 1; y <= r.y1 + 1; y++) for (let x = r.x0 - 1; x <= r.x1 + 1; x++) if (x >= 0 && y >= 0) push(x, y);
+    const tiles = [];
+    for (let qi = 0; qi < queue.length && tiles.length < cap; qi += 2) {
+      const x = queue[qi], y = queue[qi + 1];
+      tiles.push({ x, y });
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && x + dx >= 0 && y + dy >= 0) push(x + dx, y + dy);
+    }
+    if (tiles.length < need) return null;
+    for (const t of tiles) out.push(t);
+  }
+  return out;
+}
+
 // Fills state.zones with {id, name, icon, objectIds[], cells[{x,y}]} (one entry per qualifying component).
+// cells = footprints of the member objects (+ the counted floor tiles for needsFloors zones) so the renderer can outline them.
 export function recomputeZones(state) {
   const zones = [];
   const comps = adjacencyComponents(state.objects || []);
+  const compCounts = comps.map(comp => { const m = new Map(); for (const o of comp) m.set(o.defId, (m.get(o.defId) || 0) + 1); return m; });
   for (const syn of synergyList()) {
     if (!syn.needs || !syn.needs.length) continue;
-    for (const comp of comps) {
-      const ids = new Set(comp.map(o => o.defId));
-      if (!syn.needs.every(n => ids.has(n))) continue;
-      const members = comp.filter(o => syn.needs.includes(o.defId));
+    for (let ci = 0; ci < comps.length; ci++) {
+      const have = compCounts[ci];
+      if (!syn.needs.every(n => (have.get(n) || 0) >= ((syn.needsCount && syn.needsCount[n]) || 1))) continue;
+      const members = comps[ci].filter(o => syn.needs.includes(o.defId));
       const cells = [];
       for (const o of members) for (const c of footprint(o)) cells.push({ x: c.x, y: c.y });
+      if (syn.needsFloors) {
+        const fl = collectFloors(state, members, syn.needsFloors);
+        if (!fl) continue;
+        for (const c of fl) cells.push(c);
+      }
       zones.push({ id: syn.id, name: syn.name, icon: syn.icon, objectIds: members.map(o => o.id), cells });
     }
   }
@@ -74,8 +115,31 @@ export function isZoneActive(state, id) {
   return (state.zones || []).some(z => z.id === id);
 }
 
-// Hint for the UI dictionary: which needed defIds the player already has placed.
+// Hint for the UI dictionary: one row per requirement with how many the player owns.
+//   [{kind:'obj', id, need, have, ok}, {kind:'floor', id, need, have, ok}]   (floor `have` = best strip touching a member, 0 if none)
+// Cheap: counts placed objects once and, for floors, the painted tiles of that type in the lot (an upper bound shown as 2/3).
 export function synergyProgress(state, syn) {
-  const have = new Set((state.objects || []).map(o => o.defId));
-  return syn.needs.map(n => ({ defId: n, have: have.has(n) }));
+  const cnt = new Map();
+  for (const o of state.objects || []) cnt.set(o.defId, (cnt.get(o.defId) || 0) + 1);
+  const out = syn.needs.map(n => {
+    const need = (syn.needsCount && syn.needsCount[n]) || 1, have = cnt.get(n) || 0;
+    return { kind: 'obj', defId: n, id: n, need, have, ok: have >= need };
+  });
+  for (const f of Object.keys(syn.needsFloors || {})) {
+    const need = syn.needsFloors[f];
+    let have = 0;
+    for (const row of (state.map && state.map.floor) || []) for (const id of row || []) if (id === f) have++;
+    out.push({ kind: 'floor', defId: f, id: f, need, have: Math.min(have, need), ok: have >= need });
+  }
+  return out;
+}
+
+// Research nodes that must still be done before this zone can be built at all (syn.unlock + the `requires` of every needed buildable).
+export function zoneLocks(state, syn) {
+  const done = new Set((state.research && state.research.done) || []);
+  const out = [];
+  const add = (id) => { if (id && !done.has(id) && !out.includes(id)) out.push(id); };
+  add(syn.unlock);
+  for (const n of [...syn.needs, ...Object.keys(syn.needsFloors || {})]) add((BUILDABLES[n] || {}).requires);
+  return out;
 }

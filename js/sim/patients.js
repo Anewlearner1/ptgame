@@ -23,6 +23,7 @@ import { isTreatmentUnlocked } from './research.js';
 import { selfPayPrice, resolveCured, reviewFactor, nhiClaim, copayFor } from './economy.js';
 import { useWear } from './equipment.js';
 import { isStaffAvailable, assignTask, releaseStaff, staffAtStand, tiredFactor, TUNE as STAFF_TUNE } from './staff.js';
+import { attendOf, attendMinutes, treatmentStaffed } from './qualify.js';
 
 // ================= tuning knobs =================
 export const TUNE = {
@@ -49,6 +50,11 @@ export const TUNE = {
   SAT_PER_PATIENCE: 0.25,    // satisfaction lost per patience point lost
   COMFORT_SAT: 0.06,         // satisfaction / min at max comfort
   SAT_PER_TREATMENT: 3,
+  SKIP_ROLE_PENALTY: 4,      // a step is skipped at once (no queueing) because nobody on the payroll is qualified for it: half the penalty, the player can fix it by hiring
+  NURSE_SETUP: true,         // nurses may set up heat / infrared machines (their roles in treatments.js), but only while nobody waits to register ...
+  NURSE_RANGE: 3,            // ... and the machine is this close (tiles) - a walk across the clinic takes a nurse away from the front desk for ages
+  SLOT_LONG: 20, SLOT_SHORT: 10, SLOT_STRICT: 0,   // staffSlots: long sessions (>= SLOT_LONG min) ignore short setups (< SLOT_SHORT min) of other patients
+  NURSE_PREF: 3,             // staff pick score bonus for a spare nurse over a PT for such a setup (the PT is the scarce resource)
   SKIP_STEP_PENALTY: 8,      // was 4: with the NHI single-claim rule a missing modality no longer costs revenue, so it costs satisfaction instead
   SLIP_BASE: 0.0022,         // slip chance per tile on grip 0 (scaled by (1-grip), slipProne, mods.slipRisk)
   SLIP_SAT: 25, SLIP_STUN: 8,
@@ -81,6 +87,21 @@ export const debug = { teleports: 0, repaths: 0, forcedSnaps: 0, skipped: 0, sel
 const rnd = () => Math.random();   // late-bound so test harnesses can seed Math.random
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
+// Upgrade modifiers (state.mods, computed by sim/modifiers.js) read with sane clamps; missing keys = neutral.
+export const MOD_CLAMP = { treatTime: [0.5, 2], cureGain: [0.5, 3], typeCure: [0.5, 3], satGain: [-20, 20], typeSat: [-30, 30] };
+const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+export function treatTimeMod(state) { return clamp(num(state.mods && state.mods.treatTime, 1), MOD_CLAMP.treatTime[0], MOD_CLAMP.treatTime[1]); }
+export function cureMod(state, typeId) {
+  const m = state.mods || {};
+  const g = clamp(num(m.cureGain, 1), MOD_CLAMP.cureGain[0], MOD_CLAMP.cureGain[1]);
+  const t = clamp(1 + num(m.typeCure && m.typeCure[typeId], 0), MOD_CLAMP.typeCure[0], MOD_CLAMP.typeCure[1]);
+  return g * t;
+}
+export function satGainMod(state) { return clamp(num(state.mods && state.mods.satGain, 0), MOD_CLAMP.satGain[0], MOD_CLAMP.satGain[1]); }
+export function typeSatMod(state, typeId) {
+  const m = state.mods || {};
+  return clamp(num(typeId === 'elder' ? m.elderSat : 0, 0) + num(m.typeSat && m.typeSat[typeId], 0), MOD_CLAMP.typeSat[0], MOD_CLAMP.typeSat[1]);
+}
 const key = (x, y) => x + ',' + y;
 const tk = (t) => t.x + ',' + t.y;
 const atTile = (a, t) => Math.floor(a.x) === t.x && Math.floor(a.y) === t.y;
@@ -145,18 +166,21 @@ function buildCtx(state, dt) {
   return c;
 }
 
-// is a treatment doable right now (unlocked, a station exists, a qualified staff exists)?
-function feasible(c, tid) {
+// Is a treatment doable right now? Returns 'ok' or why not: 'none' (unknown / locked / no working station of that kind),
+// 'role' (stations exist but every one of them is unstaffed: nobody on the payroll is qualified, see sim/qualify.js).
+function feasReason(c, tid) {
   let v = c.feasMemo.get(tid);
   if (v !== undefined) return v;
   const T = TREATMENTS[tid];
-  v = !!T;
-  if (v && T.requires && !isTreatmentUnlocked(c.state, tid)) v = false;
-  if (v) v = T.objects.some(d => c.byDef[d] && c.byDef[d].length > 0);
-  if (v && T.staffRole) v = c.state.staff.some(s => T.staffRole.includes(s.role));
+  v = 'ok';
+  if (!T) v = 'none';
+  else if (T.requires && !isTreatmentUnlocked(c.state, tid)) v = 'none';
+  else if (!T.objects.some(d => c.byDef[d] && c.byDef[d].length > 0)) v = 'none';
+  else if (!treatmentStaffed(c.state, tid)) v = 'role';
   c.feasMemo.set(tid, v);
   return v;
 }
+function feasible(c, tid) { return feasReason(c, tid) === 'ok'; }
 
 // ================= seats / spots =================
 function seatList(c) {
@@ -329,7 +353,7 @@ export function spawnPatient(state, typeId, ret) {
   for (const sid of plan.steps) {
     if (followUp && sid === 'exam' && plan.steps.length > 1 && rnd() < TUNE.FOLLOWUP_SKIP_EXAM) continue;   // follow-up visits mostly skip the doctor
     const T = TREATMENTS[sid];
-    const est = T ? T.duration / (T.kind === 'nhi' ? Math.max(0.2, state.mods.nhiTurnover || 1) : 1) + TUNE.STEP_OVERHEAD : 0;
+    const est = T ? T.duration * treatTimeMod(state) / (T.kind === 'nhi' ? Math.max(0.2, state.mods.nhiTurnover || 1) : 1) + TUNE.STEP_OVERHEAD : 0;
     if (steps.length >= 1 && est > budget) break;
     steps.push(sid); budget -= est;
   }
@@ -338,7 +362,7 @@ export function spawnPatient(state, typeId, ret) {
     x: door.x + 0.5, y: door.y + 0.5, path: [], stage: 'arriving',
     plan: steps, planIdx: 0, upsold: false,
     patience, patienceMax: patience,
-    satisfaction: clamp(TUNE.SAT_START + (typeId === 'elder' ? (state.mods.elderSat || 0) : 0) + (state.mods.satShift || 0) + (rnd() * 8 - 4), 0, 100),
+    satisfaction: clamp(TUNE.SAT_START + typeSatMod(state, typeId) + (state.mods.satShift || 0) + (rnd() * 8 - 4), 0, 100),
     hp: ret ? ret.hp : 0, cured: false, bubble: null, bubbleCd: 0, targetObj: null, staffId: null,
     seat: null, enteredAt: state.time.clock, waitedMin: 0, paid: { nhi: 0, self: 0 },
     flags: { slipped: false, skipDoc: false },
@@ -491,7 +515,7 @@ function dropAssignment(c, p) {
   if (p.targetObj) { if (p.pre) c.preBy.delete(p.targetObj); else freeObj(c, p.targetObj); }
   p.pre = false;
   p.targetObj = null; p.staffId = null; p.stand = null; p.path = []; p.dest = null;
-  p.selfReg = false; p.needStaff = null;
+  p.selfReg = false; p.needStaff = null; p.setupLeft = 0; p.attId = null;
   if (p.stage === 'to_station' || p.stage === 'treating') {
     p.stage = 'waiting'; p.needSpot = true; p.waitStart = p.age;
   } else if (p.stage === 'registering' || p.stage === 'to_reception') {
@@ -618,12 +642,33 @@ function pickStands(c, p, obj, staff) {
   return { pStand: pr.stand, pPath: pr.path, sStand: sr && sr.stand, sPath: sr && sr.path };
 }
 
-function pickStaff(c, roles, o, forExam) {
+// A nurse is only lent to a treatment station (heat / infrared setup) while nobody is waiting at the front desk.
+function nurseSpare(c) {
+  if (!TUNE.NURSE_SETUP) return false;
+  if (c.regWait === undefined) {
+    let n = 0;
+    for (const q of c.state.patients) if (q.stage === 'to_reception' || q.stage === 'registering') n++;
+    c.regWait = n;
+  }
+  return c.regWait === 0;
+}
+// may staff member `s` be asked to run a treatment station of `roles`? (registration passes reg=true and is not restricted)
+function qualifies(c, s, roles, reg, o) {
+  if (!roles.includes(s.role)) return false;
+  if (reg || s.role !== 'nurse') return true;
+  if (!nurseSpare(c)) return false;
+  // with nobody else qualified on the payroll the nurse is the only hope: no distance limit
+  if (o && TUNE.NURSE_RANGE > 0 && Math.abs(Math.floor(s.x) - o.x) + Math.abs(Math.floor(s.y) - o.y) > TUNE.NURSE_RANGE && roles.some(r => r !== 'nurse' && c.staff.some(x => x.role === r))) return false;
+  return true;
+}
+
+function pickStaff(c, roles, o, forExam, reg) {
   let best = null, bs = Infinity;
   for (const s of c.staff) {
-    if (!roles.includes(s.role) || !isStaffAvailable(s)) continue;
+    if (!qualifies(c, s, roles, reg, o) || !isStaffAvailable(s)) continue;
     const d = Math.abs(Math.floor(s.x) - o.x) + Math.abs(Math.floor(s.y) - o.y);
     let sc = d + (1 - s.stamina / s.staminaMax) * 8 + (s.role === 'doctor' && !forExam ? 6 : 0) + (s.task ? 2 : 0);
+    if (s.role === 'nurse' && !reg) sc -= TUNE.NURSE_PREF;
     if (s.stamina < s.staminaMax * 0.08) sc += 10;
     if (sc < bs) { bs = sc; best = s; }
   }
@@ -746,7 +791,7 @@ function serveRegistrations(c) {
     if (p.stage !== 'to_reception' || !p.targetObj || p.pre || p.staffId || p.selfReg) continue;
     const rec = c.objById.get(p.targetObj);
     if (!rec) continue;
-    const nurse = pickStaff(c, ['nurse'], rec, true);
+    const nurse = pickStaff(c, ['nurse'], rec, true, true);
     if (!nurse) {
       if (!anyNurse || p.qT > TUNE.REG_FALLBACK_WAIT) { p.selfReg = true; debug.selfReg++; }
       continue;
@@ -809,9 +854,9 @@ bus.on('dilemma:resolved', (e) => {
 
 // ================= treatment =================
 function treatDuration(c, p, T, staff) {
-  let d = T.duration;
+  let d = T.duration * treatTimeMod(c.state);
   if (T.kind === 'nhi') d /= Math.max(0.2, c.state.mods.nhiTurnover || 1);
-  if (staff) {
+  if (staff && attendOf(T) === 'full') {       // a machine runs at its own pace once it is set up
     d *= 1.1 - 0.02 * staff.skill;
     d *= tiredFactor(staff);
   }
@@ -823,8 +868,24 @@ function startTreating(c, p, staff) {
   p.stage = 'treating';
   p.total = p.remaining = treatDuration(c, p, T, staff);
   p.path = []; p.moving = false;
-  if (staff) { staff.state = 'working'; staff.task.remaining = p.remaining; staff.task.total = p.total; staff.path = []; }
+  // machines: the treatment clock starts now, the staff member is only tied up for the setup minutes (see tickTreating)
+  p.setupLeft = staff && attendOf(T) === 'setup' ? Math.min(attendMinutes(T), p.total) : 0;
+  p.attId = staff ? staff.id : null;
+  if (staff) {
+    const own = p.setupLeft > 0 ? p.setupLeft : p.remaining;
+    staff.state = 'working'; staff.task.remaining = own; staff.task.total = own; staff.path = [];
+  }
   say(p, 'treat');
+}
+
+// the setup minutes of a machine session are over: free the staff member, the patient keeps treating on the machine alone
+function endSetup(c, p, staff) {
+  const o = c.objById.get(p.targetObj);
+  if (o) o.staffId = null;
+  releaseStaff(c.state, staff);
+  staff.state = 'idle';
+  p.staffId = null; p.needStaff = null; p.setupLeft = 0;
+  debug.setups = (debug.setups || 0) + 1;
 }
 
 function maybeUpsell(c, p, staff) {
@@ -860,20 +921,21 @@ function completeTreatment(c, p) {
   const st = c.state;
   const T = TREATMENTS[p.plan[p.planIdx]];
   const P = PATIENT_TYPES[p.type];
-  const staff = p.staffId && c.staffById.get(p.staffId);
+  const staff = p.staffId && c.staffById.get(p.staffId);      // still attending (attend 'full'); machines released their staff after setup
+  const crew = staff || (p.attId && c.staffById.get(p.attId)) || null;
   const self = T.kind === 'self';
   const price = self ? selfPayPrice(st, T.id) : 0;
   // NHI: single-claim rule per patient per visit + daily exam-fee tiers (economy.nhiClaim). `listed` is the price-list value, `paid` what is claimed.
   if (!p.claims || typeof p.claims !== 'object') p.claims = {};
   const claim = self ? { listed: 0, paid: 0, group: null } : nhiClaim(st, p.claims, T.id);
   const nhiPts = claim.paid;
-  const skill = staff ? staff.skill : 5;
+  const skill = staff ? staff.skill : 5;       // machine sessions do not depend on who pressed the buttons
   const skillF = 0.7 + 0.06 * skill;
   const gain = st.mods.researchGain || 1;
   for (const k of POINT_KEYS) {
     st.points[k] += ((T.points && T.points[k]) || 0) * ((P.pointBias && P.pointBias[k]) || 1) * (staff ? skillF : 1) * gain * (TUNE.POINT_SCALE[k] == null ? 1 : TUNE.POINT_SCALE[k]);
   }
-  p.hp += T.cure * p.cureScale * (staff ? 0.8 + 0.04 * skill : 1);
+  p.hp += T.cure * p.cureScale * (staff ? 0.8 + 0.04 * skill : 1) * cureMod(st, p.type);
   p.paid.nhi += nhiPts; p.paid.self += price;
   p.treated++;
   p.satisfaction += TUNE.SAT_PER_TREATMENT + (staff ? (skill - 5) * 0.4 : 0);
@@ -883,12 +945,12 @@ function completeTreatment(c, p) {
     say(p, 'pay', true);
   } else say(p, 'treat');
   p.patience = Math.min(p.patienceMax, p.patience + 8);
-  const sid = staff ? staff.id : null;
+  const sid = crew ? crew.id : null;
   const obj = c.objById.get(p.targetObj);
   if (obj) useWear(st, obj);
   if (staff) { releaseStaff(st, staff); staff.state = 'idle'; }
   if (p.targetObj) freeObj(c, p.targetObj);
-  p.targetObj = null; p.staffId = null; p.stand = null; p.dest = null; p.path = []; p.remaining = 0; p.needStaff = null;
+  p.targetObj = null; p.staffId = null; p.stand = null; p.dest = null; p.path = []; p.remaining = 0; p.needStaff = null; p.setupLeft = 0; p.attId = null;
   p.planIdx++;
   // copay: flat NT$ per RETURNING visit, collected with the first treatment of the visit (real NT$; economy applies PATIENT_WEIGHT)
   const copay = p.treated === 1 ? copayFor(p.visit) : 0;
@@ -897,7 +959,7 @@ function completeTreatment(c, p) {
     selfPay: price, copay, staffId: sid,
   });
 
-  if (T.id === 'exam' || p.planIdx === 1) maybeUpsell(c, p, staff);
+  if (T.id === 'exam' || p.planIdx === 1) maybeUpsell(c, p, staff || crew);
   if (T.id === 'exam' && !p.flags.askedPain && rnd() < TUNE.PAINKILLER_P * (p.type === 'elder' ? 1.5 : 1)) {
     p.flags.askedPain = true;
     requestDilemma(c, p, 'painkiller');
@@ -914,9 +976,12 @@ function prepareStep(c, p) {
   while (p.planIdx < p.plan.length) {
     const tid = p.plan[p.planIdx];
     if (tid === 'exam' && p.flags.skipDoc) { p.planIdx++; continue; }
-    if (feasible(c, tid)) return true;
+    const why = feasReason(c, tid);
+    if (why === 'ok') return true;
     p.planIdx++;
-    p.satisfaction -= TUNE.SKIP_STEP_PENALTY;
+    // no station of that kind at all: full complaint; stations exist but nobody is qualified (hire!): skipped on the spot, milder
+    p.satisfaction -= why === 'role' ? TUNE.SKIP_ROLE_PENALTY : TUNE.SKIP_STEP_PENALTY;
+    if (why === 'role') debug.skippedRole = (debug.skippedRole || 0) + 1;
     debug.skipped++;
     say(p, 'angry', true);
   }
@@ -1031,7 +1096,7 @@ function assignStations(c) {
       // the next step is blocked: hop to a later self-service step (heat, tens...) that is free right now
       for (let j = p.planIdx + 1; j < Math.min(p.plan.length, p.planIdx + 3); j++) {
         const T = TREATMENTS[p.plan[j]];
-        if (!T || T.staffRole || p.plan[j] === 'exam' || !feasible(c, T.id)) continue;
+        if (!T || (T.staffRole && attendOf(T) !== 'setup') || p.plan[j] === 'exam' || !feasible(c, T.id)) continue;
         const save = p.plan[p.planIdx];
         p.plan[p.planIdx] = p.plan[j]; p.plan[j] = save;
         if (tryAssignStation(c, p)) break;
@@ -1063,24 +1128,47 @@ function dispatchStaff(c, p) {
   const T = TREATMENTS[p.plan[p.planIdx]];
   const o = c.objById.get(p.targetObj);
   if (!T || !o) return;
+  let tP = etaMin(p.path, patientSpeed(c, p));
+  if (p.pre) {
+    // next in line behind the current user: send the staff member so they arrive just as the station is handed over
+    const occ = c.patById.get(o.usedBy);
+    if (!occ || occ.stage !== 'treating' || occ.pre) return;
+    tP = Math.max(tP, occ.remaining);
+  }
   const staff = pickStaff(c, T.staffRole, o, T.id === 'exam' || T.id === 'us' || T.id === 'prp');
   if (!staff) return;
   const sr = pickStaffStand(c, staff, o, p.stand);
   if (!sr) return;
-  const tP = etaMin(p.path, patientSpeed(c, p));
   const tS = etaMin(sr.path, WALK_TILES_PER_MIN * STAFF_TUNE.WALK_BOOST * STAFF_TUNE.STAFF_SPEED);
   if (tP <= tS + TUNE.STAFF_LEAD) sendStaff(c, p, o, T, staff, sr);
 }
 
-// how many qualified staff are free now or finish their job within `eta` minutes, minus patients already waiting for one
-function staffSlots(c, roles, eta) {
+// minutes until a patient claiming a station will want its staff member (walking time, or the current user's remaining time for 'next in line')
+function claimEta(c, q) {
+  let e = etaMin(q.path, patientSpeed(c, q));
+  if (q.pre) {
+    const o = c.objById.get(q.targetObj), occ = o && c.patById.get(o.usedBy);
+    if (occ && occ.stage === 'treating') e = Math.max(e, occ.remaining);
+  }
+  return e;
+}
+
+// How many qualified staff are free now or finish their job within `eta` minutes, minus patients already heading for a station
+// whose staff-time overlaps the window [eta, eta + dur) (a machine setup is short, so a patient still walking to another machine
+// does not block the staff member for ever; a manual treatment holds them for its whole duration).
+function staffSlots(c, roles, eta, dur, o) {
   let n = 0;
   for (const s of c.staff) {
-    if (!roles.includes(s.role) || s.restObj || s.state === 'resting') continue;
+    if (!qualifies(c, s, roles, false, o) || s.restObj || s.state === 'resting') continue;
     if (isStaffAvailable(s) || (s.task && s.state === 'working' && s.task.remaining <= eta + TUNE.PRE_SLACK)) n++;
   }
   for (const q of c.state.patients) {
-    if (q.stage === 'to_station' && q.needStaff && !q.staffId && q.needStaff.some(r => roles.includes(r))) n--;
+    if (q.stage !== 'to_station' || !q.needStaff || q.staffId || !q.needStaff.some(r => roles.includes(r))) continue;
+    const Tq = TREATMENTS[q.plan[q.planIdx]];
+    const e = claimEta(c, q);
+    const dq = Tq ? attendMinutes(Tq) : 30;
+    if (dur >= TUNE.SLOT_LONG && dq < TUNE.SLOT_SHORT && !TUNE.SLOT_STRICT) continue;      // a short machine setup squeezes in between long sessions
+    if (e < eta + dur && eta < e + dq) n--;
   }
   return n;
 }
@@ -1107,7 +1195,7 @@ function tryAssignStation(c, p) {
     if (!pr) { p.noPath[o.id] = p.age + 12; return false; }
     const eta = etaMin(pr.path, patientSpeed(c, p));
     if (isPre && occ.remaining > eta + TUNE.PRE_SLACK) return false;
-    if (T.staffRole && staffSlots(c, T.staffRole, eta + (isPre ? occ.remaining : 0)) <= 0) return false;
+    if (T.staffRole && staffSlots(c, T.staffRole, Math.max(eta, isPre ? occ.remaining : 0), attendMinutes(T), o) <= 0) return false;
     if (!isPre) { o.busy = true; o.usedBy = p.id; o.staffId = null; }
     releaseChat(c, p);
     p.pre = isPre;
@@ -1188,6 +1276,7 @@ function startLeaving(c, p, reason) {
   st.queue = st.queue.filter(id => id !== p.id);   // (after the drop, which may re-queue)
   p.seat = null; p.spot = null; p.hold = false; p.needSpot = false; p.stand = null; p.chat = null;
   p.stage = 'leaving'; p.reason = reason;
+  p.satisfaction += satGainMod(st);          // mods.satGain (客戶關係): every visit ends a little happier
   if (reason === 'done') {
     p.visit++;
     const P = PATIENT_TYPES[p.type];
@@ -1310,7 +1399,13 @@ function updatePatient(c, p, dt) {
       break;
     }
     case 'to_station': {
-      if (p.needStaff && !p.pre) dispatchStaff(c, p);
+      if (p.needStaff && !p.staffId && !treatmentStaffed(st, p.plan[p.planIdx])) {      // the last qualified staff member left: give the station back
+        const ws = p.waitStart;
+        dropAssignment(c, p);
+        p.waitStart = ws;
+        break;
+      }
+      if (p.needStaff && !p.staffId) dispatchStaff(c, p);
       const staff = p.staffId && c.staffById.get(p.staffId);
       const arrived = walk(c, p, dt);
       p.stT = (p.moving || p.pre || (staff && staff.moving)) ? 0 : (p.stT || 0) + dt;
@@ -1327,7 +1422,13 @@ function updatePatient(c, p, dt) {
       p.moving = false;
       p.remaining -= dt;
       const staff = p.staffId && c.staffById.get(p.staffId);
-      if (staff && staff.task) staff.task.remaining = p.remaining;
+      if (p.setupLeft > 0) {
+        // machine session: the staff member only sets it up, then goes back to other work while the treatment runs on its own
+        p.setupLeft -= dt;
+        if (staff && staff.task) staff.task.remaining = Math.max(0, p.setupLeft);
+        if ((p.setupLeft <= 0 || p.remaining <= 0) && staff) endSetup(c, p, staff);
+        p.setupLeft = Math.max(0, p.setupLeft);
+      } else if (staff && staff.task) staff.task.remaining = p.remaining;
       if (p.remaining <= 0) completeTreatment(c, p);
       break;
     }

@@ -15,6 +15,7 @@ import { PATIENT_TYPES } from '../data/patients.js';
 import { STAFF_ROLES } from '../data/staffdefs.js';
 import { LOTS } from '../data/lots.js';
 import { RESEARCH } from '../data/research.js';
+import { UPGRADE_BY_ID } from '../data/upgrades.js';
 import { FOCUS } from '../data/patients.js';
 import { WEATHER, BOARDS, COMMUNITY } from '../data/events.js';
 import { ACHIEVEMENTS, MAX_BADGES } from '../data/achievements.js';
@@ -164,6 +165,14 @@ function sanitize(m) {
   m.research.done = [...new Set(m.research.done.filter(id => RESEARCH[id]))];
   if (m.research.current && (!RESEARCH[m.research.current] || m.research.done.includes(m.research.current))) { m.research.current = null; m.research.progress = 0; }
   m.research.progress = Math.max(0, num(m.research.progress, 0));
+  // 持續精進 levels: known line ids only, integer 0..cap (old saves have no `levels`)
+  const lvIn = m.research.levels && typeof m.research.levels === 'object' && !Array.isArray(m.research.levels) ? m.research.levels : {};
+  m.research.levels = {};
+  for (const [id, v] of Object.entries(lvIn)) {
+    const line = UPGRADE_BY_ID[id];
+    const n = Math.floor(Number(v));
+    if (line && Number.isFinite(n) && n > 0) m.research.levels[id] = Math.min(line.cap, n);
+  }
   if (!FOCUS[m.policy.focus]) m.policy.focus = 'ortho';
   const boardIds = new Set((BOARDS || []).map(b => b.id));
   m.policy.boards = [...new Set(m.policy.boards.filter(id => boardIds.has(id)))];

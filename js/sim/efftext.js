@@ -8,8 +8,10 @@ export const MOD_LABELS = {
   spawnMult: ['來客量', 'pct'], patience: ['病患耐心', 'pct'], slipRisk: ['滑倒風險', 'pct'],
   staffStamina: ['員工體力消耗', 'pct'], rentMult: ['房租', 'pct'], wageMult: ['薪資支出', 'pct'],
   nhiCapBonus: ['健保點數上限', 'pct'],
+  cureGain: ['治癒效率', 'pct'], treatTime: ['療程時間', 'pct'], wearRate: ['設備磨損', 'pct'],
+  repGrowth: ['聲望成長/週', 'abs'], satGain: ['病患滿意度', 'abs'],
 };
-export const LOWER_BETTER = new Set(['slipRisk', 'staffStamina', 'rentMult', 'wageMult']);
+export const LOWER_BETTER = new Set(['slipRisk', 'staffStamina', 'rentMult', 'wageMult', 'treatTime', 'wearRate']);
 
 const MINUS = '−';   // U+2212, same glyph the event result chips use
 export function sgn(v) { return v > 0 ? '+' : v < 0 ? MINUS : ''; }
@@ -25,6 +27,8 @@ function labelOf(key, over) {
     const t = key.slice('typeSpawn.'.length);
     return [((PATIENT_TYPES[t] || {}).name || t) + '來客', 'pct'];
   }
+  if (key.startsWith('typeCure.')) return [(((PATIENT_TYPES[key.slice(9)] || {}).name) || key.slice(9)) + '治癒效率', 'pct'];
+  if (key.startsWith('typeSat.')) return [(((PATIENT_TYPES[key.slice(8)] || {}).name) || key.slice(8)) + '滿意度', 'abs'];
   return MOD_LABELS[key] || [key, 'abs'];
 }
 

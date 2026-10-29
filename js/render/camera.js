@@ -105,6 +105,31 @@ export function recenter(state, canvas, uiRef = globalUi) {
   else centerOnLot(state, canvas, uiRef);
 }
 
+// Pan/zoom so the tiles `cells` [{x,y}] fill rect {x,y,w,h} (canvas CSS px; default ui.freeRect or the whole canvas) with a margin for
+// object height + labels. Marks the camera as hand-placed so automatic re-fits leave it alone (recenter() brings auto-fit back).
+export function focusTiles(state, canvas, cells, rect, uiRef = globalUi) {
+  if (!cells || !cells.length) return recenter(state, canvas, uiRef);
+  const cam = uiRef.cam, vs = viewSize(canvas);
+  const usable = rect && rect.w >= 100 && rect.h >= 90;
+  const r = usable ? rect : { x: 0, y: 0, w: vs.w, h: vs.h };
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (const c of cells) {
+    for (const [gx, gy] of [[c.x, c.y], [c.x + 1, c.y], [c.x, c.y + 1], [c.x + 1, c.y + 1]]) {
+      const wx = (gx - gy) * TILE_W / 2, wy = (gx + gy) * TILE_H / 2;
+      if (wx < x0) x0 = wx; if (wx > x1) x1 = wx; if (wy < y0) y0 = wy; if (wy > y1) y1 = wy;
+    }
+  }
+  y0 -= 56;                                   // tall objects + the label pill above the zone
+  const bw = x1 - x0 + 60, bh = y1 - y0 + 30;
+  const z = Math.floor(Math.min(r.w / bw, r.h / bh) * 20) / 20;
+  cam.zoom = Math.min(1.5, Math.max(ZOOM_MIN, z));
+  cam.x = r.x + r.w / 2 - (x0 + x1) / 2 * cam.zoom;
+  cam.y = r.y + r.h / 2 - (y0 + y1) / 2 * cam.zoom;
+  manual = true;
+  clampCam(cam, vs);
+  return cam;
+}
+
 export function centerOnLot(state, canvas, uiRef = globalUi) {
   const cam = uiRef.cam;
   manual = false;

@@ -17,6 +17,7 @@ export const WEAR_TUNE = {
   BREAK_AT: 90,                   // from here on: weekly chance of an automatic breakdown
   BREAK_P: 0.25,
   CONTRACT_MULT: 0.5,             // wear speed under a maintenance contract
+  RATE_MIN: 0.3, RATE_MAX: 3,     // clamp of mods.wearRate
   REPAIR_PCT: 0.08, REPAIR_MIN: 2000,
   SERVICE_PCT: 0.03, SERVICE_MIN: 1000,
   CONTRACT_PCT_PER_WEEK: 0.004,   // contract price = sum(build cost of wearable machines) * this * weeks (min CONTRACT_MIN)
@@ -38,7 +39,12 @@ export function defName(defId) { return (BUILDABLES[defId] && BUILDABLES[defId].
 export function wearables(state) { return (state.objects || []).filter(o => isWearable(o.defId)); }
 export function brokenObjects(state) { return (state.objects || []).filter(o => o.broken); }
 
-function speed(state, o) { return isMaintained(state, o) ? WEAR_TUNE.CONTRACT_MULT : 1; }
+// mods.wearRate (設備精進) scales every wear accumulation; clamped so a stack of upgrades can neither stop wear nor explode it
+export function wearRateOf(state) {
+  const w = state && state.mods && Number(state.mods.wearRate);
+  return clamp(Number.isFinite(w) ? w : 1, WEAR_TUNE.RATE_MIN, WEAR_TUNE.RATE_MAX);
+}
+function speed(state, o) { return (isMaintained(state, o) ? WEAR_TUNE.CONTRACT_MULT : 1) * wearRateOf(state); }
 
 // One completed treatment on station `o` (patients.js).
 export function useWear(state, o) {

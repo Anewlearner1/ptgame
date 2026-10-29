@@ -753,7 +753,11 @@ export function sceneSparkle(g, X, Y, r, a) {
 
 // ───────────────────────── daylight + weather ─────────────────────────
 export const DAY_KEYS_NEW = [[0, 255, 238, 210], [0.1, 255, 249, 240], [0.22, 255, 255, 255], [0.62, 255, 255, 255], [0.8, 255, 224, 190], [0.92, 208, 188, 226], [1, 150, 160, 214]];
-export const ZONE_COL_NEW = { golden3: '246,198,78', premium: '154,127,198', kidpark: '90,200,60' };
+export const ZONE_COL_NEW = {
+  golden3: '246,198,78', premium: '154,127,198', kidpark: '90,200,60',
+  sportsRehab: '240,128,60', elderPath: '86,170,230', orthoStation: '170,184,214', hotCold: '232,96,92', kidLearn: '232,120,180',
+  kidCorner: '244,160,200', flagship: '226,184,60', staffBack: '96,210,180', cafeNook: '196,140,96', regDesk: '140,140,230',
+};
 export const ZONE_DEFAULT_NEW = '42,200,220';
 
 // kind-specific tint multipliers (r,g,b) for the daylight multiply
