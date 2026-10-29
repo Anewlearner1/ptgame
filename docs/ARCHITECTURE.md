@@ -358,7 +358,7 @@ Tile diamond 64×32 (`TILE_W`,`TILE_H`); object `height` px extruded upward; wor
 ### 量測管線
 - `js/core/perfstats.js`：固定長度環形緩衝（720 筆，無配置）。`main.js` 的每個「真正繪製的幀」寫入一筆：`frame`（與上一幀的間隔 ms）、`sim`（模擬 + `refreshDerived`）、`render`（`render()`，只計 JS 下指令時間）、`ui`（`updateUI`）。`ui.perfStats` 另有最新值 `simMs/renderMs/uiMs/frameMs` 與 `skipped`（被幀率上限略過的 rAF 次數）。`summarize(ps, now, windowMs)` 回傳 fps、1% 低（= 1000 / p99 幀間隔）、幀 p50/p95/p99、各項平均。
 - 注意：Canvas2D 的光柵化在 GPU／合成執行緒，`render` ms 不含它；真實卡頓請看 fps 與 1% 低。無頭 Chromium（軟體 GL）則會把光柵化算進 JS（數字偏大且不穩），所以只能比較「同一環境、同一場景」。
-- `js/ui/perfhud.js`（HUD：`?perf=1`／`F3`／設定開關，`ptgame.perfhud`；關閉時零成本，開啟時 4 Hz、6 個文字節點只在字串改變時寫入）、`js/ui/perfbench.js`（12 秒基準 + 報告）、`js/ui/perfinfo.js`（裝置資訊、GPU 字串、JS 堆積）、`js/ui/quality.js`（畫質／幀率上限）、`js/ui/version.js`（版本與更新提示）。
+- `js/ui/perfhud.js`（HUD：`?perf=1`／`F3`／設定開關，`ptgame.perfhud`；關閉時零成本，開啟時 4 Hz、6 個文字節點只在字串改變時寫入）、`js/ui/perfinfo.js`（裝置資訊、GPU 字串、JS 堆積）、`js/ui/quality.js`（畫質／幀率上限）、`js/ui/version.js`（版本與更新提示）。
 ### 畫質與幀率上限
 - `ui.perf = {dpr, fps, level, auto, mode, manual, fpsCap}`。`畫質` 設定（`ptgame.quality`）：自動 = 既有縮放器（只在觸控裝置自動調整；桌機維持 0）；高 = level 0；中 = level 2；低 = level 3。manual 時 `auto=false`，`renderer.ensureSize()` 下一幀就重算 DPR（立即生效）。
 - level 清單：1 = 無車輛／煙火／天氣粒子（`lite`）、新美術改用雙線性（`low`）縮放；2 = DPR 上限 2、無暗角、新美術行走不搖擺（省去旋轉＋平滑的 blit）；3 = DPR 上限 1.25、新美術無地面陰影。classic 的 level 行為與改版前逐像素相同（只有上述「新美術」專屬項目會變）。

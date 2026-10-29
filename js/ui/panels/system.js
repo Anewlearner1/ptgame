@@ -11,7 +11,6 @@ import { artBanner } from '../artdom.js';
 import { artEnabled, setArtEnabled } from '../../render/art.js';
 import { QUALITY_MODES, QUALITY_HELP, FPSCAP_HELP, perfCfg, setQuality, setFpsCap } from '../quality.js';
 import { isHudOn, setHud } from '../perfhud.js';
-import { runAndShowReport, benchRunning } from '../perfbench.js';
 import { versionLabel } from '../version.js';
 import { canFullscreen, isFullscreen, toggleFullscreen, canPromptInstall, promptInstall, isStandalone, isIOS } from '../pwa.js';
 
@@ -143,7 +142,7 @@ function installSection() {
   return section('📲 安裝與全螢幕', note, row);
 }
 
-// ---------------------------------------------------------------- performance (效能診斷 / 畫質 / 幀率上限 / 效能報告)
+// ---------------------------------------------------------------- performance (效能診斷 / 畫質 / 幀率上限)
 function perfSection(state, ui) {
   const hud = h('input', { type: 'checkbox', checked: isHudOn(), dataset: { perf: 'hud' }, onchange: () => setHud(hud.checked) });
   const q = h('select', { dataset: { perf: 'quality' }, 'aria-label': '畫質', onchange: () => setQuality(q.value) },
@@ -151,7 +150,6 @@ function perfSection(state, ui) {
   const fc = h('select', { dataset: { perf: 'fpscap' }, 'aria-label': '幀率上限', onchange: () => setFpsCap(fc.value) },
     [['60', '60'], ['30', '30']].map(([v, l]) => h('option', { value: v }, l)));
   const qHelp = h('p', { class: 'muted u-p u-small' });
-  const rep = h('button', { class: 'btn small primary', type: 'button', dataset: { perf: 'report' }, onclick: () => { if (!benchRunning()) runAndShowReport(state, ui); } }, '📋 效能報告');
   const sync = () => {
     q.value = perfCfg.quality; fc.value = String(perfCfg.fpsCap); hud.checked = isHudOn();
     qHelp.textContent = QUALITY_HELP[perfCfg.quality];
@@ -163,9 +161,7 @@ function perfSection(state, ui) {
     h('label', { class: 'u-setting' }, hud, ' 效能診斷（畫面左上角顯示 fps／耗時，快捷鍵 F3）'),
     h('label', { class: 'u-setting' }, '畫質　', q), qHelp,
     h('label', { class: 'u-setting' }, '幀率上限　', fc, h('span', { class: 'muted u-small' }, '　fps')),
-    h('p', { class: 'muted u-p u-small' }, FPSCAP_HELP),
-    h('div', { class: 'row' }, rep),
-    h('p', { class: 'muted u-p u-small' }, '效能報告：自動跑 12 秒測試（遊戲會加速、畫面短暫放大），完成後可複製或分享，貼給開發者即可。測試中請勿操作，可按「取消」中止。'));
+    h('p', { class: 'muted u-p u-small' }, FPSCAP_HELP));
 }
 
 // ---------------------------------------------------------------- settings

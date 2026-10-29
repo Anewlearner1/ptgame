@@ -1,4 +1,4 @@
-// 效能診斷 / 畫質 / 幀率上限 / 效能報告 / 版本與更新提示 regression test.
+// 效能診斷 / 畫質 / 幀率上限 / 版本與更新提示 regression test.
 //   python3 -m http.server 8213 &  node tools/perftest.mjs [--url http://localhost:8213/index.html] [--quick]
 // --quick skips the two real 12-second benchmark runs (HUD / quality / fps-cap / version tests still run).
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
@@ -160,7 +160,7 @@ for (const style of ['new', 'classic']) {
   ok(s.auto === true && s.level === 0, 'back to 自動 restarts the scaler at level 0');
   ok((await page.evaluate(() => localStorage.getItem('ptgame.quality'))) === 'auto', 'auto persisted');
   const help = await page.locator('#panel .u-section', { hasText: '效能與畫質' }).innerText();
-  ok(help.includes('自動：') && help.includes('幀率上限：') && help.includes('效能報告：'), 'one-line explanations are present');
+  ok(help.includes('自動：') && help.includes('幀率上限：'), 'one-line explanations are present');
   ok(problems.length === 0, 'no console problems in quality test: ' + problems.slice(0, 3).join(' | '));
   await ctx.close();
 }
@@ -247,72 +247,6 @@ for (const style of ['new', 'classic']) {
   await page.evaluate(() => { const real = Date.now; Date.now = () => real() + 60000; Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); document.dispatchEvent(new Event('visibilitychange')); });
   await page.waitForTimeout(800);
   ok(await page.locator('.toast.u-update').count() === 1, 'tab focus (visibilitychange) triggers the update check');
-  await ctx.close();
-}
-
-// ------------------------------------------------------------------------------------------------ 6. benchmark + report
-if (!QUICK) for (const style of ['new', 'classic']) {
-  const { ctx, page, problems } = await open({ style, touch: false });
-  await page.evaluate(async () => {
-    const g = window.__game, P = await import('./js/sim/patients.js');
-    for (let i = 0; i < 20; i++) P.spawnPatient(g.state, ['elder', 'office', 'kid', 'sports'][i % 4]);
-    g.state.time.clock = 8 * 60;                  // 12 s at x3 stays inside one day: no week-end event dialog during the run
-    g.bus.emit('speed:set', { speed: 2 });
-  });
-  await page.waitForTimeout(500);
-  await openSettings(page);
-  await page.waitForTimeout(800);                                  // the camera nudges aside for the open panel: let it settle first
-  const before = await page.evaluate(() => { const g = window.__game; return { speed: g.state.time.speed, paused: g.state.time.paused, cam: { ...g.ui.cam } }; });
-  await page.locator('button[data-perf="report"]').click();
-  await page.waitForTimeout(1500);
-  const mid = await page.evaluate(() => { const o = document.getElementById('perf-bench'), g = window.__game; const r = document.getElementById('game').getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { overlay: !!o, blocked: !!top && !!top.closest('#perf-bench'), speed: g.state.time.speed }; });
-  ok(mid.overlay && mid.blocked, `[${style}] overlay blocks input while running`);
-  ok(mid.speed === 3, `[${style}] sim forced to x3 during the run`);
-  await page.keyboard.press('w'); await page.mouse.wheel(0, -400);   // input must not move the camera
-  const t0 = Date.now();
-  await page.waitForSelector('textarea.perf-report', { timeout: 20000 });
-  const dur = (Date.now() - t0 + 1500) / 1000;
-  ok(dur > 9.5 && dur < 14.5, `[${style}] run takes ~12 s (${dur.toFixed(1)})`);
-  const text = await page.locator('textarea.perf-report').inputValue();
-  for (const f of ['建置版本', '日期時間', '瀏覽器 UA', '平台', '螢幕', '視窗', 'DPR', 'CPU 核心數', '裝置記憶體', 'GPU', '美術風格', '畫質設定', '自動等級', '幀率上限', '診所等級', '角色數', '目前縮放', '放大 ×1.6', 'fps', '1%低', '模擬ms', '繪製ms']) ok(text.includes(f), `[${style}] report has ${f}`);
-  ok(text.includes(style === 'new' ? '新美術' : '原像素風'), `[${style}] report names the art style`);
-  const rows = text.split('\n').filter(l => /^(目前縮放|放大 ×1\.6)/.test(l));
-  ok(rows.length === 2, `[${style}] two result rows`);
-  for (const l of rows) { const nums = l.split('|').slice(1).join('|').match(/-?\d+(\.\d+)?/g) || []; ok(nums.length >= 9 && nums.every(n => isFinite(+n)), `[${style}] row numbers finite: ${l}`); }
-  const z = rows.map(l => +l.match(/\s(\d\.\d\d)\s/)[1]);
-  ok(z[1] > z[0] * 1.3, `[${style}] second phase is zoomed in (${z})`);
-  const btns = await page.locator('.modal-actions button').allInnerTexts();
-  ok(btns.includes('複製') && btns.includes('關閉'), `[${style}] 複製 / 關閉 buttons ${btns}`);
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
-  await page.locator('.modal-actions button', { hasText: '複製' }).click(); await page.waitForTimeout(300);
-  const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => null));
-  ok(clip === null || clip === text, `[${style}] 複製 puts the report on the clipboard`);
-  await page.locator('.modal-actions button', { hasText: '關閉' }).click(); await page.waitForTimeout(200);
-  const after = await page.evaluate(() => { const g = window.__game; return { speed: g.state.time.speed, paused: g.state.time.paused, cam: { ...g.ui.cam }, overlay: !!document.getElementById('perf-bench') }; });
-  ok(!after.overlay, `[${style}] overlay removed`);
-  ok(after.speed === before.speed && after.paused === before.paused, `[${style}] speed restored ${JSON.stringify([before.speed, after.speed])}`);
-  ok(Math.abs(after.cam.zoom - before.cam.zoom) < 1e-6 && Math.abs(after.cam.x - before.cam.x) < 1e-6 && Math.abs(after.cam.y - before.cam.y) < 1e-6, `[${style}] zoom/camera restored`);
-  ok(problems.length === 0, `[${style}] no console problems in benchmark: ${problems.slice(0, 3).join(' | ')}`);
-  await ctx.close();
-}
-if (!QUICK) {
-  const { ctx, page, problems } = await open({});
-  await page.evaluate(() => { window.__game.state.time.clock = 8 * 60; });
-  await openSettings(page);
-  await page.waitForTimeout(800);
-  const before = await page.evaluate(() => { const g = window.__game; return { speed: g.state.time.speed, cam: { ...g.ui.cam } }; });
-  await page.locator('button[data-perf="report"]').click();
-  await page.waitForTimeout(8000);                                  // into the zoomed phase
-  const z = await page.evaluate(() => window.__game.ui.cam.zoom);
-  ok(z > before.cam.zoom * 1.2, 'cancel test: zoomed phase reached ' + z);
-  await page.locator('#perf-bench button').click(); await page.waitForTimeout(300);
-  const after = await page.evaluate(() => { const g = window.__game; return { speed: g.state.time.speed, cam: { ...g.ui.cam }, overlay: !!document.getElementById('perf-bench'), modal: !!document.querySelector('textarea.perf-report') }; });
-  ok(!after.overlay && !after.modal, 'cancel removes the overlay and shows no report');
-  ok(after.speed === before.speed && Math.abs(after.cam.zoom - before.cam.zoom) < 1e-6 && Math.abs(after.cam.x - before.cam.x) < 1e-6, 'cancel restores speed / zoom / camera');
-  await page.locator('button[data-perf="report"]').click(); await page.waitForTimeout(600);
-  await page.keyboard.press('Escape'); await page.waitForTimeout(300);
-  ok(!(await page.evaluate(() => !!document.getElementById('perf-bench'))), 'Esc cancels too');
-  ok(problems.length === 0, 'no console problems in cancel test: ' + problems.slice(0, 3).join(' | '));
   await ctx.close();
 }
 

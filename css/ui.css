@@ -525,7 +525,7 @@ html.style-concept.lay-compact #stage[data-bmode="strip"] .u-tray-item .u-thumb[
 html.style-concept.lay-compact #stage[data-bmode="strip"] .u-item .u-thumb[data-ct="1"] { --tw: 30px !important; --th: 28px !important; margin-bottom: 0; }
 html.style-concept.lay-compact .u-shead .u-thumb[data-ct="1"] { --tw: 34px !important; --th: 34px !important; }
 
-/* ================= 效能診斷 HUD / 效能測試 (js/ui/perfhud.js, perfbench.js) ================= */
+/* ================= 效能診斷 HUD (js/ui/perfhud.js) ================= */
 .perf-hud {
   position: absolute; z-index: 17; left: calc(6px + var(--sal, 0px)); top: 6px; max-width: calc(100% - 12px - var(--sal, 0px) - var(--sar, 0px));
   padding: 4px 7px; margin: 0; box-sizing: border-box; pointer-events: none; user-select: none; -webkit-user-select: none;
@@ -540,17 +540,6 @@ html.style-concept .perf-hud { background: rgba(30, 54, 90, 0.82); border-radius
 html.lay-portrait .perf-hud { top: 4px; }
 html.lay-desktop .perf-hud { left: 100px; }      /* clear of the floating sidebar */
 html.lay-compact .perf-hud { left: calc(64px + var(--sal, 0px)); }
-.perf-bench { position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-end; justify-content: center; background: rgba(0, 0, 0, 0.08); touch-action: none; padding: 0 12px calc(24px + env(safe-area-inset-bottom, 0px)); }
-.perf-bench .pb-card { width: min(420px, 100%); padding: 10px 14px 12px; background: var(--paper, #fffaf0); color: var(--ink, #1f2d33); box-shadow: var(--outline, 0 0 0 2px #1f2d33), 0 6px 0 rgba(0, 0, 0, 0.25); text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
-.perf-bench .pb-title { font-weight: 900; }
-.perf-bench .pb-phase { font-size: 13px; color: var(--muted, #6b7a80); min-height: 1.3em; }
-.perf-bench .pb-bar { height: 10px; background: rgba(31, 45, 51, 0.18); overflow: hidden; }
-.perf-bench .pb-bar > i { display: block; height: 100%; width: 0; background: var(--teal, #2a9d8f); }
-.perf-bench .btn { align-self: center; }
-html.style-concept .perf-bench .pb-card { border-radius: 14px; box-shadow: 0 0 0 2px var(--c-navy), 0 8px 20px rgba(20, 17, 27, 0.35); }
-html.style-concept .perf-bench .pb-bar { border-radius: 6px; }
-html.style-concept .perf-bench .pb-bar > i { background: var(--c-blue-hi); }
-.perf-modal .perf-report { width: 100%; box-sizing: border-box; font: 11.5px/1.45 ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans TC", monospace; white-space: pre; overflow: auto; }
 .toast.u-update { pointer-events: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; animation: none; }
 .toast.u-update .btn { flex: 0 0 auto; }
 html.style-concept .toast.u-update { padding-left: 46px; }
