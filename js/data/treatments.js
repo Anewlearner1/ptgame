@@ -1,157 +1,160 @@
-// Treatment definitions (static data). Shape: ARCHITECTURE §3.1.
-// nhiPoints is 0 for self-pay treatments and price is 0 for NHI treatments.
-// ALL fee numbers come from data/fees.js (real Taiwan data, see its REAL DATA header): nhiPoints = listed NHI points per claim
-// (what is actually paid also depends on the single-claim rule and the daily exam-fee tiers, economy.nhiClaim);
-// uptake (self-pay only, default 1) = relative share of willing patients who actually take the item at its typical price: an ABSTRACTION knob, not real data
-// (big-ticket items such as PRP convert far less often than a NT$2,000 shockwave).
-// price = real NT$ per self-pay session (typical market quote), BEFORE the player's slider and the PATIENT_WEIGHT multiplier.
-import { TREATMENT_FEES } from './fees.js';
-const nhi = (id) => (TREATMENT_FEES[id].kind === 'nhi' ? TREATMENT_FEES[id].nhiPoints : 0);
-const price = (id) => (TREATMENT_FEES[id].kind === 'self' ? TREATMENT_FEES[id].selfPrice.typical : 0);
-// objects: patient must stand next to one of these (ANY-of). staffRole: ANY-of roles, null = self-service (no treatment is any more).
+// Dish definitions (static data; the engine still calls them "treatments"). See docs/RESTAURANT_DESIGN.md §4.
+// kind 'menu'    = standard dish, sold at `price` (NT$ per diner, from data/fees.js)
+// kind 'special' = 特色料理 / 加點, sold at `price` x the player's slider x mods.selfPayPrice, offered as an upsell
+// price / foodCost come from data/fees.js; uptake (special only, default 1) = relative share of willing guests who actually order it:
+// an ABSTRACTION knob, not real data (a NT$ 680 steak converts less often than a NT$ 160 dessert).
+// objects: the guest stands next to one of these (ANY-of). staffRole: ANY-of roles.
 // QUALIFICATION RULES (sim/qualify.js): a station only works while a staff member of one of `staffRole` is on the payroll.
-//   attend 'full'  = that staff member is bound to the patient for the whole session (manual / room treatments);
-//   attend 'setup' = machines: the staff member is needed only for the first `setupMin` game-minutes (positioning, settings),
-//                    is then released and the machine runs unattended until the treatment clock ends.
+//   attend 'full'  = that staff member is bound to the guest for the whole session (cooking at the pass);
+//   attend 'setup' = machine / pot / table: the staff member is needed only for the first `setupMin` game-minutes (taking the order,
+//                    starting the pot, laying the table), is then released and the dish finishes unattended.
+// intake: true marks the first, order-defining dish (the chef's signature): follow-up visits may skip it, and upsells are offered after it.
+import { DISH_FEES } from './fees.js';
+const price = (id) => DISH_FEES[id].price;
+const cost = (id) => DISH_FEES[id].foodCost;
 
 export const TREATMENTS = {
-  exam: {
-    id: 'exam', name: '門診看診', kind: 'nhi',
-    objects: ['exam_room'], staffRole: ['doctor'], attend: 'full',
-    duration: 40, nhiPoints: nhi('exam'), price: price('exam'),
-    points: { medical: 2, device: 0, service: 1 },
+  main: {
+    id: 'main', name: '招牌主餐', kind: 'menu', intake: true,
+    objects: ['chef_range'], staffRole: ['chef'], attend: 'full',
+    duration: 40, price: price('main'), foodCost: cost('main'),
+    points: { culinary: 2, device: 0, service: 1 },
     staminaCost: 4, requires: null, cure: 0.1,
-    intro: '醫師評估病況、開立復健處方的第一步。',
+    intro: '主廚現做的招牌，客人點了就知道這家店有沒有料。',
   },
-  us: {
-    id: 'us', name: '超音波檢查', kind: 'nhi',
-    objects: ['us_room'], staffRole: ['doctor'], attend: 'full',
-    duration: 30, nhiPoints: nhi('us'), price: price('us'),
-    points: { medical: 1, device: 2, service: 0 },
-    staminaCost: 4, requires: 'rs_ultrasound', cure: 0.15,
-    intro: '用超音波看清肌腱與軟組織，診斷更有把握。',
+  noodle: {
+    id: 'noodle', name: '湯麵', kind: 'menu',
+    objects: ['noodle_stove'], staffRole: ['cook'], attend: 'full',
+    duration: 30, price: price('noodle'), foodCost: cost('noodle'),
+    points: { culinary: 1, device: 0, service: 0 },
+    staminaCost: 6, requires: null, cure: 0.12,
+    intro: '燙麵、加料、淋湯頭，一碗熱騰騰的湯麵出餐快、回頭客多。',
   },
-  heat: {
-    id: 'heat', name: '熱敷', kind: 'nhi',
-    objects: ['heatbox'], staffRole: ['nurse', 'pt'], attend: 'setup', setupMin: 5,
-    duration: 45, nhiPoints: nhi('heat'), price: price('heat'),
-    points: { medical: 0, device: 1, service: 0 },
-    staminaCost: 0, requires: null, cure: 0.1,
-    intro: '溫熱敷紓解肌肉緊繃，護理師或治療師擺好位置就能讓機器自己跑。',
+  rice: {
+    id: 'rice', name: '滷肉飯', kind: 'menu',
+    objects: ['braise_pot'], staffRole: ['cook', 'cashier'], attend: 'setup', setupMin: 5,
+    duration: 25, price: price('rice'), foodCost: cost('rice'),
+    points: { culinary: 0, device: 1, service: 0 },
+    staminaCost: 2, requires: null, cure: 0.1,
+    intro: '滷肉鍋一開，廚師或櫃檯盛好飯，客人自己端走就能開吃。',
   },
-  tens: {
-    id: 'tens', name: '電療（干擾波/TENS）', kind: 'nhi',
-    objects: ['tens'], staffRole: ['pt'], attend: 'setup', setupMin: 5,
-    duration: 45, nhiPoints: nhi('tens'), price: price('tens'),
-    points: { medical: 0, device: 1, service: 0 },
-    staminaCost: 0, requires: null, cure: 0.12,
-    intro: '微電流刺激深層組織，治療師設定好參數後機器自己跑。',
+  dumpling: {
+    id: 'dumpling', name: '煎餃鍋貼', kind: 'menu',
+    objects: ['griddle'], staffRole: ['cook', 'server'], attend: 'setup', setupMin: 6,
+    duration: 35, price: price('dumpling'), foodCost: cost('dumpling'),
+    points: { culinary: 0, device: 1, service: 0 },
+    staminaCost: 3, requires: null, cure: 0.1,
+    intro: '倒水、蓋鍋蓋，等水收乾底部金黃就好，不用一直顧著。',
   },
-  traction: {
-    id: 'traction', name: '頸腰椎牽引', kind: 'nhi',
-    objects: ['traction'], staffRole: ['pt'], attend: 'setup', setupMin: 8,
-    duration: 50, nhiPoints: nhi('traction'), price: price('traction'),
-    points: { medical: 0, device: 1, service: 0 },
-    staminaCost: 0, requires: null, cure: 0.15,
-    intro: '機器拉開椎間壓力，緩解頸腰痠痛。',
+  fried: {
+    id: 'fried', name: '鹽酥雞炸物', kind: 'menu',
+    objects: ['fryer'], staffRole: ['cook'], attend: 'full',
+    duration: 25, price: price('fried'), foodCost: cost('fried'),
+    points: { culinary: 1, device: 0, service: 1 },
+    staminaCost: 6, requires: null, cure: 0.12,
+    intro: '下鍋、撈起、撒椒鹽，火候差一點就是兩種味道。',
   },
-  ir: {
-    id: 'ir', name: '紅外線照射', kind: 'nhi',
-    objects: ['ir_lamp'], staffRole: ['nurse', 'pt'], attend: 'setup', setupMin: 5,
-    duration: 35, nhiPoints: nhi('ir'), price: price('ir'),
-    points: { medical: 0, device: 1, service: 0 },
-    staminaCost: 0, requires: null, cure: 0.1,
-    intro: '紅外線燈照射局部，讓血液循環變好一點。',
+  teppan: {
+    id: 'teppan', name: '鐵板燒', kind: 'menu',
+    objects: ['teppan'], staffRole: ['chef', 'cook'], attend: 'full',
+    duration: 40, price: price('teppan'), foodCost: cost('teppan'),
+    points: { culinary: 2, device: 1, service: 1 },
+    staminaCost: 8, requires: 'rs_teppan', cure: 0.15,
+    intro: '滋滋作響的鐵板，師傅翻鏟的手勢本身就是表演。',
   },
-  taping: {
-    id: 'taping', name: '肌內效貼紮', kind: 'nhi',
-    objects: ['bed'], staffRole: ['pt'], attend: 'full',
-    duration: 30, nhiPoints: nhi('taping'), price: price('taping'),
-    points: { medical: 1, device: 0, service: 1 },
-    staminaCost: 3, requires: null, cure: 0.2,
-    intro: '治療師沿肌肉走向貼上彈性貼布，支撐又不妨礙活動。',
+  side: {
+    id: 'side', name: '小菜', kind: 'menu',
+    objects: ['cold_case'], staffRole: ['server', 'cashier'], attend: 'setup', setupMin: 3,
+    duration: 20, price: price('side'), foodCost: cost('side'),
+    points: { culinary: 0, device: 0, service: 1 },
+    staminaCost: 1, requires: null, cure: 0.05,
+    intro: '涼拌小黃瓜、燙青菜、滷蛋豆干，隨手一盤，客單價就上去了。',
   },
-  manual_nhi: {
-    id: 'manual_nhi', name: '健保徒手治療', kind: 'nhi',
-    objects: ['bed'], staffRole: ['pt'], attend: 'full',
-    duration: 45, nhiPoints: nhi('manual_nhi'), price: price('manual_nhi'),
-    points: { medical: 2, device: 0, service: 1 },
-    staminaCost: 12, requires: null, cure: 0.3,
-    intro: '治療師用雙手鬆解關節與軟組織，體力消耗大。',
+  soup: {
+    id: 'soup', name: '例湯', kind: 'menu',
+    objects: ['soup_pot'], staffRole: ['server', 'cashier'], attend: 'setup', setupMin: 5,
+    duration: 30, price: price('soup'), foodCost: cost('soup'),
+    points: { culinary: 0, device: 1, service: 0 },
+    staminaCost: 1, requires: null, cure: 0.08,
+    intro: '大鍋湯舀一碗，暖胃又暖心，長輩最愛。',
   },
-  redcord: {
-    id: 'redcord', name: '懸吊運動治療', kind: 'self',
-    objects: ['redcord'], staffRole: ['pt'], attend: 'full',
-    duration: 60, nhiPoints: nhi('redcord'), price: price('redcord'),
-    points: { medical: 1, device: 1, service: 1 },
-    staminaCost: 5, requires: 'rs_redcord', cure: 0.25,
-    uptake: 0.8,
-    intro: '繩索懸吊做全身性動作訓練，運動員與上班族都愛。',
+  drink: {
+    id: 'drink', name: '手搖飲', kind: 'menu',
+    objects: ['drink_bar'], staffRole: ['barista', 'cashier'], attend: 'setup', setupMin: 5,
+    duration: 25, price: price('drink'), foodCost: cost('drink'),
+    points: { culinary: 0, device: 1, service: 1 },
+    staminaCost: 2, requires: null, cure: 0.08,
+    intro: '微糖少冰去冰，吧台師開機封杯，上班族下午三點必點。',
   },
-  shockwave: {
-    id: 'shockwave', name: '體外震波', kind: 'self',
-    objects: ['shockwave', 'shockwave_room'], staffRole: ['doctor', 'pt'], attend: 'full',
-    duration: 45, nhiPoints: nhi('shockwave'), price: price('shockwave'),
-    points: { medical: 1, device: 3, service: 0 },
-    staminaCost: 4, requires: 'rs_shockwave', cure: 0.3,
-    intro: '高能量聲波打在痠痛的肌腱上，效果看得見。',
+  ice: {
+    id: 'ice', name: '冰品豆花', kind: 'menu',
+    objects: ['ice_shop'], staffRole: ['barista'], attend: 'full',
+    duration: 30, price: price('ice'), foodCost: cost('ice'),
+    points: { culinary: 1, device: 0, service: 1 },
+    staminaCost: 3, requires: 'rs_ice', cure: 0.1,
+    intro: '剉冰淋糖水、鋪滿配料，夏天排隊排到轉角。',
   },
-  laser: {
-    id: 'laser', name: '高能量雷射', kind: 'self',
-    objects: ['laser_room'], staffRole: ['pt', 'doctor'], attend: 'full',
-    duration: 40, nhiPoints: nhi('laser'), price: price('laser'),
-    points: { medical: 1, device: 3, service: 0 },
-    staminaCost: 4, requires: 'rs_laser', cure: 0.28,
-    intro: '光能深入組織促進修復，療程短、價格高。',
+  dine: {
+    id: 'dine', name: '內用用餐', kind: 'menu',
+    objects: ['table2', 'table4'], staffRole: ['server'], attend: 'setup', setupMin: 3,
+    duration: 40, price: price('dine'), foodCost: cost('dine'),
+    points: { culinary: 0, device: 0, service: 2 },
+    staminaCost: 1, requires: null, cure: 0.12,
+    intro: '服務生帶位、倒水、收盤，客人坐下來好好吃一頓飯。',
   },
-  manual_self: {
-    id: 'manual_self', name: '自費徒手治療', kind: 'self',
-    objects: ['manual_room'], staffRole: ['pt'], attend: 'full',
-    duration: 60, nhiPoints: nhi('manual_self'), price: price('manual_self'),
-    points: { medical: 2, device: 0, service: 1 },
-    staminaCost: 14, requires: 'rs_manual', cure: 0.3,
-    intro: '獨立診間裡一對一的徒手療程，時間充裕、手勁到位。',
-  },
-  prp: {
-    id: 'prp', name: 'PRP 增生療法', kind: 'self',
-    objects: ['exam_room'], staffRole: ['doctor'], attend: 'full',
-    duration: 60, nhiPoints: nhi('prp'), price: price('prp'),
-    points: { medical: 3, device: 0, service: 1 },
-    staminaCost: 6, requires: 'rs_prp', cure: 0.35,
-    uptake: 0.25,
-    intro: '抽取自體血小板濃縮液注射，適合慢性肌腱病變。',
-  },
-  insole: {
-    id: 'insole', name: '客製化鞋墊', kind: 'self',
-    objects: ['bed'], staffRole: ['pt'], attend: 'full',
-    duration: 45, nhiPoints: nhi('insole'), price: price('insole'),
-    points: { medical: 1, device: 2, service: 1 },
-    staminaCost: 5, requires: 'rs_insole', cure: 0.2,
+
+  steak: {
+    id: 'steak', name: '主廚特餐牛排', kind: 'special',
+    objects: ['chef_table'], staffRole: ['chef'], attend: 'full',
+    duration: 60, price: price('steak'), foodCost: cost('steak'),
+    points: { culinary: 3, device: 0, service: 1 },
+    staminaCost: 6, requires: 'rs_steak', cure: 0.3,
     uptake: 0.5,
-    intro: '步態掃描後量身製作鞋墊，從腳底改善膝腰負擔。',
+    intro: '厚切牛排煎到三分熟，主廚站在客人面前現做。',
   },
-  si: {
-    id: 'si', name: '感覺統合訓練', kind: 'nhi',
-    objects: ['si_room'], staffRole: ['ot'], attend: 'full',
-    duration: 90, nhiPoints: nhi('si'), price: price('si'),
-    points: { medical: 3, device: 0, service: 2 },
-    staminaCost: 12, requires: 'rs_ot', cure: 0.35,
-    intro: '球池、平衡木與滑板，陪孩子把身體感覺慢慢整合起來。',
+  seafood: {
+    id: 'seafood', name: '活海鮮熱炒', kind: 'special',
+    objects: ['wok_range'], staffRole: ['cook', 'chef'], attend: 'full',
+    duration: 50, price: price('seafood'), foodCost: cost('seafood'),
+    points: { culinary: 2, device: 2, service: 0 },
+    staminaCost: 8, requires: 'rs_wok', cure: 0.25,
+    uptake: 0.8,
+    intro: '大火快炒的鍋氣，配啤酒最對味。',
   },
-  fine: {
-    id: 'fine', name: '精細動作訓練', kind: 'nhi',
-    objects: ['fine_table'], staffRole: ['ot'], attend: 'full',
-    duration: 60, nhiPoints: nhi('fine'), price: price('fine'),
-    points: { medical: 3, device: 0, service: 2 },
-    staminaCost: 6, requires: 'rs_ot', cure: 0.3,
-    intro: '串珠、夾取與寫字前練習，把手指的小肌肉練起來。',
+  hotpot: {
+    id: 'hotpot', name: '精緻火鍋', kind: 'special',
+    objects: ['hotpot_table'], staffRole: ['server', 'cook'], attend: 'full',
+    duration: 60, price: price('hotpot'), foodCost: cost('hotpot'),
+    points: { culinary: 1, device: 1, service: 2 },
+    staminaCost: 5, requires: 'rs_hotpot', cure: 0.28,
+    uptake: 0.6,
+    intro: '桌邊一鍋熱湯、一盤盤肉片，圍爐的氣氛最適合家人聚餐。',
   },
-  speech: {
-    id: 'speech', name: '語言治療', kind: 'nhi',
-    objects: ['speech_room'], staffRole: ['st'], attend: 'full',
-    duration: 60, nhiPoints: nhi('speech'), price: price('speech'),
-    points: { medical: 3, device: 0, service: 2 },
-    staminaCost: 5, requires: 'rs_st', cure: 0.3,
-    intro: '發音、口語與溝通練習，陪孩子開口說話。',
+  bbq: {
+    id: 'bbq', name: '炭火串燒', kind: 'special',
+    objects: ['bbq_grill'], staffRole: ['cook'], attend: 'full',
+    duration: 40, price: price('bbq'), foodCost: cost('bbq'),
+    points: { culinary: 1, device: 2, service: 0 },
+    staminaCost: 7, requires: 'rs_bbq', cure: 0.25,
+    uptake: 0.8,
+    intro: '炭火烤得滋滋冒油，一串一串刷醬，香氣把路人都勾進來。',
+  },
+  dessert: {
+    id: 'dessert', name: '手作甜點', kind: 'special',
+    objects: ['dessert_bar'], staffRole: ['barista'], attend: 'full',
+    duration: 35, price: price('dessert'), foodCost: cost('dessert'),
+    points: { culinary: 2, device: 0, service: 2 },
+    staminaCost: 4, requires: 'rs_dessert', cure: 0.2,
+    uptake: 0.9,
+    intro: '布丁、蛋糕、千層，飯後來一份，學生族與親子客最愛。',
+  },
+  beer: {
+    id: 'beer', name: '精釀啤酒與茶酒', kind: 'special',
+    objects: ['bar_counter'], staffRole: ['barista', 'server'], attend: 'setup', setupMin: 5,
+    duration: 40, price: price('beer'), foodCost: cost('beer'),
+    points: { culinary: 1, device: 1, service: 1 },
+    staminaCost: 3, requires: 'rs_bar', cure: 0.22,
+    uptake: 0.7,
+    intro: '一杯冰涼的精釀，配炸物剛好，上班族下班後最需要。',
   },
 };

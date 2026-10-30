@@ -6,9 +6,9 @@ import { footprint, sizeOf } from '../core/grid.js';
 
 // Fallback if data/synergies.js is missing (keeps the three contract zones alive).
 const FALLBACK_SYNERGIES = [
-  { id: 'golden3', name: '黃金三寶區', icon: '🥇', needs: ['heatbox', 'tens', 'traction'], effects: { nhiTurnover: 0.2, elderSat: 8 } },
-  { id: 'premium', name: '高階自費專區', icon: '💎', needs: ['manual_room', 'shockwave', 'coffee'], effects: { selfPayConv: 0.15, selfPayPrice: 0.1 } },
-  { id: 'kidpark', name: '早療放電樂園', icon: '🧸', needs: ['ball_pit', 'soft_mat', 'bookshelf'], effects: { researchGain: 0.25 } },
+  { id: 'golden3', name: '黃金爐火區', icon: '🔥', needs: ['noodle_stove', 'braise_pot', 'fryer'], effects: { nhiTurnover: 0.2, elderSat: 8 } },
+  { id: 'premium', name: '高端餐飲區', icon: '💎', needs: ['chef_table', 'dessert_bar', 'coffee'], effects: { selfPayConv: 0.15, selfPayPrice: 0.1 } },
+  { id: 'kidpark', name: '親子放電樂園', icon: '🧸', needs: ['play_area', 'kids_mat', 'bookshelf'], effects: { researchGain: 0.25 } },
 ];
 
 export function synergyList() { return SYN.SYNERGIES || FALLBACK_SYNERGIES; }
