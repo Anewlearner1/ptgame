@@ -1,17 +1,17 @@
-# 復健科診所物語
+# 餐廳物語
 
-經營一間台灣的復健科診所。從一間小小的診間開始，決定要做健保、還是走自費路線，
-安排物理治療、職能與語言治療的動線，在健保與自費之間找到自己的平衡點。
+經營一間台灣小吃店。從一間小小的店面開始，擺放爐具與餐桌、聘請廚師與服務生，
+研發菜色、控制食材成本與食安風險，決定走商業午餐、社區早餐還是親子餐廳路線。
+
+> 本分支（`claude/restaurant-game`）是由《復健科診所物語》移植而來的餐廳版；診所版保留在 `claude/rehab-clinic-game`。
+> 對照與進度見 `docs/RESTAURANT_DESIGN.md`、`docs/RESTAURANT_PROGRESS.md`。部分舊文件（ARCHITECTURE 等）仍是診所版敘述。
 
 畫面是 2.5D 等角視角的像素風格（致敬 Kairosoft 系列經營遊戲），全部以網頁技術製作，
 不需要安裝任何東西。
 
 ## 遊玩方式
 
-### 在本機執行
-
-本遊戲是純靜態網站，需要透過靜態伺服器開啟（直接雙擊 `index.html` 因瀏覽器對
-ES module 的限制無法載入）。在專案資料夾執行：
+本遊戲是純靜態網站，需要透過靜態伺服器開啟：
 
 ```bash
 python3 -m http.server 8000
@@ -19,14 +19,7 @@ python3 -m http.server 8000
 
 然後用瀏覽器開啟 <http://localhost:8000/>。
 
-### 線上遊玩（GitHub Pages）
-
-線上試玩：<https://anewlearner1.github.io/ptgame/>
-
-所有資源都使用相對路徑。本專案已附自動部署 workflow（`.github/workflows/pages.yml`），推送到 `main` 或 `claude/rehab-clinic-game` 就會自動發布。第一次使用需要：
-
-1. 到 **Settings → Pages**，Source 選 **GitHub Actions**。
-2. 到 **Settings → Environments → github-pages**，把要部署的分支加入允許清單。
+本分支尚未加入 `.github/workflows/pages.yml` 的自動部署清單（避免覆蓋診所版網站）；要上線請手動執行 workflow，或把本分支加進 `on.push.branches`。
 
 ## 操作方式
 
