@@ -250,6 +250,8 @@ def main():
             cut[group + '/' + name] = trim(remove_bg(sheet.crop(b)))
     # portrait keeps its cream background
     cut['people/portrait'] = sheet.crop((1405, 494, 1482, 579)).convert('RGBA')
+    # storefront hero (opaque) for the DOM banners (modals, support page)
+    cut['scene/storefront'] = sheet.crop((0, 0, 492, 428)).convert('RGBA')
     # composites (several cut parts laid out in one sprite, same native scale as the sheet)
     cut.update(composites(cut))
     # staff variants

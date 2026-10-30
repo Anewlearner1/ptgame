@@ -456,6 +456,11 @@
    "h": 85,
    "w": 77
   },
+  "scene/storefront": {
+   "file": "assets/rest/scene/storefront.png",
+   "h": 428,
+   "w": 492
+  },
   "staff/barista_back": {
    "file": "assets/rest/staff/barista_back.png",
    "h": 73,

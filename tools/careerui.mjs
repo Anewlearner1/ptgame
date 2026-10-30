@@ -43,7 +43,7 @@ const FAKE = {
   ],
   summary: { year: 4, yearsLeft: 7, endless: false, ending: null, scoreSoFar: 64, projected: { id: 'steady', title: '穩健的社區餐廳', emoji: '🏥' }, avgGrade: 'B' },
   ending: { id: 'steady', title: '穩健的社區餐廳', emoji: '🏥', thanks: ['十年了，這間餐廳陪著整個社區一起變老也變健康。', '謝謝每一位病人，也謝謝每一位夥伴。'], score: 71, grade: 'B',
-    stats: { totalIncome: 123456789, totalPatients: 18234, totalCured: 9120, eventsHandled: 88, achievementsDone: 21, peakReputation: 412, finalLot: 2, topTreatment: 'heat', unknownKey: 1 } },
+    stats: { totalIncome: 123456789, totalPatients: 18234, totalCured: 9120, eventsHandled: 88, achievementsDone: 21, peakReputation: 412, finalLot: 2, topTreatment: 'noodle', unknownKey: 1 } },
   bankrupt: { id: 'bankrupt', title: '提早收攤', emoji: '🪧', thanks: '資金見底了，但這段經驗是寶貴的。下一次，一定能更穩。', score: 31, grade: 'D', stats: { totalIncome: 4567890, totalPatients: 1200, totalCured: 500, eventsHandled: 12, peakReputation: 90, finalLot: 0 } },
   card: '🏥 幸福復健科餐廳｜穩健的社區餐廳\n最終評等 B（71 分）\n歷年評等：1B 2D 3S\n— 餐廳物語',
 };
@@ -271,7 +271,7 @@ for (const mode of ['new', 'classic']) {
   const order = [];
   for (let i = 0; i < 4; i++) {
     const t = await modalTitle(page); if (!t) break;
-    order.push(/營運報告/.test(t) ? 'settle' : /督導/.test(t) ? 'inspection' : /年度總結/.test(t) ? 'review' : t);
+    order.push(/營運報告/.test(t) ? 'settle' : /督導|稽查/.test(t) ? 'inspection' : /年度總結/.test(t) ? 'review' : t);
     await page.evaluate(() => document.querySelector('.modal .modal-actions .btn.primary').click()); await wait(page, 200);
   }
   ok(order.join() === 'settle,inspection,review', `modal order settle -> inspection -> review even when the review event is first (${order})`);
@@ -282,7 +282,7 @@ for (const mode of ['new', 'classic']) {
   const o2 = [];
   for (let i = 0; i < 4; i++) {
     const t = await modalTitle(page); if (!t) break;
-    o2.push(/督導/.test(t) ? 'inspection' : /年度總結/.test(t) ? 'review' : /生涯結算/.test(t) ? 'ending' : t);
+    o2.push(/督導|稽查/.test(t) ? 'inspection' : /年度總結/.test(t) ? 'review' : /生涯結算/.test(t) ? 'ending' : t);
     await page.evaluate(() => { const b = document.querySelector('.modal .modal-actions .btn.primary'); b.click(); }); await wait(page, 200);
   }
   ok(o2.slice(0, 3).join() === 'inspection,review,ending', `inspection -> review -> ending (${o2})`);
@@ -309,7 +309,7 @@ for (const mode of ['new', 'classic']) {
     }));
     ok(e.title === '穩健的社區餐廳' && e.emoji === '🏥', `${tag} ending title/emoji`);
     ok(/十年了/.test(e.quote), `${tag} 老闆感言 shown`);
-    ok(e.stats.length === 8 && e.stats[0] === 'totalIncome=NT$ 123,456,789' && e.stats.includes('finalLot=地區復健中心') && e.stats.some(s => s.startsWith('topTreatment=') && !s.endsWith('=heat')), `${tag} stats card formatted (${e.stats.join(' | ')})`);
+    ok(e.stats.length === 8 && e.stats[0] === 'totalIncome=NT$ 123,456,789' && e.stats.includes('finalLot=地區人氣餐廳') && e.stats.some(s => s.startsWith('topTreatment=') && !s.endsWith('=noodle')), `${tag} stats card formatted (${e.stats.join(' | ')})`);
     ok(e.grade === 'B' && e.pills === 10, `${tag} grade + 10-year strip`);
     ok(e.note, `${tag} endless note`);
     ok(e.btns.includes('繼續經營') && e.btns.includes('重新開始') && e.btns.includes('複製生涯卡'), `${tag} buttons (${e.btns})`);
@@ -443,7 +443,7 @@ if (REAL) {
   const seq = [];
   for (let i = 0; i < 5; i++) {
     const t = await modalTitle(page); if (!t) break;
-    seq.push(/營運報告/.test(t) ? 'settle' : /督導/.test(t) ? 'inspection' : /年度總結/.test(t) ? 'review' : t);
+    seq.push(/營運報告/.test(t) ? 'settle' : /督導|稽查/.test(t) ? 'inspection' : /年度總結/.test(t) ? 'review' : t);
     if (/年度總結/.test(t)) {
       const rv = await page.evaluate(() => ({ g: document.querySelector('.modal .u-grade')?.textContent, mood: document.querySelector('.u-review')?.dataset.mood, dims: document.querySelectorAll('.modal .u-dim').length, stats: document.querySelectorAll('.modal .u-rv-stat').length, goals: document.querySelectorAll('.modal .u-rv-goals .u-check').length, ov: document.documentElement.scrollWidth <= innerWidth }));
       ok(/^[SABCD]$/.test(rv.g) && rv.dims === 5 && rv.stats >= 5 && rv.goals === 3 && rv.ov, `real: review modal content (${JSON.stringify(rv)})`);
@@ -471,7 +471,7 @@ if (REAL) {
       ok(await page.evaluate(() => __game.state.career.endless === true && !document.querySelector('.modal')), 'real: 繼續經營 -> endless');
       break;
     }
-    seq2.push(/營運報告/.test(t) ? 'settle' : /督導/.test(t) ? 'inspection' : /年度總結/.test(t) ? 'review' : t);
+    seq2.push(/營運報告/.test(t) ? 'settle' : /督導|稽查/.test(t) ? 'inspection' : /年度總結/.test(t) ? 'review' : t);
     await page.evaluate(() => document.querySelector('.modal .modal-actions .btn.primary').click()); await wait(page, 250);
   }
   ok(seq2.join() === 'settle,inspection,review,ending', `real: year-10 order settle,inspection,review,ending (${seq2})`);

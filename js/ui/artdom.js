@@ -5,7 +5,7 @@
 import { bus } from '../core/bus.js';
 import { loadArt, artReady, artRect, artUrl, artEnabled } from '../render/art.js';
 import { conceptThumb } from '../render/concept_objects.js';
-import { restThumb } from '../render/rest_sprites.js';
+import { restThumb, restScene } from '../render/rest_sprites.js';
 import { PATIENT_TYPES } from '../data/patients.js';
 import { patientMood, patientExprName, staffFaceName, PATIENT_MOOD_LABELS } from './moods.js';
 
@@ -160,13 +160,19 @@ export function artBanner(name, o = {}) {
 function paintBanner(el) {
   const a = el._art;
   const r = artRect(a.name);
-  const state = r ? 'on' : (loadState === 'pending' && artEnabled() ? 'wait' : 'none');
+  const sc = r ? null : restScene(a.name);          // no atlas: the restaurant sheet's own picture, if any
+  const state = (r || sc) ? 'on' : (loadState === 'pending' && artEnabled() ? 'wait' : 'none');
   if (r) {
+    el.style.backgroundImage = '';
     el.style.setProperty('--bw', r.w); el.style.setProperty('--bh', r.h);
     el.style.backgroundSize = `${(atlasW / r.w * 100).toFixed(3)}% auto`;
     el.style.backgroundPosition = `${(r.x / Math.max(1, atlasW - r.w) * 100).toFixed(3)}% ${(r.y / Math.max(1, atlasH - r.h) * 100).toFixed(3)}%`;
+  } else if (sc) {
+    el.style.backgroundImage = `url("${sc.url}")`;
+    el.style.setProperty('--bw', sc.w); el.style.setProperty('--bh', sc.h);
+    el.style.backgroundSize = '100% 100%'; el.style.backgroundPosition = '0 0';
   }
-  if (a.state === state && r) return;
+  if (a.state === state && (r || sc)) return;
   a.state = state;
   el.dataset.art = state;
   el.hidden = state === 'none';

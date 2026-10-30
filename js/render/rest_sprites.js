@@ -10,6 +10,7 @@
 //   restIconSprite(name)               -> canvas (drawn 1:1)   coin / speech bubble replace the money / question status icons
 //   restFoodIcon(dishId)               -> canvas {dw, dh}      small dish icon shown above a guest who is being served
 //   restThumb(defId, maxW, maxH, dpr)  -> canvas               DOM thumbnails (build tray / selection card)
+//   restScene(name)                    -> {url, w, h}         banner picture for artdom.artBanner (scene.clinic -> storefront)
 import { bus } from '../core/bus.js';
 import { BUILDABLES } from '../data/buildables.js';
 import { artEnabled } from './art.js';
@@ -176,6 +177,15 @@ export function restPersonSprite(kind, dir, frame, opts) {
   c.ay = sit ? c.dh + 2 : c.dh + (bounce ? 1.5 : 0);
   cache.set(key, c);
   return c;
+}
+
+// ───────────────────────── DOM banner scenes ─────────────────────────
+// atlas scene name (artdom.artBanner) -> opaque picture cut from the sheet
+const SCENES = { 'scene.clinic': 'scene/storefront' };
+export function restScene(name) {
+  if (!on()) return null;
+  const im = SCENES[name] && imgs.get(SCENES[name]);
+  return im ? { url: im.src, w: im.naturalWidth, h: im.naturalHeight } : null;
 }
 
 // ───────────────────────── small icons ─────────────────────────
