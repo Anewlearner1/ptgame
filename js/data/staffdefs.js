@@ -4,27 +4,27 @@ import { ROLE_LABELS } from '../core/constants.js';
 // baseSalary / hireCost in NT$ (monthly salary; hireCost ~ one month).
 export const STAFF_ROLES = {
   chef: {
-    name: ROLE_LABELS.chef, baseSalary: 85000, hireCost: 85000,
+    name: ROLE_LABELS.chef, baseSalary: 65000, hireCost: 65000,
     color: '#f4f7fa', skillRange: [3, 8], staminaMax: 100,
     desc: '負責招牌主餐、鐵板與主廚特餐，是店裡口味與高單價料理的靈魂。',
   },
   cook: {
-    name: ROLE_LABELS.cook, baseSalary: 48000, hireCost: 48000,
+    name: ROLE_LABELS.cook, baseSalary: 42000, hireCost: 42000,
     color: '#e87a3a', skillRange: [3, 8], staminaMax: 100,
     desc: '負責煮麵、炸物、熱炒與燒烤，是廚房的體力核心。',
   },
   barista: {
-    name: ROLE_LABELS.barista, baseSalary: 40000, hireCost: 40000,
+    name: ROLE_LABELS.barista, baseSalary: 38000, hireCost: 38000,
     color: '#3fa66b', skillRange: [3, 8], staminaMax: 100,
     desc: '負責飲料、冰品、甜點與吧台，下午茶與宵夜時段不可或缺。',
   },
   server: {
-    name: ROLE_LABELS.server, baseSalary: 34000, hireCost: 34000,
+    name: ROLE_LABELS.server, baseSalary: 32000, hireCost: 32000,
     color: '#8e5bc4', skillRange: [3, 8], staminaMax: 100,
     desc: '負責帶位、上菜、小菜與湯品，餐桌翻得快不快就看外場。',
   },
   cashier: {
-    name: ROLE_LABELS.cashier, baseSalary: 32000, hireCost: 32000,
+    name: ROLE_LABELS.cashier, baseSalary: 30000, hireCost: 30000,
     color: '#e87fae', skillRange: [3, 8], staminaMax: 100,
     desc: '負責點餐結帳，也能順手開滷肉鍋、湯鍋與飲料機，讓客人少等一點。',
   },

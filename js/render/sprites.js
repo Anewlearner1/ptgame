@@ -195,7 +195,7 @@ export function getIconSprite(name) {
 export const DIRS = 4;   // 0:+x (down-right) 1:+y (down-left) 2:-x (up-left) 3:-y (up-right)
 const SKINS = ['#f6d2b0', '#f1c9a5', '#e0b48a', '#c99770'];
 const HAIRS = ['#2b2b33', '#3a2a1e', '#5a3825', '#1c1c24'];
-const PERSON_KINDS = ['elder', 'office', 'sports', 'kid', 'doctor', 'pt', 'ot', 'st', 'nurse'];
+const PERSON_KINDS = ['elder', 'office', 'student', 'family', 'chef', 'cook', 'barista', 'server', 'cashier'];
 const POSES = { walk: 0, stand: 0, sit: 1, work: 2 };
 
 function patPal(kind, def) {
@@ -219,31 +219,32 @@ function specFor(kind, variant) {
       const p = patPal('office', { skin: '#f6d2b0', hair: '#2b2b33', shirt: '#f2f2f2', pants: '#3c3f58' });
       return { ...base, skin: p.skin, hair: p.hair, style: v & 1 ? 'long' : 'short', shirt: p.shirt, pants: p.pants, tie: '#c4373b', glasses: !!(v & 2), shoes: '#222' };
     }
-    case 'sports': {
-      const p = patPal('sports', { skin: '#e0b48a', hair: '#3a2a1e', shirt: '#ff7a3d', pants: '#222831' });
-      return { ...base, skin: p.skin, hair: p.hair, style: 'cap', cap: v & 1 ? '#2b6fd6' : '#d9362b', shirt: p.shirt, pants: p.pants, shorts: true, shoes: '#f4f4f4', band: '#ffffff' };
+    case 'student': {
+      const p = patPal('student', { skin: '#e0b48a', hair: '#3a2a1e', shirt: '#ff7a3d', pants: '#222831' });
+      return { ...base, skin: p.skin, hair: p.hair, style: v & 1 ? 'twin' : 'short', shirt: p.shirt, pants: p.pants, pack: v & 2 ? '#2b6fd6' : '#d9362b', shoes: '#f4f4f4' };
     }
-    case 'kid': {
-      const p = patPal('kid', { skin: '#f3c7a1', hair: '#5a3825', shirt: '#ffd166', pants: '#118ab2' });
-      return { ...base, skin: p.skin, hair: p.hair, style: v & 1 ? 'twin' : 'bowl', shirt: p.shirt, pants: p.pants, kid: true, pack: v & 2 ? '#e0488a' : '#3aa0e0', shorts: true, shoes: '#fff' };
+    case 'family': {
+      const p = patPal('family', { skin: '#f3c7a1', hair: '#5a3825', shirt: '#ffd166', pants: '#118ab2' });
+      if (v & 2) return { ...base, skin: p.skin, hair: p.hair, style: v & 1 ? 'twin' : 'bowl', shirt: p.shirt, pants: p.pants, kid: true, pack: v & 1 ? '#e0488a' : '#3aa0e0', shorts: true, shoes: '#fff' };
+      return { ...base, skin: SKINS[v & 3], hair: p.hair, style: v & 1 ? 'long' : 'short', shirt: p.shirt, pants: p.pants, shoes: '#4a3b34' };
     }
-    case 'doctor':
-      return { ...base, style: v & 1 ? 'long' : 'short', shirt: '#5aa9c9', pants: '#37455a', coat: '#f4f7fa', glasses: true, stetho: true, shoes: '#2a2a33' };
-    case 'pt': {
-      const c = roleColor('pt', '#3a7bd5');
-      return { ...base, style: v & 1 ? 'bun' : 'short', shirt: c, pants: '#2f3a52', lanyard: '#ffd23f', shoes: '#f4f4f4' };
+    case 'chef':
+      return { ...base, style: 'short', shirt: '#f4f7fa', pants: '#3a3f4a', coat: '#f8fafc', toque: true, shoes: '#2a2a33' };
+    case 'cook': {
+      const c = roleColor('cook', '#e87a3a');
+      return { ...base, style: v & 1 ? 'bun' : 'short', shirt: c, pants: '#3b3b44', apron: '#f2f2f2', bandana: darken(c, 0.15), shoes: '#2a2a33' };
     }
-    case 'ot': {
-      const c = roleColor('ot', '#3fa66b');
-      return { ...base, style: v & 1 ? 'long' : 'short', shirt: c, pants: '#f0f0ea', lanyard: '#ffd23f', shoes: '#f4f4f4' };
+    case 'barista': {
+      const c = roleColor('barista', '#3fa66b');
+      return { ...base, style: v & 1 ? 'bun' : 'long', shirt: '#f4f4f4', pants: '#2f3a52', apron: c, shoes: '#2a2a33' };
     }
-    case 'st': {
-      const c = roleColor('st', '#8e5bc4');
-      return { ...base, style: v & 1 ? 'bun' : 'long', shirt: c, pants: '#3a3350', glasses: !!(v & 2), shoes: '#2a2a33' };
+    case 'server': {
+      const c = roleColor('server', '#8e5bc4');
+      return { ...base, style: v & 1 ? 'bun' : 'short', shirt: '#fafafa', pants: '#222831', vest: c, tie: '#222', shoes: '#1c1c24' };
     }
-    case 'nurse': {
-      const c = roleColor('nurse', '#e87fae');
-      return { ...base, style: 'long', shirt: c, pants: mix(c, '#ffffff', 0.5), nurseCap: true, shoes: '#fff', skin: SKINS[v & 3] };
+    case 'cashier': {
+      const c = roleColor('cashier', '#e87fae');
+      return { ...base, style: 'long', shirt: c, pants: mix(c, '#ffffff', 0.5), lanyard: '#ffd23f', shoes: '#fff', skin: SKINS[v & 3] };
     }
     default:
       return { ...base, shirt: '#8aa0b8' };
@@ -300,11 +301,14 @@ function drawPerson(g, s, front, pose, frame, right) {
       R(7, by, 2, 1, s.skin);                   // collar V
       if (s.tie) { R(7, by + 1, 2, 1, s.tie); R(7, by + 2, 1, 3, s.tie); R(8, by + 2, 1, 3, darken(s.tie, 0.2)); }
       if (s.lanyard) { R(6, by, 1, 3, s.lanyard); R(9, by, 1, 3, s.lanyard); R(7, by + 3, 2, 2, '#fff'); }
-      if (s.nurseCap) { R(7, by + 1, 2, 1, '#fff'); R(5, by + bodyH - 1, 6, 1, darken(s.shirt, 0.12)); }
       if (s.band) R(5, by + 1, 6, 1, lighten(s.shirt, 0.25));
+      if (s.apron) { R(5, by + 1, 6, bodyH + 1, s.apron); R(5, by + 1, 6, 1, darken(s.apron, 0.2)); R(6, by, 1, 1, darken(s.apron, 0.3)); R(9, by, 1, 1, darken(s.apron, 0.3)); R(7, by + 3, 2, 1, darken(s.apron, 0.12)); }
+      if (s.vest) { R(5, by, 2, bodyH, s.vest); R(9, by, 2, bodyH, s.vest); R(7, by, 2, bodyH, '#fafafa'); R(7, by + 2, 2, 1, '#222'); }
     }
   } else if (s.coat) {
     R(5, by, 6, bodyH + 2, s.coat); R(10, by, 1, bodyH + 2, '#cdd6de'); R(5, by + bodyH + 1, 6, 1, '#dde5ec');
+  } else if (s.apron) { R(5, by + 2, 6, bodyH - 1, darken(s.apron, 0.1)); R(5, by + 3, 6, 1, darken(s.apron, 0.25));
+  } else if (s.vest) { R(5, by, 6, bodyH, s.vest); R(7, by, 2, 1, s.skin);
   } else if (s.lanyard) { R(7, by, 2, 1, s.lanyard); }
 
   // ── arms ──
@@ -355,7 +359,7 @@ function drawPerson(g, s, front, pose, frame, right) {
     // back of head
     if (s.style === 'bald') { R(4, hy + 1, 8, 4, hc); R(5, hy, 6, 1, skin); R(5, hy + 5, 6, 1, hc); R(5, hy + 1, 6, 1, skin); }
     else { R(4, hy + 1, 8, 6, hc); R(5, hy, 6, 8, hc); R(5, hy + 7, 6, 1, skin); R(5, hy + 1, 3, 1, hcL); }
-    if (s.style === 'long' || s.nurseCap) { R(4, hy + 6, 8, 3, hc); R(5, hy + 9, 6, 1, hc); }
+    if (s.style === 'long') { R(4, hy + 6, 8, 3, hc); R(5, hy + 9, 6, 1, hc); }
     if (s.style === 'bun') R(6, hy - 2, 4, 2, hc);
     if (s.style === 'twin') { R(3, hy + 4, 1, 4, hc); R(12, hy + 4, 1, 4, hc); }
     if (s.style === 'cap') { R(4, hy, 8, 3, s.cap); R(5, hy - 1, 6, 1, s.cap); R(7, hy - 1, 2, 1, darken(s.cap, 0.3)); }
@@ -387,9 +391,10 @@ function drawPerson(g, s, front, pose, frame, right) {
       default:   // short
         R(5, hy, 6, 2, hc); R(4, hy + 1, 8, 2, hc); R(4, hy + 3, 1, 2, hc); R(11, hy + 3, 1, 2, hc); R(6, hy + 2, 1, 1, hc); R(9, hy + 2, 2, 1, hc); R(5, hy, 3, 1, hcL);
     }
-    if (s.nurseCap) { R(5, hy - 1, 6, 3, '#ffffff'); R(4, hy + 1, 8, 1, '#ffffff'); R(7, hy - 1, 2, 2, '#e23b3b'); R(7, hy, 2, 1, '#e23b3b'); R(6, hy, 4, 1, '#e23b3b'); R(7, hy - 1, 2, 1, '#e23b3b'); }
   }
-  if (!front && s.nurseCap) { R(5, hy - 1, 6, 3, '#ffffff'); R(4, hy + 1, 8, 1, '#ffffff'); }
+  // headgear: chef's toque, cook's bandana
+  if (s.toque) { R(5, hy - 3, 6, 3, '#ffffff'); R(4, hy - 2, 8, 2, '#ffffff'); R(4, hy, 8, 1, '#e4e6ee'); R(5, hy - 3, 2, 1, '#f1f3f8'); }
+  if (s.bandana) { R(4, hy, 8, 2, s.bandana); R(5, hy - 1, 6, 1, s.bandana); if (!front) R(11, hy + 1, 2, 2, darken(s.bandana, 0.2)); }
 }
 
 const _people = new Map();
@@ -474,7 +479,7 @@ const GROUND = {
   lot: () => tileSprite((x, y, u, v, r) => (u < 0.035 || v < 0.035 ? '#d7cfbd' : r < 0.04 ? '#e2dbc9' : '#efe9dc')),
   lot2: () => tileSprite((x, y, u, v, r) => (u < 0.035 || v < 0.035 ? '#d2cab7' : r < 0.04 ? '#ddd5c2' : '#e8e1d2')),
   doormat: () => tileSprite((x, y, u, v, r) => (u < 0.1 || u > 0.9 || v < 0.1 || v > 0.9 ? '#6b2b2b' : (x + y) % 3 === 0 ? '#9a3d3d' : '#8a3434')),
-  floor_mat: () => tileSprite((x, y, u, v, r) => {
+  floor_tile: () => tileSprite((x, y, u, v, r) => {
     if (u < 0.04 || v < 0.04) return '#216156';
     const rib = Math.floor(u * 6) & 1;
     return rib ? (r < 0.1 ? '#2a7468' : '#2f7f73') : (r < 0.1 ? '#3b9082' : '#3f968a');
@@ -929,7 +934,7 @@ export function warmSprites() {
   for (const k of Object.keys(GROUND)) getGroundSprite(k);
   for (const k of Object.keys(SCENE)) getGroundSprite(k);
   for (const k of Object.keys(ICONS)) getIconSprite(k);
-  for (const k of ['elder', 'office', 'sports', 'kid', 'doctor', 'pt', 'ot', 'st', 'nurse']) {
+  for (const k of PERSON_KINDS) {
     for (let d = 0; d < 4; d++) for (let f = 0; f < 4; f++) getPersonSprite(k, d, f, { variant: 0 });
   }
 }

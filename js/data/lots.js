@@ -8,8 +8,8 @@ export const LOTS = [
     name: '巷弄小吃店',
     lot: { x0: 10, y0: 10, w: 12, h: 10 },
     door: { x: 15, y: 20 },
-    rent: 45000,
-    maxPatientsPerWeek: 22,
+    rent: 40000,
+    maxPatientsPerWeek: 40,
     maxStaff: 6,
     expandCost: 0,
     requires: {
@@ -22,7 +22,7 @@ export const LOTS = [
     lot: { x0: 9, y0: 8, w: 14, h: 12 },
     door: { x: 15, y: 20 },
     rent: 85000,
-    maxPatientsPerWeek: 38,
+    maxPatientsPerWeek: 70,
     maxStaff: 10,
     expandCost: 800000,
     requires: {
@@ -35,7 +35,7 @@ export const LOTS = [
     lot: { x0: 8, y0: 6, w: 16, h: 14 },
     door: { x: 15, y: 20 },
     rent: 130000,
-    maxPatientsPerWeek: 68,
+    maxPatientsPerWeek: 110,
     maxStaff: 15,
     expandCost: 2500000,
     requires: {
@@ -48,10 +48,10 @@ export const LOTS = [
     lot: { x0: 6, y0: 4, w: 20, h: 16 },
     door: { x: 15, y: 20 },
     rent: 180000,
-    maxPatientsPerWeek: 100,
+    maxPatientsPerWeek: 150,
     maxStaff: 22,
     maxPatients: 100,        // concurrent guests on the floor (others use patients.js TUNE.MAX_PATIENTS 60)
-    patientWeight: 20,       // each simulated guest stands for this many real ones (others: economy.PATIENT_WEIGHT 15)
+    patientWeight: 38,       // each simulated guest stands for this many real ones (others: economy.PATIENT_WEIGHT 28)
     expandCost: 6000000,
     requires: {
       minReputation: 320, minYear: 3, minStaff: 11, minAvgSat: 72, needRamp: true, minSeats: 6, research: 'rs_expand',

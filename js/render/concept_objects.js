@@ -297,18 +297,6 @@ function roomShell(P, w, h, o = {}) {
 // ───────────────────────── objects ─────────────────────────
 // each: { hm: height above the footprint's top corner (world px), draw(P, w, h) } ; (w,h) = logical footprint
 const DRAW = {
-  sofa: { hm: 34, draw(P, w) {
-    const g = C.greenL, gd = C.green;
-    for (const [a, b] of [[0.08, 0.1], [w - 0.15, 0.1], [0.08, 0.86], [w - 0.15, 0.86]]) P.box(a, b, a + 0.07, b + 0.07, 0, 3, C.steel, { edge: false });
-    P.box(0.04, 0.06, w - 0.04, 0.96, 3, 8, gd);
-    P.box(0.04, 0.06, w - 0.04, 0.38, 8, 28, g);                        // backrest
-    for (let i = 1; i < w; i++) P.fL(i - 0.012, i + 0.012, 0.38, 10, 27, C.green.l);
-    for (let i = 0; i < w; i++) { P.dot(i + 0.5, 0.38, 22, C.greenL.h); P.dot(i + 0.5, 0.38, 15, C.greenL.h); }
-    P.box(0.04, 0.06, 0.3, 0.96, 8, 19, g);                              // left arm
-    for (let i = 0; i < w; i++) P.box(0.3 + i * (w - 0.6) / w, 0.38, 0.3 + (i + 1) * (w - 0.6) / w - 0.02, 0.94, 8, 13, C.greenL);
-    P.box(0.34, 0.42, 0.62, 0.56, 13, 21, C.yellow);                      // cushion
-    P.box(w - 0.3, 0.06, w - 0.04, 0.96, 8, 19, g);                      // right arm
-  } },
   water: { hm: 50, draw(P) {
     P.box(0.27, 0.27, 0.73, 0.73, 0, 26, C.panel);
     P.fL(0.27, 0.73, 0.73, 3, 4, C.panel.s);
@@ -329,7 +317,7 @@ const DRAW = {
     P.box(0.04, 0.16, w - 0.04, 0.82, 11, 12.5, C.wood);
     P.box(w / 2 - 0.12, 0.36, w / 2 + 0.12, 0.5, 12.5, 15, C.steel, { edge: false });     // stand
     P.box(0.14, 0.4, w - 0.14, 0.52, 15, 41, C.navy);                                      // panel
-    P.screen('L', 0.2, w - 0.2, 0.52, 16.4, 39.6, 'ecg');
+    P.screen('L', 0.2, w - 0.2, 0.52, 16.4, 39.6, 'wave');
     P.box(0.3, 0.25, 0.5, 0.35, 12.5, 14, C.steel, { edge: false });                       // set-top box
     P.ball(w - 0.25, 0.5, 15.5, 3, C.leaf);
   } },
@@ -357,93 +345,6 @@ const DRAW = {
     P.faceLine('L', 0.16, 0.84, 0.58, 19.2, 32.8, [[0.82, 0.3], [0.82, 0.72]], '#9cc8f8');
     P.faceLine('L', 0.16, 0.84, 0.58, 19.2, 32.8, [[0.72, 0.51], [0.92, 0.51]], '#9cc8f8');
   } },
-  reception: { hm: 46, draw(P, w) {
-    // counter: front desk (customer side +v) with a raised back shelf, monitor, bell
-    P.box(0.05, 0.12, w - 0.05, 0.52, 0, 24, C.cream);                       // back unit
-    P.box(0.05, 0.5, w - 0.05, 0.94, 0, 15, C.panel);                        // front desk body
-    P.fL(0.1, w - 0.1, 0.94, 4, 9, C.blue.l);                                 // blue accent panel
-    P.fL(0.1, w - 0.1, 0.94, 9, 10, '#f6f6f6'); P.fL(0.1, w - 0.1, 0.94, 3, 4, '#f6f6f6');
-    P.fcirc('L', w / 2, 0.94, 6.5, 2.8, '#f6f6f6');                         // white cross emblem
-    P.fL(w / 2 - 0.015, w / 2 + 0.015, 0.94, 3.6, 9.4, '#2a7ef6'); P.fL(w / 2 - 0.1, w / 2 + 0.1, 0.94, 6, 7, '#2a7ef6');
-    P.box(0.02, 0.48, w - 0.02, 0.98, 15, 17, C.wood);                       // counter top
-    P.box(0.05, 0.12, w - 0.05, 0.5, 24, 25.5, C.wood);
-    monitor(P, 0.3, 0.3, 25.5, 0.4);
-    keyboard(P, 0.34, 0.56, 17);
-    // bell + ticket tray + pen cup
-    P.cyl(w - 0.45, 0.72, 17, 18, 3.2, 3.2, C.yellow); P.ball(w - 0.45, 0.72, 18.5, 2.8, C.yellow); P.dot(w - 0.45, 0.72, 22, C.yellow.h);
-    P.box(w - 0.9, 0.62, w - 0.65, 0.86, 17, 18, C.white, { edge: false }); P.box(w - 0.88, 0.64, w - 0.66, 0.84, 18, 19.2, '#f6f6f6', { edge: false });
-    P.box(w - 0.95, 0.2, w - 0.8, 0.36, 25.5, 30, C.blue);
-  } },
-  heatbox: { hm: 44, draw(P) {
-    // hydrocollator / hot-pack steamer: stainless tub with a red lid, display, knobs, steam, a red hot-pack draped on the lid
-    P.box(0.2, 0.22, 0.8, 0.78, 0, 20, C.steel);
-    P.fL(0.2, 0.8, 0.78, 3, 4, C.steel.s);
-    P.fL(0.28, 0.72, 0.78, 12, 17, '#14111b'); P.fL(0.3, 0.7, 0.78, 12.8, 16.2, '#3a0e12');
-    P.faceLine('L', 0.3, 0.7, 0.78, 12.8, 16.2, [[0.1, 0.5], [0.3, 0.5], [0.4, 0.9], [0.5, 0.1], [0.6, 0.5], [0.9, 0.5]], '#ff6a4a');
-    P.dot(0.34, 0.78, 8, '#e23a3a', 2, 2); P.dot(0.48, 0.78, 8, '#f6c64e', 2, 2); P.dot(0.62, 0.78, 8, '#5aae02', 2, 2);
-    P.box(0.16, 0.18, 0.84, 0.82, 20, 24, C.red);                              // lid
-    P.box(0.4, 0.4, 0.6, 0.5, 24, 26, C.steel, { edge: false });               // lid handle
-    // draped red hot-pack
-    P.ball(0.5, 0.58, 27, 8, C.red, 4.5); P.ball(0.62, 0.52, 26, 5, C.red, 3.5);
-    // steam
-    const st = '#eaf6f6';
-    for (const [u, v, z, r] of [[0.34, 0.4, 32, 3], [0.4, 0.38, 38, 3.5], [0.5, 0.4, 44, 3]]) P.ball(u, v, z, r, { t: '#ffffff', l: '#eaf6f6', r: '#cfe6f5', h: '#ffffff', s: st }, r * 0.8);
-  } },
-  ir_lamp: { hm: 70, draw(P) {
-    // floor lamp on a 3-leg caster base, jointed arm, bell-shaped infrared head with a glowing red face
-    P.cyl(0.5, 0.5, 0, 3, 11, 11, C.steel);
-    for (const [u, v] of [[0.3, 0.3], [0.72, 0.34], [0.5, 0.74]]) P.ball(u, v, 1.5, 2.2, C.navy);
-    P.cyl(0.5, 0.5, 3, 5, 4, 4, C.navy);
-    P.box(0.47, 0.47, 0.53, 0.53, 5, 40, C.steel, { edge: false });
-    P.box(0.455, 0.455, 0.545, 0.545, 18, 22, C.navy, { edge: false });
-    P.ball(0.5, 0.5, 42, 4, C.steel);
-    P.ln(0.5, 0.5, 42, 0.5, 0.66, 52, C.steel.t, 2);
-    P.ball(0.5, 0.66, 52, 3, C.steel);
-    // head: dark bell housing + red grille face looking down-left
-    P.box(0.34, 0.6, 0.72, 0.86, 46, 66, C.steel);
-    P.fL(0.34, 0.72, 0.86, 46, 66, C.navy.l);
-    P.fL(0.37, 0.69, 0.86, 48.5, 63.5, '#e23a3a');
-    P.fL(0.4, 0.66, 0.86, 51, 61, '#ff6a4a');
-    P.fL(0.45, 0.61, 0.86, 54, 58, '#ffb090');
-    for (const z of [50.2, 53.2, 56.2, 59.2, 62.2]) P.fL(0.37, 0.69, 0.86, z, z + 0.5, '#8c1c2c');
-    P.box(0.34, 0.6, 0.72, 0.86, 66, 68, C.steel);
-  } },
-  redcord: { hm: 56, draw(P, w, h) {
-    // blue mat + slim steel suspension frame + red cords with grips
-    P.box(0.1, 0.1, 1.9, 1.9, 0, 2, C.blue, { edge: false });
-    P.top(0.16, 0.16, 1.84, 1.84, 2, '#368af6');
-    for (let i = 1; i < 6; i++) P.ln(0.16, 0.16 + i * 0.28, 2, 1.84, 0.16 + i * 0.28, 2, '#2a7ef6');
-    P.ln(0.16, 1.0, 2, 1.84, 1.0, 2, '#9cc8f8');
-    const post = (u, v) => P.box(u, v, u + 0.07, v + 0.07, 2, 50, C.steel);
-    post(0.14, 0.14);
-    P.box(0.14, 0.14, 0.21, 1.93, 48, 51, C.steel);
-    P.box(0.14, 0.14, 1.93, 0.21, 48, 51, C.steel);
-    post(0.14, 1.86);
-    post(1.86, 0.14);
-    P.box(0.14, 0.97, 1.93, 1.04, 48, 51, C.navy);
-    P.box(0.84, 0.92, 1.08, 1.08, 44, 48, C.navy);
-    for (const [u, v] of [[0.9, 1.06], [1.02, 1.06]]) {
-      P.ln(u, v, 44, u, v + 0.02, 20, '#e23a3a', 2); P.ln(u, v, 44, u, v, 20, '#ff6a4a', 1);
-      P.box(u - 0.035, v - 0.03, u + 0.035, v + 0.03, 15, 21, C.white, { edge: false });
-    }
-    P.box(0.84, 1.04, 1.08, 1.12, 8, 11, C.red);
-    P.ln(0.9, 1.06, 15, 0.88, 1.08, 10, '#e23a3a', 2); P.ln(1.02, 1.06, 15, 1.04, 1.08, 10, '#e23a3a', 2);
-    post(1.86, 1.86);
-    P.box(1.86, 0.14, 1.93, 1.93, 48, 51, C.steel);
-    P.box(0.14, 1.86, 1.93, 1.93, 48, 51, C.steel);
-    P.dot(1.7, 1.0, 49, '#e23a3a', 4, 2);
-  } },
-  fine_table: { hm: 26, draw(P, w) {
-    for (const [u, v] of [[0.14, 0.2], [w - 0.24, 0.2], [0.14, 0.76], [w - 0.24, 0.76]]) P.box(u, v, u + 0.1, v + 0.1, 0, 12, C.blue, { edge: false });
-    P.box(0.06, 0.12, w - 0.06, 0.88, 12, 15, C.wood);
-    P.top(0.1, 0.16, w - 0.1, 0.84, 15, '#e8cf9e');
-    // peg board + beads + blocks + pencils
-    P.box(0.18, 0.24, 0.62, 0.52, 15, 16, C.blue, { edge: false });
-    for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) P.ball(0.26 + i * 0.1, 0.32 + j * 0.1, 18, 1.8, BALLS[(i + j * 2) % 5]);
-    for (let i = 0; i < 5; i++) P.ball(1.0 + i * 0.1, 0.7 - (i & 1) * 0.06, 17.5, 2.2, BALLS[(i + 2) % 7]);
-    P.box(w - 0.55, 0.3, w - 0.42, 0.43, 15, 19, C.red); P.box(w - 0.4, 0.34, w - 0.27, 0.47, 15, 19, C.yellow); P.box(w - 0.47, 0.32, w - 0.34, 0.45, 19, 22, C.blue);
-    P.ln(1.1, 0.38, 15.5, 1.35, 0.3, 15.5, '#f6c64e', 2);
-  } },
   coffee: { hm: 44, draw(P) {
     // espresso machine: dark body, steel front, blue display, two spouts, cup + drip tray, bean hopper on top
     P.box(0.22, 0.24, 0.78, 0.76, 0, 28, C.woodD);
@@ -461,25 +362,6 @@ const DRAW = {
     P.cyl(0.5, 0.4, 30, 40, 7, 7, C.glass, { capCol: C.glass.t });
     for (let i = 0; i < 5; i++) P.dot(0.42 + (i % 3) * 0.06, 0.4 + (i % 2) * 0.03, 33 + i * 1.2, '#6e5034', 3, 2);
     P.cyl(0.5, 0.4, 40, 42, 6, 6, C.steel);
-  } },
-  ball_pit: { hm: 20, draw(P) {
-    // padded blue pen filled with coloured balls
-    P.box(0.04, 0.04, 1.96, 1.96, 0, 2, C.teal, { edge: false });
-    P.top(0.18, 0.18, 1.82, 1.82, 2, '#145a72');
-    P.box(0.04, 0.04, 1.96, 0.2, 2, 13, C.blue);                               // back pads
-    P.box(0.04, 0.2, 0.2, 1.96, 2, 13, C.blue);
-    const bs = [];
-    for (let j = 0; j < 9; j++) for (let i = 0; i < 9; i++) {
-      const u = 0.28 + i * 0.18 + ((j & 1) ? 0.09 : 0) + (hash(i, j, 1) - 0.5) * 0.04, v = 0.28 + j * 0.18 + (hash(i, j, 2) - 0.5) * 0.04;
-      if (u > 1.8 || v > 1.8) continue;
-      bs.push([u, v, BALLS[Math.floor(hash(i, j, 4) * BALLS.length)], 6 + hash(i, j, 3) * 3]);
-    }
-    bs.sort((a, b) => (a[0] + a[1]) - (b[0] + b[1]));
-    for (const [u, v, c, z] of bs) P.ball(u, v, z, 4.3, c);
-    P.box(0.2, 1.8, 1.96, 1.96, 2, 13, C.blue);                                  // front pads
-    P.box(1.8, 0.2, 1.96, 1.8, 2, 13, C.blue);
-    for (let i = 0; i < 6; i++) { P.dot(0.32 + i * 0.28, 1.96, 8, C.blue.h, 2, 1); P.dot(1.96, 0.32 + i * 0.28, 8, C.blue.h, 1, 2); }
-    P.ball(1.1, 2.12, 2.5, 3.2, C.yellow); P.ball(1.45, 2.05, 2.5, 3.2, C.red);
   } },
   bookshelf: { hm: 38, draw(P, w) {
     P.box(0.05, 0.3, w - 0.05, 0.84, 0, 32, C.wood);
@@ -499,52 +381,6 @@ const DRAW = {
     });
     P.box(0.05, 0.3, w - 0.05, 0.84, 32, 34, C.wood);
     P.ball(0.4, 0.55, 37, 3.4, C.yellow); P.box(w - 0.6, 0.45, w - 0.35, 0.7, 34, 38, C.red);
-  } },
-  exam_room: { ns: 1, hm: 44, draw(P) {
-    roomShell(P, 2, 2, { wh: 40,
-      decor(P) {
-        winL(P, 1.1, 1.8, 0.09, 15, 34);
-        frameR(P, 0.35, 1.0, 0.09, 17, 33, '#eaf6f6');                           // anatomy chart on the left wall
-        P.faceLine('R', 0.35, 1.0, 0.09, 17, 33, [[0.5, 0.15], [0.5, 0.85]], '#5aaef6'); P.faceLine('R', 0.35, 1.0, 0.09, 17, 33, [[0.25, 0.6], [0.75, 0.6]], '#5aaef6');
-        P.fcirc('R', 0.09, 0.78, 28, 1.4, '#e23a3a');
-        // stethoscope on a hook
-        P.dot(0.09, 1.28, 29, '#7e8aba', 2, 2);
-        P.faceLine('R', 1.2, 1.5, 0.09, 14, 29, [[0.3, 0.95], [0.1, 0.6], [0.25, 0.3], [0.5, 0.2], [0.75, 0.3], [0.9, 0.6], [0.7, 0.95]], '#1e365a');
-        P.fcirc('R', 0.09, 1.38, 15, 1.6, '#d2d2de');
-      },
-      furnish(P) {
-        treatBed(P, 0.28, 0.5, 0.86, 1.78);
-        // desk with drawers + monitor + stool
-        P.box(1.1, 0.2, 1.9, 0.78, 0, 16, C.wood);
-        P.fL(1.1, 1.9, 0.78, 2, 3, C.wood.s);
-        for (let i = 0; i < 2; i++) { P.fL(1.15 + i * 0.4, 1.5 + i * 0.4, 0.78, 3.5, 7.5, C.wood.t); P.dot(1.32 + i * 0.4, 0.78, 6, C.steel.h, 3, 1); P.fL(1.15 + i * 0.4, 1.5 + i * 0.4, 0.78, 8.5, 14, C.wood.l); P.dot(1.32 + i * 0.4, 0.78, 11.5, C.steel.h, 3, 1); }
-        P.box(1.06, 0.16, 1.94, 0.82, 16, 17.5, C.cream);
-        monitor(P, 1.3, 0.34, 17.5, 0.4);
-        keyboard(P, 1.34, 0.56, 17.5);
-        P.cyl(1.7, 0.6, 17.5, 21, 2.2, 2.2, C.white);
-        P.cyl(1.4, 1.2, 6, 8, 5, 5, C.navy); P.box(1.38, 1.18, 1.42, 1.22, 2, 6, C.steel, { edge: false });
-      } });
-  } },
-  us_room: { ns: 1, hm: 44, draw(P) {
-    roomShell(P, 2, 2, { wh: 40, acc: C.navy,
-      decor(P) {
-        winL(P, 1.25, 1.85, 0.09, 15, 34);
-        P.fR(0.4, 1.1, 0.09, 16, 32, '#14111b'); P.screen('R', 0.42, 1.08, 0.09, 17, 31, 'fan');
-      },
-      furnish(P) {
-        treatBed(P, 0.28, 0.5, 0.86, 1.78, { sheet: C.teal });
-        // ultrasound cart
-        for (const [u, v] of [[1.15, 0.62], [1.55, 0.62], [1.15, 1.0], [1.55, 1.0]]) P.ball(u, v, 1.5, 1.6, C.dark);
-        P.box(1.08, 0.55, 1.62, 1.08, 3, 26, C.navy);
-        P.fL(1.14, 1.56, 1.08, 6, 12, C.steel.l); P.fL(1.18, 1.52, 1.08, 7, 9, '#14111b');
-        P.fL(1.14, 1.56, 1.08, 14, 15, C.steel.t);
-        P.dot(1.2, 1.08, 20, '#e23a3a', 2, 2); P.dot(1.3, 1.08, 20, '#f6c64e', 2, 2);
-        P.box(1.04, 0.5, 1.66, 0.82, 26, 28, C.steel);
-        P.box(1.2, 0.58, 1.5, 0.66, 28, 31, C.steel, { edge: false });
-        P.box(1.06, 0.55, 1.62, 0.7, 31, 46, C.navy);
-        P.screen('L', 1.1, 1.58, 0.7, 32.2, 44.8, 'fan');
-        P.ln(1.62, 1.0, 20, 1.78, 1.2, 12, '#14111b', 1); P.ball(1.78, 1.2, 11, 2.2, C.steel);
-      } });
   } },
   rest_room: { ns: 1, hm: 44, draw(P) {
     roomShell(P, 2, 2, { wh: 40, acc: C.teal,
@@ -572,161 +408,232 @@ const DRAW = {
         P.ball(1.7, 1.55, 14, 5, C.leaf, 6); P.ball(1.62, 1.5, 19, 3.5, C.leaf, 4);
       } });
   } },
-  shockwave_room: { ns: 1, hm: 44, draw(P) {
-    roomShell(P, 2, 2, { wh: 40, acc: C.purple,
-      decor(P) {
-        winL(P, 1.2, 1.85, 0.09, 15, 34);
-        P.fR(0.4, 1.1, 0.09, 16, 32, '#14111b'); P.screen('R', 0.42, 1.08, 0.09, 17, 31, 'wave');
-      },
-      furnish(P) {
-        treatBed(P, 0.28, 0.5, 0.86, 1.78, { sheet: C.purple });
-        // shockwave unit on a cart: white body, blue panel, handpiece on a coiled cable
-        for (const [u, v] of [[1.18, 0.6], [1.6, 0.6], [1.18, 0.98], [1.6, 0.98]]) P.ball(u, v, 1.5, 1.6, C.dark);
-        P.box(1.1, 0.52, 1.7, 1.06, 3, 25, C.white);
-        P.fL(1.16, 1.64, 1.06, 6, 11, C.purple.l); P.fL(1.2, 1.4, 1.06, 7, 10, '#14111b');
-        P.dot(1.5, 1.06, 8.5, '#f6c64e', 2, 2); P.dot(1.58, 1.06, 8.5, '#e23a3a', 2, 2);
-        P.box(1.06, 0.48, 1.74, 0.8, 25, 27, C.steel);
-        P.box(1.14, 0.52, 1.66, 0.62, 27, 43, C.navy);
-        P.screen('L', 1.18, 1.62, 0.62, 28.4, 41.8, 'wave');
-        P.faceLine('L', 1.7, 1.9, 1.0, 6, 22, [[0.1, 0.9], [0.3, 0.6], [0.2, 0.4], [0.5, 0.3], [0.6, 0.1]], '#1e365a');
-        P.box(1.62, 1.18, 1.82, 1.34, 4, 9, C.orange); P.ball(1.72, 1.26, 9.5, 3, C.steel);
-      } });
+  play_area: { hm: 20, draw(P) {
+    // padded blue pen filled with coloured balls
+    P.box(0.04, 0.04, 1.96, 1.96, 0, 2, C.teal, { edge: false });
+    P.top(0.18, 0.18, 1.82, 1.82, 2, '#145a72');
+    P.box(0.04, 0.04, 1.96, 0.2, 2, 13, C.blue);                               // back pads
+    P.box(0.04, 0.2, 0.2, 1.96, 2, 13, C.blue);
+    const bs = [];
+    for (let j = 0; j < 9; j++) for (let i = 0; i < 9; i++) {
+      const u = 0.28 + i * 0.18 + ((j & 1) ? 0.09 : 0) + (hash(i, j, 1) - 0.5) * 0.04, v = 0.28 + j * 0.18 + (hash(i, j, 2) - 0.5) * 0.04;
+      if (u > 1.8 || v > 1.8) continue;
+      bs.push([u, v, BALLS[Math.floor(hash(i, j, 4) * BALLS.length)], 6 + hash(i, j, 3) * 3]);
+    }
+    bs.sort((a, b) => (a[0] + a[1]) - (b[0] + b[1]));
+    for (const [u, v, c, z] of bs) P.ball(u, v, z, 4.3, c);
+    P.box(0.2, 1.8, 1.96, 1.96, 2, 13, C.blue);                                  // front pads
+    P.box(1.8, 0.2, 1.96, 1.8, 2, 13, C.blue);
+    for (let i = 0; i < 6; i++) { P.dot(0.32 + i * 0.28, 1.96, 8, C.blue.h, 2, 1); P.dot(1.96, 0.32 + i * 0.28, 8, C.blue.h, 1, 2); }
+    P.ball(1.1, 2.12, 2.5, 3.2, C.yellow); P.ball(1.45, 2.05, 2.5, 3.2, C.red);
   } },
-  laser_room: { ns: 1, hm: 44, draw(P) {
-    roomShell(P, 2, 2, { wh: 40, acc: C.red,
-      decor(P) {
-        winL(P, 1.25, 1.85, 0.09, 15, 34);
-        // warning triangle + goggles
-        P.poly3([[0.09, 0.5, 18], [0.09, 1.0, 18], [0.09, 0.75, 32]], '#14111b');
-        P.poly3([[0.09, 0.56, 19.2], [0.09, 0.94, 19.2], [0.09, 0.75, 30]], '#f6c64e');
-        P.dot(0.09, 0.75, 21, '#14111b', 2, 5); P.dot(0.09, 0.75, 27, '#14111b', 2, 2);
-        P.fcirc('R', 0.09, 1.3, 24, 1.8, '#2a7ef6'); P.fcirc('R', 0.09, 1.45, 23.5, 1.8, '#2a7ef6');
-      },
-      furnish(P) {
-        treatBed(P, 0.28, 0.5, 0.86, 1.78, { sheet: C.rose });
-        // laser cabinet + articulated arm + handpiece
-        P.box(1.2, 0.3, 1.8, 0.82, 0, 30, C.white);
-        P.fL(1.26, 1.74, 0.82, 4, 12, C.red.l); P.fL(1.3, 1.5, 0.82, 5.6, 10.4, '#14111b');
-        P.dot(1.6, 0.82, 8, '#f6c64e', 2, 2); P.dot(1.68, 0.82, 8, '#e23a3a', 2, 2);
-        P.fL(1.26, 1.74, 0.82, 16, 26, C.red.r);
-        P.fcirc('L', 1.5, 0.82, 21, 3, '#f6c64e');
-        P.box(1.14, 0.24, 1.86, 0.88, 30, 32, C.steel);
-        P.box(1.4, 0.4, 1.5, 0.5, 32, 50, C.steel, { edge: false });
-        P.ball(1.45, 0.45, 51, 2.5, C.steel);
-        P.ln(1.45, 0.45, 51, 1.3, 0.95, 47, C.steel.t, 2); P.ball(1.3, 0.95, 47, 2.2, C.steel);
-        P.box(1.24, 0.92, 1.36, 1.04, 28, 44, C.red); P.dot(1.3, 1.04, 28, '#ff9a8a', 2, 2);
-        P.ln(1.3, 1.0, 28, 1.0, 1.3, 15, '#ff3a3a');
-      } });
-  } },
-  manual_room: { ns: 1, hm: 44, draw(P) {
-    roomShell(P, 2, 2, { wh: 40, acc: C.blue,
-      decor(P) {
-        winL(P, 1.25, 1.85, 0.09, 15, 34);
-        // wall shelf with oil bottles
-        P.box(0.12, 0.4, 0.2, 1.1, 21, 23, C.wood);
-        P.cyl(0.15, 0.55, 23, 29, 2.4, 2.4, C.teal); P.cyl(0.15, 0.75, 23, 31, 2.4, 2.4, C.yellow); P.cyl(0.15, 0.95, 23, 28, 2.4, 2.4, C.rose);
-        frameR(P, 1.2, 1.8, 0.09, 17, 31, '#eaf6f6');
-        P.faceLine('R', 1.2, 1.8, 0.09, 17, 31, [[0.3, 0.2], [0.5, 0.8], [0.7, 0.2]], '#5aaef6');
-      },
-      furnish(P) {
-        // wide wooden treatment table with a cream cover + rolled towel
-        for (const [a, b] of [[0.3, 0.46], [0.88, 0.46], [0.3, 1.74], [0.88, 1.74]]) P.box(a, b, a + 0.1, b + 0.1, 0, 10, C.woodD, { edge: false });
-        P.box(0.26, 0.44, 1.0, 1.84, 10, 14, C.wood);
-        P.box(0.28, 0.46, 0.98, 1.82, 14, 17.5, C.cream);
-        P.box(0.3, 0.48, 0.96, 0.68, 17.5, 20, C.white);
-        P.cyl(0.9, 1.7, 17.5, 20.5, 3.2, 3.2, C.teal);
-        // anatomical skeleton model on a stand
-        P.cyl(1.5, 1.35, 0, 2, 7, 7, C.steel); P.box(1.46, 1.31, 1.54, 1.39, 2, 36, C.steel, { edge: false });
-        P.ball(1.5, 1.35, 42, 4.2, C.white); P.dot(1.46, 1.46, 41, '#14111b', 2, 2); P.dot(1.54, 1.46, 41, '#14111b', 2, 2);
-        P.ball(1.5, 1.35, 30, 6, C.white, 7); P.ln(1.4, 1.35, 33, 1.6, 1.35, 33, '#aab4cc'); P.ln(1.4, 1.35, 29, 1.6, 1.35, 29, '#aab4cc'); P.ln(1.4, 1.35, 25, 1.6, 1.35, 25, '#aab4cc');
-        P.cyl(1.7, 0.55, 0, 8, 4, 5, C.pot); P.ball(1.7, 0.55, 14, 5, C.leaf, 6);
-      } });
-  } },
-  speech_room: { ns: 1, hm: 44, draw(P) {
-    roomShell(P, 2, 2, { wh: 40, acc: C.purple,
-      decor(P) {
-        // big wall mirror + speech-bubble poster
-        P.fL(0.25, 1.3, 0.09, 12, 33, '#f6f6f6'); P.fL(0.3, 1.25, 0.09, 13.2, 31.8, '#bfe0f2'); P.fL(0.3, 1.25, 0.09, 24, 31.8, '#d8eef9');
-        P.ln(0.4, 0.09, 15, 0.62, 0.09, 24, '#eef8fc');
-        winL(P, 1.45, 1.9, 0.09, 15, 34);
-        frameR(P, 0.45, 1.05, 0.09, 17, 33, '#f6f6f6');
-        P.fcirc('R', 0.09, 0.75, 27, 3.6, C.purple.t, 2.6);
-        P.dot(0.09, 0.66, 27, '#f6f6f6', 2, 2); P.dot(0.09, 0.75, 27, '#f6f6f6', 2, 2); P.dot(0.09, 0.84, 27, '#f6f6f6', 2, 2);
-      },
-      furnish(P) {
-        // round table + two chairs + flash cards + microphone
-        P.cyl(1.0, 1.0, 0, 11, 2.2, 2.2, C.steel, { cap: false });
-        P.cyl(1.0, 1.0, 11, 14, 13, 13, C.wood);
-        P.box(0.78, 0.9, 0.9, 1.04, 14, 14.8, C.red, { edge: false }); P.box(0.95, 0.84, 1.07, 0.98, 14, 14.8, C.yellow, { edge: false }); P.box(1.1, 0.94, 1.22, 1.08, 14, 14.8, C.blue, { edge: false });
-        P.cyl(1.2, 0.8, 14, 20, 1.2, 1.2, C.steel); P.ball(1.2, 0.8, 21.5, 2.4, C.dark);
-        const chair = (u, v, c) => { P.box(u, v, u + 0.3, v + 0.3, 7, 9, c); for (const [a, b] of [[u + 0.02, v + 0.02], [u + 0.24, v + 0.02], [u + 0.02, v + 0.24], [u + 0.24, v + 0.24]]) P.box(a, b, a + 0.04, b + 0.04, 0, 7, C.steel, { edge: false }); };
-        P.box(0.42, 0.7, 0.72, 0.78, 9, 19, C.green);
-        chair(0.42, 0.7, C.greenL);
-        chair(1.42, 1.3, C.blue); P.box(1.42, 1.58, 1.72, 1.66, 9, 19, C.blue);
-        P.cyl(0.3, 1.6, 0, 7, 3.5, 4.2, C.pot); P.ball(0.3, 1.6, 12, 4.2, C.leaf, 5);
-      } });
-  } },
-  si_room: { ns: 1, hm: 50, draw(P) {
-    roomShell(P, 3, 3, { wh: 44, acc: C.orange,
-      rug: P => { P.disc(1.0, 2.1, 2, 46, C.blue); P.disc(1.0, 2.1, 2.2, 38, { t: '#5aaef6' }); },
-      decor(P) {
-        const cs = BALLS;
-        for (let i = 0; i < 6; i++) P.fcirc('L', 0.45 + i * 0.42, 0.09, 19 + (i % 3) * 4.5, 3.4, cs[i % 6].l);
-        winL(P, 2.1, 2.9, 0.09, 17, 38);
-        for (let i = 0; i < 4; i++) P.fcirc('R', 0.09, 0.7 + i * 0.5, 22 + (i % 2) * 6, 3.4, cs[(i + 3) % 6].l);
-      },
-      furnish(P) {
-        // ball pit
-        P.box(1.7, 0.25, 2.85, 1.45, 2, 3, C.teal, { edge: false });
-        P.box(1.7, 0.25, 2.85, 0.4, 3, 12, C.blue); P.box(1.7, 0.4, 1.85, 1.45, 3, 12, C.blue);
-        const bs = [];
-        for (let j = 0; j < 6; j++) for (let i = 0; i < 6; i++) { const u = 1.95 + i * 0.16 + ((j & 1) ? 0.08 : 0), v = 0.52 + j * 0.15; if (u < 2.75) bs.push([u, v, BALLS[Math.floor(hash(i, j, 9) * 7)], 7 + hash(i, j, 3) * 2]); }
-        bs.sort((a, b) => a[0] + a[1] - (b[0] + b[1]));
-        for (const [u, v, c, z] of bs) P.ball(u, v, z, 3.9, c);
-        P.box(1.85, 1.3, 2.85, 1.45, 3, 12, C.blue); P.box(2.7, 0.4, 2.85, 1.3, 3, 12, C.blue);
-        // balance beam
-        for (const u of [0.35, 0.95, 1.55]) P.box(u, 1.0, u + 0.14, 1.14, 0, 5, C.blue, { edge: false });
-        P.box(0.3, 0.97, 1.74, 1.17, 5, 8, C.wood);
-        P.top(0.34, 1.0, 1.7, 1.14, 8, '#e2c49a');
-        // bean bags + soft mat + swing ball
-        P.ball(0.6, 2.4, 5, 8, C.purple, 6); P.ball(1.35, 2.7, 5, 8, C.orange, 6);
-        P.box(0.2, 1.6, 0.9, 2.0, 2, 4, C.yellow);
-        P.ball(2.4, 2.4, 9, 10, C.teal, 9); P.ball(2.4, 2.4, 9, 10, { t: '#5ac8dc', l: '#2a9ec0', r: '#1e7ea2', h: '#a8ecf0', s: '#145a72' }, 9);
-      } });
-  } },
-  // ---- fall-backs for the five items the atlas normally supplies (only used when the atlas is missing / failed to load) ----
-  bed: { hm: 26, draw(P) {
-    treatBed(P, 0.1, 0.12, 0.9, 1.9);
-    P.box(0.08, 1.84, 0.92, 1.9, 5, 14, C.white);                              // footboard
-  } },
-  traction: { hm: 54, draw(P) {
-    treatBed(P, 0.1, 0.5, 0.9, 1.9);
-    P.box(0.12, 0.1, 0.88, 0.4, 0, 30, C.white);
-    P.box(0.16, 0.12, 0.84, 0.3, 30, 52, C.navy);
-    P.screen('L', 0.22, 0.78, 0.3, 32, 50, 'ecg');
-    P.ln(0.3, 0.4, 28, 0.3, 0.7, 14, '#e23a3a', 2);
-  } },
-  tens: { hm: 46, draw(P) {
-    for (const [u, v] of [[0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7]]) P.ball(u, v, 1.5, 1.6, C.dark);
-    P.box(0.22, 0.24, 0.78, 0.76, 3, 24, C.white);
-    P.box(0.2, 0.2, 0.8, 0.5, 24, 40, C.navy);
-    P.screen('L', 0.24, 0.76, 0.5, 25.4, 38.6, 'ecg');
-    P.fL(0.28, 0.72, 0.76, 7, 11, C.blue.l);
-    P.ln(0.7, 0.76, 16, 0.9, 0.9, 6, '#e23a3a'); P.ln(0.3, 0.76, 16, 0.12, 0.9, 6, '#1e66ea');
-  } },
-  soft_mat: { hm: 8, draw(P, w) {
+  kids_mat: { hm: 8, draw(P, w) {
     P.box(0.05, 0.05, w - 0.05, 0.95, 0, 3, C.purple);
     P.top(0.12, 0.12, w - 0.12, 0.88, 3, '#9a7fc6');
     P.ln(0.12, 0.5, 3, w - 0.12, 0.5, 3, '#7a6ab6');
     P.ln(w / 2, 0.12, 3, w / 2, 0.88, 3, '#7a6ab6');
   } },
-  shockwave: { hm: 50, draw(P) {
-    for (const [u, v] of [[0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7]]) P.ball(u, v, 1.5, 1.6, C.dark);
-    P.box(0.24, 0.26, 0.76, 0.76, 3, 26, C.navy);
-    P.fL(0.3, 0.7, 0.76, 7, 14, C.steel.l);
-    P.box(0.22, 0.22, 0.78, 0.5, 26, 44, C.navy);
-    P.screen('L', 0.26, 0.74, 0.5, 27.4, 42.6, 'wave');
-    P.ln(0.78, 0.7, 20, 0.92, 0.9, 10, '#14111b'); P.box(0.86, 0.84, 0.96, 0.96, 4, 12, C.orange);
+  reception: { hm: 46, draw(P, w) {
+    // counter: front desk (customer side +v) with a raised back shelf, monitor, bell
+    P.box(0.05, 0.12, w - 0.05, 0.52, 0, 24, C.cream);                       // back unit
+    P.box(0.05, 0.5, w - 0.05, 0.94, 0, 15, C.panel);                        // front desk body
+    P.fL(0.1, w - 0.1, 0.94, 4, 9, C.blue.l);                                 // blue accent panel
+    P.fL(0.1, w - 0.1, 0.94, 9, 10, '#f6f6f6'); P.fL(0.1, w - 0.1, 0.94, 3, 4, '#f6f6f6');
+    P.fcirc('L', w / 2, 0.94, 7.4, 3.2, '#f6f6f6');                         // white bowl emblem
+    P.fL(w / 2 - 0.12, w / 2 + 0.12, 0.94, 5, 7.2, '#e23a3a'); P.fL(w / 2 - 0.12, w / 2 + 0.12, 0.94, 7.2, 7.8, '#f6f6f6');
+    P.box(0.02, 0.48, w - 0.02, 0.98, 15, 17, C.wood);                       // counter top
+    P.box(0.05, 0.12, w - 0.05, 0.5, 24, 25.5, C.wood);
+    monitor(P, 0.3, 0.3, 25.5, 0.4);
+    keyboard(P, 0.34, 0.56, 17);
+    // bell + ticket tray + pen cup
+    P.cyl(w - 0.45, 0.72, 17, 18, 3.2, 3.2, C.yellow); P.ball(w - 0.45, 0.72, 18.5, 2.8, C.yellow); P.dot(w - 0.45, 0.72, 22, C.yellow.h);
+    P.box(w - 0.9, 0.62, w - 0.65, 0.86, 17, 18, C.white, { edge: false }); P.box(w - 0.88, 0.64, w - 0.66, 0.84, 18, 19.2, '#f6f6f6', { edge: false });
+    P.box(w - 0.95, 0.2, w - 0.8, 0.36, 25.5, 30, C.blue);
+  } },
+  bench: { hm: 34, draw(P, w) {
+    for (const [a, b] of [[0.1, 0.3], [w - 0.18, 0.3], [0.1, 0.78], [w - 0.18, 0.78]]) P.box(a, b, a + 0.08, b + 0.08, 0, 7, C.woodD, { edge: false });
+    P.box(0.06, 0.26, w - 0.06, 0.92, 7, 11, C.wood);                              // seat frame
+    for (let i = 0; i < w; i++) P.box(0.12 + i * (w - 0.24) / w, 0.3, 0.12 + (i + 1) * (w - 0.24) / w - 0.03, 0.88, 11, 14, C.red);   // cushions
+    P.box(0.06, 0.24, w - 0.06, 0.36, 11, 30, C.wood);                              // backrest
+    P.box(0.14, 0.26, w - 0.14, 0.34, 15, 26, C.red);
+    P.fL(0.1, w - 0.1, 0.92, 8, 9, C.wood.t);
+  } },
+  table2: { hm: 36, draw(P) {
+    // round two-seat table with two stools, a bowl and chopsticks
+    P.cyl(0.5, 0.18, 0, 8, 3.6, 3.2, C.red); P.cyl(0.5, 0.18, 8, 10, 4.6, 4.6, C.red);
+    P.cyl(0.5, 0.86, 0, 8, 3.6, 3.2, C.red); P.cyl(0.5, 0.86, 8, 10, 4.6, 4.6, C.red);
+    P.cyl(0.5, 0.5, 0, 14, 2, 2, C.steel);
+    P.cyl(0.5, 0.5, 14, 17, 11, 11, C.wood, { capCol: C.wood.t });
+    P.disc(0.5, 0.5, 17.2, 7.5, { t: '#e23a3a' });
+    P.cyl(0.42, 0.46, 17, 20, 3.2, 2.6, C.white); P.ball(0.42, 0.46, 20, 2.4, C.orange);
+    P.ln(0.62, 0.42, 17.2, 0.7, 0.58, 17.2, '#14111b', 1);
+  } },
+  table4: { hm: 36, draw(P, w) {
+    // rectangular four-seat table with a checkered cloth and stools on both long sides
+    for (const [a, b] of [[0.4, 0.04], [w - 0.62, 0.04], [0.4, 0.8], [w - 0.62, 0.8]]) { P.cyl(a + 0.11, b + 0.1, 0, 7, 3.2, 2.8, C.red); P.cyl(a + 0.11, b + 0.1, 7, 9, 4.2, 4.2, C.red); }
+    for (const [a, b] of [[0.14, 0.2], [w - 0.24, 0.2], [0.14, 0.7], [w - 0.24, 0.7]]) P.box(a, b, a + 0.08, b + 0.08, 0, 12, C.woodD, { edge: false });
+    P.box(0.1, 0.14, w - 0.1, 0.86, 12, 15, C.wood);
+    P.box(0.1, 0.14, w - 0.1, 0.86, 15, 16.2, C.white);
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 4; j++) if ((i + j) & 1) P.top(0.1 + i * (w - 0.2) / 8, 0.14 + j * 0.18, 0.1 + (i + 1) * (w - 0.2) / 8, 0.14 + (j + 1) * 0.18, 16.2, '#e23a3a');
+    P.cyl(0.6, 0.4, 16, 19, 3, 2.4, C.white); P.ball(0.6, 0.4, 19, 2.2, C.orange);
+    P.cyl(w - 0.6, 0.6, 16, 18.5, 3, 2.4, C.white); P.ball(w - 0.6, 0.6, 18.5, 2.4, C.yellow);
+    P.cyl(w / 2, 0.5, 16, 22, 1.6, 1.6, C.glass, { cap: false });
+  } },
+  chef_range: { hm: 58, draw(P, w) {
+    // heavy steel range: four burners, a stock pot, a wok and a hood with copper trim
+    P.box(0.05, 0.22, w - 0.05, 0.92, 0, 22, C.steel);
+    P.fL(0.1, w - 0.1, 0.92, 3, 7, C.dark.l);
+    for (let i = 0; i < 4; i++) P.cyl(0.18 + i * (w - 0.36) / 3, 0.92, 9, 12, 1.4, 1.4, C.dark, { cap: false });
+    P.box(0.05, 0.22, w - 0.05, 0.92, 22, 24, C.dark);
+    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) { P.ball(0.36 + i * (w - 0.72), 0.42 + j * 0.34, 25, 3.4, C.orange, 1.6); }
+    P.cyl(0.4, 0.46, 24, 33, 6.2, 5.6, C.steel); P.cyl(0.4, 0.46, 33, 34.4, 6.6, 6.6, C.steel.t ? C.steel : C.steel);
+    P.dot(0.4, 0.46, 36, '#d2d2de', 2, 2);
+    P.cyl(w - 0.42, 0.66, 24, 27, 7, 7.6, C.dark, { capCol: '#2a2a48' });
+    P.ln(w - 0.3, 0.8, 27, w - 0.06, 0.92, 33, C.wood.l, 2);
+    P.box(0.07, 0.12, 0.17, 0.22, 24, 52, C.steel, { edge: false }); P.box(w - 0.17, 0.12, w - 0.07, 0.22, 24, 52, C.steel, { edge: false });   // hood posts
+    P.box(0.05, 0.1, w - 0.05, 0.5, 52, 56, C.steel);
+    P.fL(0.1, w - 0.1, 0.5, 52, 55, C.orange.l);
+  } },
+  noodle_stove: { hm: 50, draw(P) {
+    // noodle boiler: steel cabinet, big pot with steam, two strainer baskets
+    P.box(0.12, 0.2, 0.88, 0.84, 0, 18, C.steel);
+    P.fL(0.2, 0.8, 0.84, 5, 9, C.dark.l); P.dot(0.34, 0.84, 12, C.orange.h, 2, 2); P.dot(0.66, 0.84, 12, C.orange.h, 2, 2);
+    P.cyl(0.5, 0.5, 18, 32, 9, 8.4, C.steel); P.cyl(0.5, 0.5, 32, 34, 9.6, 9.6, C.steel);
+    P.cyl(0.5, 0.5, 33.2, 33.4, 7.2, 7.2, C.yellow, { cap: true, capCol: '#f6e0a0' });
+    for (const [u, v] of [[0.38, 0.42], [0.58, 0.58]]) P.ln(u, v, 33, u + 0.06, v + 0.2, 28, '#7a5a3c', 2);
+    for (const [u, v, z] of [[0.4, 0.46, 38], [0.56, 0.52, 42], [0.48, 0.44, 46]]) P.ball(u, v, z, 2.6, { t: '#ffffff', l: '#f6f6f6', r: '#e6eaf4', s: '#aab4cc', h: '#ffffff' });
+  } },
+  braise_pot: { hm: 40, draw(P) {
+    P.box(0.14, 0.2, 0.86, 0.84, 0, 14, C.steel);
+    P.fL(0.2, 0.8, 0.84, 4, 8, C.dark.l); P.dot(0.5, 0.84, 11, C.orange.h, 3, 2);
+    P.cyl(0.5, 0.5, 14, 28, 9.4, 8.8, C.pot);
+    P.cyl(0.5, 0.5, 28, 30, 10, 10, C.pot, { capCol: '#3a281a' });
+    P.disc(0.5, 0.5, 29.6, 7.6, { t: '#6e3a1e' });
+    for (const [u, v] of [[0.4, 0.44], [0.58, 0.5], [0.5, 0.58]]) P.ball(u, v, 30.5, 2.4, C.soil);
+    P.ln(0.7, 0.4, 30, 0.9, 0.2, 40, C.steel.l, 2);
+  } },
+  griddle: { hm: 34, draw(P) {
+    P.box(0.12, 0.2, 0.88, 0.84, 0, 16, C.steel);
+    P.fL(0.2, 0.8, 0.84, 4, 8, C.dark.l);
+    P.box(0.1, 0.18, 0.9, 0.86, 16, 18, C.dark);
+    P.top(0.16, 0.24, 0.84, 0.8, 18, '#5a667e');
+    for (let i = 0; i < 6; i++) { const u = 0.24 + (i % 3) * 0.22, v = 0.34 + Math.floor(i / 3) * 0.26; P.ball(u, v, 21, 3.4, { t: '#fff6e0', l: '#f6e0a0', r: '#dca630', s: '#b8841c', h: '#ffffff' }, 2); }
+    P.cyl(0.78, 0.74, 18, 20, 3, 3, C.steel);
+  } },
+  fryer: { hm: 38, draw(P) {
+    P.box(0.14, 0.2, 0.86, 0.84, 0, 22, C.red);
+    P.fL(0.2, 0.8, 0.84, 4, 9, C.dark.l); P.dot(0.34, 0.84, 7, C.yellow.h, 2, 2); P.dot(0.66, 0.84, 7, C.yellow.h, 2, 2);
+    P.box(0.18, 0.24, 0.82, 0.8, 22, 24, C.steel);
+    P.top(0.24, 0.3, 0.76, 0.74, 24, '#dca630');
+    P.box(0.32, 0.36, 0.7, 0.68, 24, 28, C.steel, { edge: false }); P.top(0.36, 0.4, 0.66, 0.64, 28, '#f6c64e');
+    for (const [u, v, z] of [[0.42, 0.46, 30], [0.56, 0.52, 29], [0.5, 0.44, 32]]) P.ball(u, v, z, 3, { t: '#ffe08a', l: '#f6c64e', r: '#dca630', s: '#b8841c', h: '#fff4c0' });
+    P.ln(0.78, 0.4, 28, 0.92, 0.2, 36, C.steel.l, 2);
+  } },
+  teppan: { hm: 40, draw(P, w) {
+    P.box(0.05, 0.16, w - 0.05, 0.9, 0, 20, C.dark);
+    P.fL(0.1, w - 0.1, 0.9, 4, 9, C.steel.l); for (let i = 0; i < 3; i++) P.dot(0.4 + i * (w - 0.8) / 2, 0.9, 13, C.orange.h, 2, 2);
+    P.box(0.03, 0.14, w - 0.03, 0.92, 20, 23, C.steel);
+    P.top(0.1, 0.2, w - 0.1, 0.86, 23, '#aab4cc');
+    for (const [u, v] of [[0.4, 0.42], [0.8, 0.56], [w - 0.6, 0.44]]) { P.box(u, v, u + 0.26, v + 0.18, 23, 25.4, C.red); P.top(u + 0.04, v + 0.03, u + 0.22, v + 0.15, 25.4, '#8c1c2c'); }
+    P.ln(w - 0.34, 0.74, 23, w - 0.12, 0.84, 30, C.steel.l, 2);
+    for (let i = 0; i < 4; i++) P.dot(0.2 + i * 0.35, 0.3, 23.2, '#ffffff', 3, 1);
+  } },
+  cold_case: { hm: 40, draw(P) {
+    P.box(0.1, 0.2, 0.9, 0.86, 0, 30, C.white);
+    P.fL(0.16, 0.84, 0.86, 6, 24, C.glass.l);
+    for (const [z0, z1] of [[7, 14], [16, 23]]) {
+      P.fL(0.2, 0.8, 0.86, z0, z0 + 0.8, '#d2d2de');
+      for (let i = 0; i < 4; i++) { const c = [C.red, C.leaf, C.yellow, C.orange][(i + z0) % 4]; P.fL(0.24 + i * 0.14, 0.34 + i * 0.14, 0.86, z0 + 1, z0 + 5, c.l); P.fL(0.24 + i * 0.14, 0.27 + i * 0.14, 0.86, z0 + 1, z0 + 5, c.t); }
+    }
+    P.box(0.08, 0.18, 0.92, 0.88, 30, 33, C.steel);
+    P.fL(0.2, 0.8, 0.88, 30, 33, C.blue.l);
+  } },
+  soup_pot: { hm: 44, draw(P) {
+    P.box(0.16, 0.22, 0.84, 0.82, 0, 12, C.steel);
+    P.fL(0.22, 0.78, 0.82, 3, 7, C.dark.l); P.dot(0.5, 0.82, 9, C.orange.h, 3, 2);
+    P.cyl(0.5, 0.5, 12, 30, 8.6, 8, C.yellow); P.cyl(0.5, 0.5, 30, 32, 9.2, 9.2, C.yellow, { capCol: '#a8741c' });
+    P.disc(0.5, 0.5, 31.6, 7, { t: '#c98a14' });
+    P.ln(0.66, 0.4, 32, 0.82, 0.18, 42, C.steel.l, 2); P.ball(0.84, 0.16, 42, 2, C.steel);
+    for (const [u, v, z] of [[0.46, 0.5, 36], [0.54, 0.44, 40]]) P.ball(u, v, z, 2.2, { t: '#ffffff', l: '#eef2f8', r: '#d2d2de', s: '#aab4cc', h: '#ffffff' });
+  } },
+  drink_bar: { hm: 44, draw(P) {
+    P.box(0.1, 0.2, 0.9, 0.84, 0, 18, C.teal);
+    P.fL(0.16, 0.84, 0.84, 4, 8, '#f6f6f6'); P.fL(0.16, 0.84, 0.84, 8, 9, C.teal.t);
+    P.box(0.06, 0.18, 0.94, 0.88, 18, 20, C.wood);
+    P.box(0.18, 0.24, 0.5, 0.56, 20, 36, C.navy);                                      // sealing machine
+    P.fL(0.22, 0.46, 0.56, 24, 32, '#2a7ef6'); P.dot(0.34, 0.56, 28, '#ffffff', 3, 1);
+    for (let i = 0; i < 3; i++) { P.cyl(0.62 + i * 0.1, 0.6, 20, 28, 2.6, 2.1, C.glass, { cap: false }); P.cyl(0.62 + i * 0.1, 0.6, 20, 23 + i * 1.5, 2.3, 2, [C.orange, C.leaf, C.rose][i]); }
+    P.cyl(0.78, 0.36, 20, 22, 4.4, 4.4, C.white);
+  } },
+  ice_shop: { hm: 44, draw(P, w) {
+    P.box(0.06, 0.2, w - 0.06, 0.86, 0, 18, C.glass);
+    P.fL(0.1, w - 0.1, 0.86, 3, 15, '#cfe6f5');
+    P.box(0.04, 0.18, w - 0.04, 0.9, 18, 20, C.steel);
+    P.cyl(0.5, 0.5, 20, 40, 5, 4.4, C.steel); P.box(0.34, 0.36, 0.7, 0.66, 36, 42, C.blue);
+    P.cyl(0.5, 0.5, 20, 23, 7, 7.4, C.white);
+    P.ball(0.5, 0.5, 25, 5.6, { t: '#ffffff', l: '#eef6ff', r: '#cfe6f5', s: '#9cc8f8', h: '#ffffff' }, 4);
+    for (let i = 0; i < 3; i++) { P.cyl(w - 0.7 + i * 0.22, 0.64, 20, 24, 3.4, 2.8, C.white); P.ball(w - 0.7 + i * 0.22, 0.64, 24.6, 3.2, [C.rose, C.yellow, C.leaf][i], 2.2); }
+  } },
+  chef_table: { hm: 58, draw(P, w, h) {
+    // wooden island with two pans, steaks and a pendant lamp
+    P.box(0.1, 0.1, w - 0.1, h - 0.1, 0, 22, C.woodD);
+    P.fL(0.2, w - 0.2, h - 0.1, 4, 18, C.wood.l);
+    P.box(0.06, 0.06, w - 0.06, h - 0.06, 22, 25, C.wood);
+    P.box(0.3, 0.3, 0.9, 0.9, 25, 26, C.dark);
+    P.cyl(0.6, 0.6, 26, 30, 7, 6.4, C.steel, { capCol: '#2a2a48' });
+    P.cyl(1.4, 1.2, 26, 30, 7, 6.4, C.steel, { capCol: '#2a2a48' });
+    for (const [u, v] of [[0.52, 0.56], [0.7, 0.66], [1.34, 1.14]]) { P.box(u, v, u + 0.3, v + 0.2, 30, 32.4, C.red); P.top(u + 0.04, v + 0.03, u + 0.26, v + 0.17, 32.4, '#8c1c2c'); }
+    for (const [u, v] of [[1.2, 0.4], [1.5, 0.5]]) { P.cyl(u, v, 25, 27, 3.8, 3.8, C.white); }
+    P.ln(1.0, 0.3, 58, 1.0, 0.3, 40, C.steel.l, 1);
+    P.cyl(1.0, 0.3, 50, 55, 6, 3, C.yellow);
+  } },
+  wok_range: { hm: 58, draw(P, w, h) {
+    P.box(0.1, 0.16, w - 0.1, h - 0.1, 0, 24, C.red);
+    P.fL(0.2, w - 0.2, h - 0.1, 4, 8, C.dark.l); P.fL(0.2, w - 0.2, h - 0.1, 12, 14, C.yellow.l);
+    P.box(0.08, 0.14, w - 0.08, h - 0.08, 24, 27, C.steel);
+    P.cyl(0.6, 0.7, 27, 30, 11, 6, C.dark, { capCol: '#2a2a48' });
+    P.cyl(0.6, 0.7, 29.6, 30, 10, 10, C.dark, { cap: true, capCol: '#14111b' });
+    for (let i = 0; i < 5; i++) P.ball(0.42 + i * 0.1, 0.62 + (i & 1) * 0.1, 33 + (i % 3), 2.6, [C.red, C.leaf, C.yellow, C.orange, C.rose][i]);
+    P.ln(1.1, 1.1, 30, 1.7, 1.7, 44, C.wood.l, 2);
+    P.cyl(1.4, 0.5, 27, 34, 5, 4.6, C.steel); P.cyl(1.4, 0.5, 34, 35.5, 5.4, 5.4, C.steel);
+    P.box(0.12, 0.12, 0.22, 0.22, 27, 52, C.steel, { edge: false }); P.box(w - 0.22, 0.12, w - 0.12, 0.22, 27, 52, C.steel, { edge: false });
+    P.box(0.1, 0.1, w - 0.1, 0.4, 52, 56, C.steel);
+  } },
+  hotpot_table: { hm: 40, draw(P, w, h) {
+    for (const [a, b] of [[0.2, 0.2], [w - 0.3, 0.2], [0.2, h - 0.3], [w - 0.3, h - 0.3]]) P.box(a, b, a + 0.1, b + 0.1, 0, 14, C.woodD, { edge: false });
+    P.box(0.1, 0.1, w - 0.1, h - 0.1, 14, 18, C.wood);
+    P.cyl(w / 2, h / 2, 18, 22, 11, 10, C.steel);
+    P.disc(w / 2, h / 2, 22, 9, { t: '#d62a2a' });
+    P.disc(w / 2 - 0.1, h / 2, 22.2, 4, { t: '#f6d9a0' });
+    for (let i = 0; i < 5; i++) P.ball(w / 2 - 0.2 + (i % 3) * 0.14, h / 2 + (i % 2) * 0.1 - 0.05, 23, 2.2, [C.red, C.leaf, C.yellow, C.orange, C.rose][i], 1.6);
+    for (const [u, v] of [[0.3, 0.3], [w - 0.5, 0.3], [0.3, h - 0.5], [w - 0.5, h - 0.5]]) { P.cyl(u, v, 18, 20, 4, 4, C.white); P.disc(u, v, 20.2, 3, { t: '#e23a3a' }); }
+  } },
+  bbq_grill: { hm: 42, draw(P, w) {
+    P.box(0.08, 0.2, w - 0.08, 0.86, 0, 18, C.dark);
+    P.fL(0.14, w - 0.14, 0.86, 3, 9, C.steel.l);
+    P.box(0.06, 0.18, w - 0.06, 0.88, 18, 22, C.steel);
+    P.top(0.12, 0.24, w - 0.12, 0.82, 22, '#5a2a14');
+    for (let i = 0; i < 6; i++) P.ball(0.2 + i * (w - 0.5) / 5, 0.52, 23, 2.4, C.orange, 1.4);
+    for (let i = 0; i < 6; i++) { const u = 0.24 + i * (w - 0.56) / 5; P.ln(u, 0.34, 25, u, 0.74, 25, '#c8a27a', 2); P.ball(u, 0.46, 26, 1.6, C.red, 1.2); P.ball(u, 0.62, 26, 1.6, C.leaf, 1.2); }
+    P.ln(0.1, 0.8, 22, w - 0.1, 0.8, 22, C.steel.l, 1);
+  } },
+  dessert_bar: { hm: 44, draw(P, w) {
+    P.box(0.06, 0.2, w - 0.06, 0.86, 0, 14, C.rose);
+    P.fL(0.12, w - 0.12, 0.86, 4, 9, '#f6f6f6');
+    P.box(0.04, 0.18, w - 0.04, 0.9, 14, 16, C.white);
+    P.box(0.1, 0.24, w - 0.1, 0.84, 16, 32, C.glass);
+    P.fL(0.14, w - 0.14, 0.84, 17, 31, '#cfe6f5');
+    P.fL(0.16, w - 0.16, 0.84, 24, 25, '#ffffff');
+    for (let i = 0; i < 4; i++) { const u = 0.26 + i * (w - 0.56) / 3; const c = [C.rose, C.yellow, C.red, C.leaf][i]; P.cyl(u, 0.54, 16, 21, 3.4, 3, C.white); P.cyl(u, 0.54, 21, 25, 3, 2.8, c); P.ball(u, 0.54, 25.4, 1.6, C.red); }
+    P.box(0.04, 0.2, w - 0.04, 0.88, 32, 34, C.white);
+  } },
+  bar_counter: { hm: 46, draw(P, w) {
+    P.box(0.04, 0.2, w - 0.04, 0.86, 0, 22, C.woodD);
+    P.fL(0.1, w - 0.1, 0.86, 4, 18, C.wood.l);
+    for (let i = 1; i < 4; i++) P.fL(0.1 + i * (w - 0.2) / 4 - 0.01, 0.1 + i * (w - 0.2) / 4 + 0.01, 0.86, 4, 18, C.woodD.s);
+    P.box(0.02, 0.16, w - 0.02, 0.92, 22, 25, C.navy);
+    for (let i = 0; i < 3; i++) { const u = 0.4 + i * (w - 0.8) / 2; P.cyl(u, 0.4, 25, 34, 1.6, 1.6, C.steel); P.ln(u, 0.4, 34, u, 0.52, 32, C.steel.l, 2); P.dot(u - 0.04, 0.4, 36, [C.red, C.yellow, C.leaf][i].l, 3, 2); }
+    for (let i = 0; i < 4; i++) { P.cyl(0.3 + i * (w - 0.6) / 3, 0.7, 25, 31, 2.8, 2.4, C.glass, { cap: false }); P.cyl(0.3 + i * (w - 0.6) / 3, 0.7, 25, 29, 2.5, 2.2, C.yellow); }
   } },
 };
 
@@ -840,16 +747,14 @@ function tile64(fn) {
 }
 const FLOORS = {
   // blue anti-slip mat: ribbed rows along the tile, bevelled edge (lit top-left, shaded bottom-right), a few grip dots
-  floor_mat: () => tile64((x, y, u, v) => {
-    if (u < 0.035 || v < 0.035) return '#9cc8f8';
-    if (u > 0.965 || v > 0.965) return '#125ade';
-    if (u < 0.08 || v < 0.08) return '#5aaef6';
-    if (u > 0.92 || v > 0.92) return '#1e66ea';
-    const rib = Math.floor(v * 7);
-    const f = v * 7 - rib;
-    if (f < 0.16) return '#5aaef6';                                  // lit rib crest
-    if (f > 0.84) return '#1e66ea';                                  // rib shadow
-    return ((Math.floor(u * 11) + rib) & 1) && f > 0.4 && f < 0.6 ? '#9cc8f8' : '#2a7ef6';
+  floor_tile: () => tile64((x, y, u, v) => {
+    if (u < 0.035 || v < 0.035) return '#f6e6c8';
+    if (u > 0.965 || v > 0.965) return '#a8683a';
+    const gu = (u * 2) % 1, gv = (v * 2) % 1;
+    if (gu < 0.07 || gv < 0.07) return '#8a5a38';                    // grout
+    const tone = (Math.floor(u * 2) + Math.floor(v * 2)) & 1;
+    if (gu > 0.16 && gv > 0.16 && gu < 0.9 && gv < 0.9 && ((x + y) & 1) && (Math.floor(gu * 9) + Math.floor(gv * 9)) % 3 === 0) return tone ? '#c27a46' : '#cd8650';   // grip dots
+    return tone ? '#d98a54' : '#e29a62';
   }),
   // warm planks along the tile (5 per tile), staggered joints, soft grain
   floor_wood: () => tile64((x, y, u, v) => {

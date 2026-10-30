@@ -251,12 +251,16 @@ const STARTER_OBJECTS = [
   ['bench', 12, 18, 0],
   ['plant', 13, 19, 0],
   ['chef_range', 11, 12, 0],
+  ['cold_case', 13, 12, 0],
   ['noodle_stove', 17, 12, 0],
   ['braise_pot', 18, 12, 0],
   ['soup_pot', 19, 12, 0],
+  ['griddle', 20, 12, 0],
+  ['fryer', 21, 12, 0],
+  ['drink_bar', 21, 14, 0],
   ['table4', 11, 15, 0],
   ['table2', 18, 15, 0],
-  ['table2', 20, 15, 0],
+  ['table2', 20, 16, 0],
 ];
 // role -> preferred stand tile (float centre added below)
 const STARTER_STAFF = [

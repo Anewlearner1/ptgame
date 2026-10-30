@@ -11,7 +11,7 @@ import { TREATMENTS } from '../data/treatments.js';
 // PATIENT_WEIGHT: each simulated guest stands for PATIENT_WEIGHT real diners. It multiplies ALL guest-generated revenue AND the
 //   ingredient cost the same way: sales = real price * priceMult * mods * PATIENT_WEIGHT.
 // Salaries / rent / build costs / event money / inspection rewards are plain NT$ (never multiplied). Balance knob (docs/ARCHITECTURE.md §2).
-export const PATIENT_WEIGHT = 15;
+export const PATIENT_WEIGHT = 28;
 // Per-lot override: lots.js `patientWeight` (the biggest lot is capped by the same on-screen crowd, so each simulated guest there stands for more).
 export function patientWeight(state) { const w = lotDef(state).patientWeight; return typeof w === 'number' && w > 0 ? w : PATIENT_WEIGHT; }
 export const BANKRUPT_LIMIT = -300000;      // money below this at month end -> game over

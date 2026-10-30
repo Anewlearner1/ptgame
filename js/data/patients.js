@@ -17,7 +17,7 @@ export const PATIENT_TYPES = {
     patience: 70,
     needsRamp: true,
     slipProne: 1.6,
-    selfPay: 0.07,
+    selfPay: 0.2,
     chatty: 0.7,
     plans: [
       { w: 3, steps: ['rice', 'soup', 'dine'], selfPaySteps: ['dessert', 'seafood'] },
@@ -45,7 +45,7 @@ export const PATIENT_TYPES = {
     patience: 40,
     needsRamp: false,
     slipProne: 0.8,
-    selfPay: 0.18,
+    selfPay: 0.45,
     chatty: 0.3,
     plans: [
       { w: 3, steps: ['main', 'drink', 'dine'], selfPaySteps: ['dessert', 'steak', 'beer'] },
@@ -73,7 +73,7 @@ export const PATIENT_TYPES = {
     patience: 55,
     needsRamp: false,
     slipProne: 0.6,
-    selfPay: 0.12,
+    selfPay: 0.3,
     chatty: 0.5,
     plans: [
       { w: 3, steps: ['fried', 'drink', 'dine'], selfPaySteps: ['dessert', 'bbq'] },
@@ -101,7 +101,7 @@ export const PATIENT_TYPES = {
     patience: 55,
     needsRamp: false,
     slipProne: 1.0,
-    selfPay: 0.12,
+    selfPay: 0.5,
     chatty: 0.4,
     plans: [
       { w: 3, steps: ['main', 'side', 'dine'], selfPaySteps: ['hotpot', 'dessert', 'steak'] },
