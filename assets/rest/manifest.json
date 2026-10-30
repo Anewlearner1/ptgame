@@ -1,0 +1,511 @@
+{
+ "sheet": "assets/ref/restaurant_sheet.png",
+ "sprites": {
+  "comp/reception_set": {
+   "file": "assets/rest/comp/reception_set.png",
+   "h": 101,
+   "w": 96
+  },
+  "comp/table2_set": {
+   "file": "assets/rest/comp/table2_set.png",
+   "h": 61,
+   "w": 66
+  },
+  "comp/table4_set": {
+   "file": "assets/rest/comp/table4_set.png",
+   "h": 83,
+   "w": 103
+  },
+  "deco/awning_a": {
+   "file": "assets/rest/deco/awning_a.png",
+   "h": 38,
+   "w": 69
+  },
+  "deco/awning_b": {
+   "file": "assets/rest/deco/awning_b.png",
+   "h": 48,
+   "w": 73
+  },
+  "deco/blue_pot": {
+   "file": "assets/rest/deco/blue_pot.png",
+   "h": 32,
+   "w": 29
+  },
+  "deco/bush": {
+   "file": "assets/rest/deco/bush.png",
+   "h": 39,
+   "w": 48
+  },
+  "deco/chalk_big": {
+   "file": "assets/rest/deco/chalk_big.png",
+   "h": 85,
+   "w": 67
+  },
+  "deco/lantern_a": {
+   "file": "assets/rest/deco/lantern_a.png",
+   "h": 39,
+   "w": 28
+  },
+  "deco/lantern_b": {
+   "file": "assets/rest/deco/lantern_b.png",
+   "h": 39,
+   "w": 28
+  },
+  "deco/lantern_s1": {
+   "file": "assets/rest/deco/lantern_s1.png",
+   "h": 63,
+   "w": 24
+  },
+  "deco/lantern_s2": {
+   "file": "assets/rest/deco/lantern_s2.png",
+   "h": 75,
+   "w": 28
+  },
+  "deco/lantern_s3": {
+   "file": "assets/rest/deco/lantern_s3.png",
+   "h": 75,
+   "w": 29
+  },
+  "deco/menu_board_big": {
+   "file": "assets/rest/deco/menu_board_big.png",
+   "h": 174,
+   "w": 129
+  },
+  "deco/plant_big": {
+   "file": "assets/rest/deco/plant_big.png",
+   "h": 69,
+   "w": 50
+  },
+  "deco/plant_pot": {
+   "file": "assets/rest/deco/plant_pot.png",
+   "h": 55,
+   "w": 41
+  },
+  "deco/roof_blue": {
+   "file": "assets/rest/deco/roof_blue.png",
+   "h": 52,
+   "w": 84
+  },
+  "deco/roof_green": {
+   "file": "assets/rest/deco/roof_green.png",
+   "h": 50,
+   "w": 154
+  },
+  "deco/shrub_pot": {
+   "file": "assets/rest/deco/shrub_pot.png",
+   "h": 45,
+   "w": 39
+  },
+  "deco/sign_taiwan": {
+   "file": "assets/rest/deco/sign_taiwan.png",
+   "h": 87,
+   "w": 34
+  },
+  "deco/sign_vertical": {
+   "file": "assets/rest/deco/sign_vertical.png",
+   "h": 141,
+   "w": 51
+  },
+  "deco/tea_cup": {
+   "file": "assets/rest/deco/tea_cup.png",
+   "h": 59,
+   "w": 31
+  },
+  "food/aiyu": {
+   "file": "assets/rest/food/aiyu.png",
+   "h": 45,
+   "w": 49
+  },
+  "food/braised_egg": {
+   "file": "assets/rest/food/braised_egg.png",
+   "h": 43,
+   "w": 52
+  },
+  "food/braised_plate": {
+   "file": "assets/rest/food/braised_plate.png",
+   "h": 45,
+   "w": 56
+  },
+  "food/chicken_cutlet": {
+   "file": "assets/rest/food/chicken_cutlet.png",
+   "h": 48,
+   "w": 56
+  },
+  "food/chicken_rice": {
+   "file": "assets/rest/food/chicken_rice.png",
+   "h": 47,
+   "w": 59
+  },
+  "food/fruit_tea": {
+   "file": "assets/rest/food/fruit_tea.png",
+   "h": 49,
+   "w": 33
+  },
+  "food/greens": {
+   "file": "assets/rest/food/greens.png",
+   "h": 41,
+   "w": 50
+  },
+  "food/lurou_rice": {
+   "file": "assets/rest/food/lurou_rice.png",
+   "h": 44,
+   "w": 50
+  },
+  "food/meatball": {
+   "file": "assets/rest/food/meatball.png",
+   "h": 46,
+   "w": 53
+  },
+  "food/mianxian": {
+   "file": "assets/rest/food/mianxian.png",
+   "h": 46,
+   "w": 59
+  },
+  "food/oyster_omelet": {
+   "file": "assets/rest/food/oyster_omelet.png",
+   "h": 45,
+   "w": 58
+  },
+  "food/oyster_soup": {
+   "file": "assets/rest/food/oyster_soup.png",
+   "h": 46,
+   "w": 54
+  },
+  "food/pearl_tea": {
+   "file": "assets/rest/food/pearl_tea.png",
+   "h": 53,
+   "w": 32
+  },
+  "food/stinky_tofu": {
+   "file": "assets/rest/food/stinky_tofu.png",
+   "h": 45,
+   "w": 57
+  },
+  "food/tofu_dry": {
+   "file": "assets/rest/food/tofu_dry.png",
+   "h": 43,
+   "w": 52
+  },
+  "food/wintermelon_tea": {
+   "file": "assets/rest/food/wintermelon_tea.png",
+   "h": 51,
+   "w": 32
+  },
+  "furniture/bench_red": {
+   "file": "assets/rest/furniture/bench_red.png",
+   "h": 29,
+   "w": 53
+  },
+  "furniture/bench_wood": {
+   "file": "assets/rest/furniture/bench_wood.png",
+   "h": 39,
+   "w": 85
+  },
+  "furniture/cart_small": {
+   "file": "assets/rest/furniture/cart_small.png",
+   "h": 42,
+   "w": 39
+  },
+  "furniture/chalk_stand": {
+   "file": "assets/rest/furniture/chalk_stand.png",
+   "h": 60,
+   "w": 40
+  },
+  "furniture/counter": {
+   "file": "assets/rest/furniture/counter.png",
+   "h": 50,
+   "w": 71
+  },
+  "furniture/cushion_red": {
+   "file": "assets/rest/furniture/cushion_red.png",
+   "h": 28,
+   "w": 40
+  },
+  "furniture/display_stand": {
+   "file": "assets/rest/furniture/display_stand.png",
+   "h": 40,
+   "w": 41
+  },
+  "furniture/door_dark": {
+   "file": "assets/rest/furniture/door_dark.png",
+   "h": 45,
+   "w": 25
+  },
+  "furniture/door_wood": {
+   "file": "assets/rest/furniture/door_wood.png",
+   "h": 45,
+   "w": 25
+  },
+  "furniture/food_stall": {
+   "file": "assets/rest/furniture/food_stall.png",
+   "h": 90,
+   "w": 69
+  },
+  "furniture/glass_fridge": {
+   "file": "assets/rest/furniture/glass_fridge.png",
+   "h": 87,
+   "w": 49
+  },
+  "furniture/ice_tub": {
+   "file": "assets/rest/furniture/ice_tub.png",
+   "h": 34,
+   "w": 45
+  },
+  "furniture/kitchen_unit": {
+   "file": "assets/rest/furniture/kitchen_unit.png",
+   "h": 97,
+   "w": 58
+  },
+  "furniture/prep_table": {
+   "file": "assets/rest/furniture/prep_table.png",
+   "h": 43,
+   "w": 67
+  },
+  "furniture/register": {
+   "file": "assets/rest/furniture/register.png",
+   "h": 60,
+   "w": 46
+  },
+  "furniture/sink": {
+   "file": "assets/rest/furniture/sink.png",
+   "h": 49,
+   "w": 41
+  },
+  "furniture/sink_double": {
+   "file": "assets/rest/furniture/sink_double.png",
+   "h": 44,
+   "w": 83
+  },
+  "furniture/stool_rattan": {
+   "file": "assets/rest/furniture/stool_rattan.png",
+   "h": 28,
+   "w": 27
+  },
+  "furniture/stool_red": {
+   "file": "assets/rest/furniture/stool_red.png",
+   "h": 35,
+   "w": 30
+  },
+  "furniture/stool_red2": {
+   "file": "assets/rest/furniture/stool_red2.png",
+   "h": 38,
+   "w": 30
+  },
+  "furniture/table": {
+   "file": "assets/rest/furniture/table.png",
+   "h": 42,
+   "w": 48
+  },
+  "furniture/trash_bin": {
+   "file": "assets/rest/furniture/trash_bin.png",
+   "h": 45,
+   "w": 27
+  },
+  "furniture/trash_teal": {
+   "file": "assets/rest/furniture/trash_teal.png",
+   "h": 44,
+   "w": 28
+  },
+  "furniture/wall_menu": {
+   "file": "assets/rest/furniture/wall_menu.png",
+   "h": 39,
+   "w": 69
+  },
+  "furniture/wall_shelf": {
+   "file": "assets/rest/furniture/wall_shelf.png",
+   "h": 45,
+   "w": 81
+  },
+  "icons/coin": {
+   "file": "assets/rest/icons/coin.png",
+   "h": 32,
+   "w": 34
+  },
+  "icons/hint_bulb": {
+   "file": "assets/rest/icons/hint_bulb.png",
+   "h": 33,
+   "w": 32
+  },
+  "icons/speech": {
+   "file": "assets/rest/icons/speech.png",
+   "h": 32,
+   "w": 34
+  },
+  "kitchen/big_pot": {
+   "file": "assets/rest/kitchen/big_pot.png",
+   "h": 49,
+   "w": 52
+  },
+  "kitchen/carton": {
+   "file": "assets/rest/kitchen/carton.png",
+   "h": 41,
+   "w": 45
+  },
+  "kitchen/clean_tools": {
+   "file": "assets/rest/kitchen/clean_tools.png",
+   "h": 52,
+   "w": 53
+  },
+  "kitchen/fridge": {
+   "file": "assets/rest/kitchen/fridge.png",
+   "h": 59,
+   "w": 52
+  },
+  "kitchen/gas_stove": {
+   "file": "assets/rest/kitchen/gas_stove.png",
+   "h": 46,
+   "w": 64
+  },
+  "kitchen/ingredients": {
+   "file": "assets/rest/kitchen/ingredients.png",
+   "h": 44,
+   "w": 53
+  },
+  "kitchen/menu_board": {
+   "file": "assets/rest/kitchen/menu_board.png",
+   "h": 54,
+   "w": 50
+  },
+  "kitchen/sauce": {
+   "file": "assets/rest/kitchen/sauce.png",
+   "h": 43,
+   "w": 47
+  },
+  "kitchen/steamer": {
+   "file": "assets/rest/kitchen/steamer.png",
+   "h": 51,
+   "w": 40
+  },
+  "kitchen/tableware": {
+   "file": "assets/rest/kitchen/tableware.png",
+   "h": 44,
+   "w": 43
+  },
+  "people/boss_back": {
+   "file": "assets/rest/people/boss_back.png",
+   "h": 72,
+   "w": 35
+  },
+  "people/boss_back_l": {
+   "file": "assets/rest/people/boss_back_l.png",
+   "h": 72,
+   "w": 33
+  },
+  "people/boss_br": {
+   "file": "assets/rest/people/boss_br.png",
+   "h": 73,
+   "w": 30
+  },
+  "people/boss_br2": {
+   "file": "assets/rest/people/boss_br2.png",
+   "h": 72,
+   "w": 33
+  },
+  "people/boss_fr": {
+   "file": "assets/rest/people/boss_fr.png",
+   "h": 72,
+   "w": 32
+  },
+  "people/boss_fr2": {
+   "file": "assets/rest/people/boss_fr2.png",
+   "h": 72,
+   "w": 30
+  },
+  "people/boss_front": {
+   "file": "assets/rest/people/boss_front.png",
+   "h": 72,
+   "w": 35
+  },
+  "people/cust_bag": {
+   "file": "assets/rest/people/cust_bag.png",
+   "h": 71,
+   "w": 33
+  },
+  "people/cust_boy": {
+   "file": "assets/rest/people/cust_boy.png",
+   "h": 73,
+   "w": 33
+  },
+  "people/cust_cap": {
+   "file": "assets/rest/people/cust_cap.png",
+   "h": 72,
+   "w": 38
+  },
+  "people/cust_dress": {
+   "file": "assets/rest/people/cust_dress.png",
+   "h": 74,
+   "w": 38
+  },
+  "people/cust_elder": {
+   "file": "assets/rest/people/cust_elder.png",
+   "h": 73,
+   "w": 38
+  },
+  "people/cust_girl": {
+   "file": "assets/rest/people/cust_girl.png",
+   "h": 74,
+   "w": 37
+  },
+  "people/cust_green": {
+   "file": "assets/rest/people/cust_green.png",
+   "h": 73,
+   "w": 33
+  },
+  "people/portrait": {
+   "file": "assets/rest/people/portrait.png",
+   "h": 85,
+   "w": 77
+  },
+  "staff/barista_back": {
+   "file": "assets/rest/staff/barista_back.png",
+   "h": 73,
+   "w": 30
+  },
+  "staff/barista_front": {
+   "file": "assets/rest/staff/barista_front.png",
+   "h": 72,
+   "w": 30
+  },
+  "staff/cashier_back": {
+   "file": "assets/rest/staff/cashier_back.png",
+   "h": 73,
+   "w": 30
+  },
+  "staff/cashier_front": {
+   "file": "assets/rest/staff/cashier_front.png",
+   "h": 72,
+   "w": 30
+  },
+  "staff/chef_back": {
+   "file": "assets/rest/staff/chef_back.png",
+   "h": 73,
+   "w": 30
+  },
+  "staff/chef_front": {
+   "file": "assets/rest/staff/chef_front.png",
+   "h": 72,
+   "w": 30
+  },
+  "staff/cook_back": {
+   "file": "assets/rest/staff/cook_back.png",
+   "h": 73,
+   "w": 30
+  },
+  "staff/cook_front": {
+   "file": "assets/rest/staff/cook_front.png",
+   "h": 72,
+   "w": 30
+  },
+  "staff/server_back": {
+   "file": "assets/rest/staff/server_back.png",
+   "h": 73,
+   "w": 30
+  },
+  "staff/server_front": {
+   "file": "assets/rest/staff/server_front.png",
+   "h": 72,
+   "w": 30
+  }
+ },
+ "version": 1
+}

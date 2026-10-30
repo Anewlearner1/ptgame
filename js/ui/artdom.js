@@ -5,6 +5,7 @@
 import { bus } from '../core/bus.js';
 import { loadArt, artReady, artRect, artUrl, artEnabled } from '../render/art.js';
 import { conceptThumb } from '../render/concept_objects.js';
+import { restThumb } from '../render/rest_sprites.js';
 import { PATIENT_TYPES } from '../data/patients.js';
 import { patientMood, patientExprName, staffFaceName, PATIENT_MOOD_LABELS } from './moods.js';
 
@@ -26,6 +27,7 @@ export function initArtDom() {
   hooked = true;
   setUrlVar();
   bus.on('art:changed', () => { repaintAll(); });
+  bus.on('rest:art', () => { for (const ref of live) { const el = ref.deref(); if (el && el._th) el._th.cvId = null; } repaintAll(); });   // image sprites loaded: re-pick thumbnails
   loadArt().then(ok => {
     loadState = ok ? 'ok' : 'fail';
     if (!ok) { repaintAll(); return; }
@@ -124,7 +126,7 @@ function paintThumb(el) {
     if (t.cvId !== t.id) {
       t.cvId = t.id;
       let src = null;
-      try { src = conceptThumb(t.id, t.w, t.h, Math.min(3, window.devicePixelRatio || 1)); } catch (e) { src = null; }
+      try { src = restThumb(t.id, t.w, t.h, Math.min(3, window.devicePixelRatio || 1)) || conceptThumb(t.id, t.w, t.h, Math.min(3, window.devicePixelRatio || 1)); } catch (e) { src = null; }
       if (t.cv) { t.cv.remove(); t.cv = null; }
       if (src && src.width) {
         const cv = document.createElement('canvas');

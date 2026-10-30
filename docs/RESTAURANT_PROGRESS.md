@@ -7,7 +7,7 @@
 - 資料層：`buildables`（32）、`treatments`（17 道）、`patients`（4 類客人＋3 種方針）、`staffdefs`（5 職類）、`lots`、`research`（27 節點）、`synergies`（15 專區）、`upgrades`、`events*`（73 事件、7 社區、12 兩難、7 看板）、`achievements`、`goals`、`texts`、`fees`（改成菜單價與食材成本率）。
 - 模擬：`economy.js` 改寫（上菜即收現金＋食材成本、食安風險、毛利）、`patients.js`（kind menu/special、intake、freebie/skip_main/overpush 兩難）、`staff/qualify/equipment/inspection/build/career/achievements/events/save/efftext/modifiers` 對應修改。起始店 `seedStarterShop`。
 - 介面：頂部列（食安取代點值）、月結報表、運作／餐廳／一覽／選取卡文字與經濟、封面與說明、`restgame.*` 儲存鍵。
-- 美術：移除診所概念圖集（atlas），一律程式繪製；`art.js` 的 `ATLAS_AVAILABLE=false`。
+- 美術：移除診所概念圖集（atlas）；物件／人物／餐點圖示改用台灣小吃概念圖集裁切的圖片（`docs/RESTAURANT_SPRITES.md`，`js/render/rest_sprites.js`），無對應或載入失敗時退回程式繪製。`art.js` 的 `ATLAS_AVAILABLE=false`（舊診所圖集）。
 - 工具：`tools/bal.mjs`（無瀏覽器平衡模擬）。
 
 ## 平衡（目前，PATIENT_WEIGHT=28，L3=38）
