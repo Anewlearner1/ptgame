@@ -146,8 +146,8 @@ function grassTile(seed) {
 function doormatTile() {
   return tile((g, P) => {
     flatDiamond(g, P, '#eaded2');
-    fillPoly(g, [P(0.1, 0.1), P(0.9, 0.1), P(0.9, 0.9), P(0.1, 0.9)], '#364272');
-    fillPoly(g, [P(0.2, 0.2), P(0.8, 0.2), P(0.8, 0.8), P(0.2, 0.8)], '#2a7ef6');
+    fillPoly(g, [P(0.1, 0.1), P(0.9, 0.1), P(0.9, 0.9), P(0.1, 0.9)], '#6e3a28');
+    fillPoly(g, [P(0.2, 0.2), P(0.8, 0.2), P(0.8, 0.8), P(0.2, 0.8)], '#d4583a');
     for (let i = 0; i < 4; i++) uvEdge(g, P, 0.28 + i * 0.15, 0.24, 0.28 + i * 0.15, 0.76, 'rgba(255,255,255,0.55)', 1);
     poly(g, [P(0.1, 0.1), P(0.9, 0.1), P(0.9, 0.9), P(0.1, 0.9)]); g.strokeStyle = OUT; g.lineWidth = 0.9; g.stroke();
   });
@@ -272,15 +272,15 @@ function doorFrame() {
     strokeLine(g, p(o0, 0.2, 0), p(o1, 0.2, 0), OUT, 1.1);
     post(0, 0.14); post(0.86, 1);
     // lintel / sign band
-    box(g, p, 0, 0, 1, 0.2, H - 4, H, '#2a7ef6');
+    box(g, p, 0, 0, 1, 0.2, H - 4, H, '#d4583a');
     fillPoly(g, [p(0.04, 0.2, H - 1.2), p(0.96, 0.2, H - 1.2), p(0.96, 0.2, H - 2.8), p(0.04, 0.2, H - 2.8)], 'rgba(255,255,255,0.8)');
-    // canopy awning (blue + white stripes) sloping out over the door
+    // canopy awning (red + white stripes) sloping out over the door
     const aw = (a0, a1, col) => {
       fillPoly(g, [p(a0, 0.2, H - 4), p(a1, 0.2, H - 4), p(a1, 0.78, H - 12), p(a0, 0.78, H - 12)], col);
       fillPoly(g, [p(a0, 0.78, H - 12), p(a1, 0.78, H - 12), p(a1, 0.78, H - 17), p(a0, 0.78, H - 17)], col);
     };
     const n = 6;
-    for (let i = 0; i < n; i++) aw(-0.04 + i * (1.08 / n), -0.04 + (i + 1) * (1.08 / n), i & 1 ? '#f6f6f6' : '#2a7ef6');
+    for (let i = 0; i < n; i++) aw(-0.04 + i * (1.08 / n), -0.04 + (i + 1) * (1.08 / n), i & 1 ? '#f6f6f6' : '#d4583a');
     poly(g, [p(-0.04, 0.2, H - 4), p(1.04, 0.2, H - 4), p(1.04, 0.78, H - 12), p(1.04, 0.78, H - 17), p(-0.04, 0.78, H - 17), p(-0.04, 0.78, H - 12)]);
     g.strokeStyle = OUT; g.lineWidth = 1; g.stroke();
     strokeLine(g, p(-0.04, 0.78, H - 12), p(1.04, 0.78, H - 12), 'rgba(20,17,27,0.4)', 0.8);
@@ -336,7 +336,7 @@ function lampSprite() {
     // lamp head
     rrect(g, bx - 6.5, by - 61, 13, 9, 3.5); g.fillStyle = '#ffe9a8'; g.fill(); g.strokeStyle = OUT; g.lineWidth = 1.1; g.stroke();
     rrect(g, bx - 5, by - 59.5, 5, 6, 2); g.fillStyle = '#fffbe6'; g.fill();
-    rrect(g, bx - 8, by - 65, 16, 5, 2.5); g.fillStyle = '#1e66ea'; g.fill(); g.strokeStyle = OUT; g.stroke();
+    rrect(g, bx - 8, by - 65, 16, 5, 2.5); g.fillStyle = '#b8442e'; g.fill(); g.strokeStyle = OUT; g.stroke();
     g.fillStyle = '#5aaef6'; g.fillRect(bx - 5, by - 64, 8, 1);
   });
 }
@@ -379,7 +379,7 @@ function buildingSprite(w, d, hgt, wall, trim, roof, glass) {
       if (r) { strokeLine(g, p(0.02, d, z0 - 2), p(w, d, z0 - 2), lit(s.l, 0.55), 1); strokeLine(g, p(w, d, z0 - 2), p(w, 0.02, z0 - 2), lit(s.r, 0.35), 1); }
     }
     // entrance door on the left face + awning stripe on tall ones
-    fillPoly(g, [p(w * 0.5 - 0.2, d, 13), p(w * 0.5 + 0.2, d, 13), p(w * 0.5 + 0.2, d, 0), p(w * 0.5 - 0.2, d, 0)], '#364272');
+    fillPoly(g, [p(w * 0.5 - 0.2, d, 13), p(w * 0.5 + 0.2, d, 13), p(w * 0.5 + 0.2, d, 0), p(w * 0.5 - 0.2, d, 0)], '#6e3a28');
     fillPoly(g, [p(w * 0.5 - 0.16, d, 12), p(w * 0.5 + 0.16, d, 12), p(w * 0.5 + 0.16, d, 0), p(w * 0.5 - 0.16, d, 0)], '#9cc8f8');
     strokeLine(g, p(w * 0.5, d, 12), p(w * 0.5, d, 0), '#f6f6f6', 1);
     // rooftop unit
@@ -502,7 +502,7 @@ const ICON_FN = {
     g.beginPath(); g.moveTo(5, 9.4); g.lineTo(8, 12.2); g.lineTo(13.2, 5.8); g.strokeStyle = '#fff'; g.lineWidth = 2.4; g.stroke();
   },
   question(g) {
-    circ(g, 9, 9, 7.6, '#2a7ef6'); g.strokeStyle = OUT; g.lineWidth = 1.4; g.beginPath(); g.arc(9, 9, 7.6, 0, TAU); g.stroke();
+    circ(g, 9, 9, 7.6, '#d4583a'); g.strokeStyle = OUT; g.lineWidth = 1.4; g.beginPath(); g.arc(9, 9, 7.6, 0, TAU); g.stroke();
     g.fillStyle = '#fff'; g.font = '700 11.5px ' + FONT; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 9, 9.8);
   },
   sweat(g) {
@@ -636,12 +636,13 @@ function drawSign(g, info, sg) {
   g.setTransform(K, K * 0.5, 0, K, (sx - NX) * K, (sy - NY) * K);
   // mounting shadow + plate
   rrect(g, -1, 1.5, pw + 2, ph + 1, 5); g.fillStyle = 'rgba(20,17,27,0.2)'; g.fill();
-  rrect(g, 0, 0, pw, ph, 5); g.fillStyle = '#1e365a'; g.fill(); g.strokeStyle = OUT; g.lineWidth = 1.4; g.stroke();
-  rrect(g, 2, 2, pw - 4, ph - 4, 3.5); g.strokeStyle = 'rgba(156,200,248,0.65)'; g.lineWidth = 0.8; g.stroke();
+  rrect(g, 0, 0, pw, ph, 5); g.fillStyle = '#5a2a1c'; g.fill(); g.strokeStyle = OUT; g.lineWidth = 1.4; g.stroke();
+  rrect(g, 2, 2, pw - 4, ph - 4, 3.5); g.strokeStyle = 'rgba(244,184,150,0.65)'; g.lineWidth = 0.8; g.stroke();
   rrect(g, 3, 3, pw - 6, 3.4, 1.6); g.fillStyle = 'rgba(255,255,255,0.14)'; g.fill();
-  // cross badge
-  circ(g, 14, ph / 2, 7.2, '#f6f6f6'); circ(g, 14, ph / 2, 5.8, '#2a7ef6');
-  g.fillStyle = '#fff'; g.fillRect(12.6, ph / 2 - 4, 2.8, 8); g.fillRect(10, ph / 2 - 1.4, 8, 2.8);
+  // bowl badge
+  circ(g, 14, ph / 2, 7.2, '#f6f6f6'); circ(g, 14, ph / 2, 5.8, '#d4583a');
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(14, ph / 2 - 0.4, 3.6, 0, Math.PI); g.closePath(); g.fill();     // bowl
+  g.fillRect(11.2, ph / 2 + 3.4, 5.6, 0.9); g.fillStyle = '#ffe08a'; g.fillRect(12.2, ph / 2 - 3.6, 0.9, 2); g.fillRect(14.8, ph / 2 - 3.6, 0.9, 2);
   g.fillStyle = '#ffffff'; g.font = '700 ' + FS + 'px ' + FONT; g.textAlign = 'left'; g.textBaseline = 'middle';
   const tx = 26 + (pw - 26 - 6 - badgesW - nameW) / 2;
   g.fillText(name, tx, ph / 2 + 0.6);
@@ -706,7 +707,7 @@ export function sceneBubble(text, kind, d) {
   g.scale(d, d); g.font = font; g.textBaseline = 'middle'; g.textAlign = 'center'; g.lineJoin = 'round';
   const r = pill ? h / 2 : 7;
   if (pill) {
-    const fill = kind === 'bad' ? '#c43e5a' : '#1e365a';
+    const fill = kind === 'bad' ? '#c43e5a' : '#5a2a1c';
     rrect(g, 1, 1.6, w - 2, h - 1.6, r); g.fillStyle = 'rgba(20,17,27,0.22)'; g.fill();      // soft drop
     rrect(g, 1, 1, w - 2, h - 2, r); g.fillStyle = fill; g.fill(); g.strokeStyle = OUT; g.lineWidth = 1.2; g.stroke();
     rrect(g, 2.4, 2.2, w - 4.8, (h - 4) * 0.42, r * 0.7); g.fillStyle = 'rgba(255,255,255,0.13)'; g.fill();
@@ -717,8 +718,8 @@ export function sceneBubble(text, kind, d) {
     g.moveTo(1 + r, 1); g.arcTo(w - 1, 1, w - 1, h - 1, r); g.arcTo(w - 1, h - 1, 1, h - 1, r);
     g.lineTo(w / 2 + 5, h - 1); g.lineTo(w / 2, h + tail - 0.5); g.lineTo(w / 2 - 5, h - 1);
     g.arcTo(1, h - 1, 1, 1, r); g.arcTo(1, 1, w - 1, 1, r); g.closePath();
-    g.fillStyle = '#ffffff'; g.fill(); g.strokeStyle = '#1e365a'; g.lineWidth = 1.6; g.stroke();
-    g.fillStyle = '#1e365a';
+    g.fillStyle = '#ffffff'; g.fill(); g.strokeStyle = '#5a2a1c'; g.lineWidth = 1.6; g.stroke();
+    g.fillStyle = '#5a2a1c';
   }
   g.fillText(text, w / 2, h / 2 + 0.5);
   c.cw = w; c.ch = h + tail;
@@ -731,16 +732,16 @@ export function sceneBar(g, wx, wy, pct, green) {
   rrect(g, x - 1, y - 1, W + 2, H + 2, (H + 2) / 2); g.fillStyle = OUT; g.fill();
   rrect(g, x, y, W, H, H / 2); g.fillStyle = '#eaeaf6'; g.fill();
   const fw = Math.max(H, W * Math.max(0, Math.min(1, pct)));
-  rrect(g, x, y, fw, H, H / 2); g.fillStyle = green ? '#5aae02' : '#2a7ef6'; g.fill();
-  rrect(g, x + 1.2, y + 0.9, Math.max(1, fw - 2.4), 2.2, 1.1); g.fillStyle = green ? '#9bd44a' : '#7fbcf8'; g.fill();
+  rrect(g, x, y, fw, H, H / 2); g.fillStyle = green ? '#5aae02' : '#d4583a'; g.fill();
+  rrect(g, x + 1.2, y + 0.9, Math.max(1, fw - 2.4), 2.2, 1.1); g.fillStyle = green ? '#9bd44a' : '#f0a080'; g.fill();
 }
 
 export function sceneSelRing(g, X, Y, pulse) {
   g.save();
   g.beginPath(); g.ellipse(X, Y, 17 * pulse, 8.5 * pulse, 0, 0, TAU);
-  g.fillStyle = 'rgba(90,174,246,0.16)'; g.fill();
+  g.fillStyle = 'rgba(232,130,94,0.18)'; g.fill();
   g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineWidth = 4; g.stroke();
-  g.strokeStyle = '#2a7ef6'; g.lineWidth = 2; g.stroke();
+  g.strokeStyle = '#d4583a'; g.lineWidth = 2; g.stroke();
   g.restore();
 }
 

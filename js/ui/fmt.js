@@ -8,7 +8,7 @@ export function signed(n) { n = Math.round(n || 0); return (n > 0 ? '+' : n < 0 
 export function pct(r, d = 0) { return (r * 100).toFixed(d) + '%'; }
 
 export const POINT_ICONS = { culinary: '🍳', device: '🔧', service: '🛎' };
-export const TRACK_COLORS = { culinary: '#d1495b', device: '#3b7fd1', service: '#3a9d4d' };
+export const TRACK_COLORS = { culinary: '#d1495b', device: '#c8643a', service: '#3a9d4d' };
 
 export const STAGE_LABELS = {
   arriving: '抵達中', to_reception: '前往點餐', registering: '點餐中', waiting: '候位中',

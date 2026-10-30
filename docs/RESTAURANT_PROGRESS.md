@@ -18,7 +18,7 @@
 1. **UI 測試工具**：`tools/qualifyui.mjs`（卡片文字仍斷言「物理治療師／醫師」、`bed` 等診所 id）、`upgradesui.mjs`（診所升級名稱與「醫術點數」）、`zonesui.mjs`（專區數量／標籤）仍有過時斷言；`mobileui/perftest/play/stylecss/stress-page` 已改但未逐一重跑。`audit.mjs --quick`（1720 項）、`smoke`、`uitest`、`coverui` 為綠。
 2. **文件**：`README.md` 仍有部分診所版敘述（操作表中的「病患」等），待更新。其餘文件已整理，見下方「文件狀態」。
 3. 平衡微調：專家路線仍低於診所版目標；`goals.js` 的金額與人次門檻是診所版數字。
-4. 美術：物件用程式繪製（無圖集），可再精修；手機版面再檢查。
+4. 美術（分支 `claude/restaurant-art` 已精修一輪）：電視牆改菜單看板、收銀螢幕改點餐單、招牌與店招去除診所十字（改麵碗）、休息室/飲料吧/吧台/櫃檯改暖色、鋼材改暖灰、服務生加托盤；介面主題色（css、theme-color、圖示、氣泡、進度條）全改紅/木色。手機 360x740、390x844、844x390 無溢出、無小於 32px 的點擊區。
 
 已完成：圖示改為麵碗、manifest/theme 色改暖紅、移除多餘的 `undefined/` 目錄。
 
