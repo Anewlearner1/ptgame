@@ -66,6 +66,7 @@ img, canvas { -webkit-user-drag: none; }
 .touch .panel-close { width: 44px; height: 44px; font-size: 20px; }
 .touch .u-selclose { width: 40px; height: 40px; font-size: 18px; top: 0; right: 0; }
 .touch .u-input { min-height: 40px; }
+.touch .u-fchip { min-height: 40px; }
 .touch summary { min-height: 40px; padding: 10px 0; box-sizing: border-box; }
 .lay-mobile .u-sub, .lay-mobile .u-req, .lay-mobile .u-bl, .lay-mobile .u-step, .lay-mobile .u-legend,
 .lay-mobile .u-small, .lay-mobile .tag, .lay-mobile .badge, .lay-mobile .kbd, .lay-mobile .stat > :first-child,

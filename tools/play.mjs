@@ -24,13 +24,13 @@ await G(() => { __game.bus.emit('speed:set', { speed: 0 }); __game.state.points 
 
 // --- build / paint / rotate / demolish
 await side(1);
-let m0 = await money(), o0 = await nObj();
+let m0 = await G(() => __game.state.ledger.expense.build), o0 = await nObj();
 await tab('.tabs', '候位與景觀'); await pick('plant'); await clickTile(page, 11, 18);
-ok(await nObj() === o0 + 1 && await money() < m0, 'plant placed and paid');
-await tab('.tabs', '設施'); await tab('.tabs', '物理治療區');
+ok(await nObj() === o0 + 1 && await G(() => __game.state.ledger.expense.build) > m0, 'plant placed and paid (build ledger; the onboarding rewards may offset the cash)');
+await tab('.tabs', '設施'); await tab('.tabs', '熱廚');
 await pick('braise_pot'); await page.keyboard.press('r'); await clickTile(page, 20, 12);
-ok(await G(() => __game.state.zones.some(z => z.id === 'golden3')), 'golden3 zone active (heatbox+tens+traction, rotated with R)');
-ok(await G(() => __game.state.mods.nhiTurnover > 1.19), 'golden3 raises nhiTurnover');
+ok(await G(() => __game.state.zones.some(z => z.id === 'golden3')), 'golden3 zone active (noodle stove + braise pot + fryer, rotated with R)');
+ok(await G(() => __game.state.mods.nhiTurnover > 1.19), 'golden3 raises nhiTurnover (mods key kept: 基本餐點翻桌率)');
 await tab('.tabs', '環境'); await tab('.tabs', '地板與通道');
 m0 = await G(() => __game.state.ledger.expense.build); await pick('floor_tile'); await dragTiles(page, [14, 18], [14, 13]);
 ok(await G(() => __game.state.map.floor.filter((r, y) => r[14] === 'floor_tile').length) >= 5, 'floor drag-paint covers a line');
@@ -104,14 +104,14 @@ await page.evaluate(async () => {
   for (let i = 0; i < 40; i++) { const b = [...document.querySelectorAll('#panel .u-node .btn')].find(x => !x.disabled && !x.hidden); if (!b) { await new Promise(r => setTimeout(r, 250)); if (![...document.querySelectorAll('#panel .u-node .btn')].some(x => !x.disabled && !x.hidden)) break; continue; } b.click(); for (let k = 0; k < 6 && __game.state.research.current; k++) RS.tickWeek(__game.state); await new Promise(r => setTimeout(r, 220)); }
 });
 ok(await G(() => __game.state.research.done.length) >= 15, 'research started via UI and completed');
-await tab('.tabs', '💲 自費定價');
-ok(await G(() => /每位模擬客人代表 \d+ 位真實客人/.test(document.querySelector('#panel')?.textContent || '') && /市場行情/.test(document.querySelector('#panel')?.textContent || '') && /同日物理治療僅給付最高一項/.test(document.querySelector('#panel')?.textContent || '')), 'pricing tab: patient-weight note + market reference + single-claim rule');
-await tab('.tabs', '🎪 社區衛教');
+await tab('.tabs', '💲 特色定價');
+ok(await G(() => /每位模擬客人代表 \d+ 位真實客人/.test(document.querySelector('#panel')?.textContent || '') && /市場行情/.test(document.querySelector('#panel')?.textContent || '') && /特色料理的售價 = 菜單價/.test(document.querySelector('#panel')?.textContent || '')), 'pricing tab: guest-weight note + market reference + special-dish pricing rule');
+await tab('.tabs', '🎪 社區活動');
 await page.click('#panel .btn.primary:text-is("舉辦")'); await page.waitForTimeout(200);
 ok(await G(() => __game.state.events.active.some(a => a.kind === 'community')), 'community outreach started');
 await side(1); await G(() => { __game.state.money = 3e6; });
-await tab('.tabs', '設施'); await tab('.tabs', '運動與自費'); await pick('manual_room'); await clickTile(page, 11, 15);
-await tab('.tabs', '特殊'); await pick('shockwave'); await clickTile(page, 13, 15); await pick('coffee'); await clickTile(page, 13, 16);
+await tab('.tabs', '設施'); await tab('.tabs', '特色料理'); await pick('chef_table'); await clickTile(page, 14, 15); await pick('dessert_bar'); await clickTile(page, 16, 15);
+await tab('.tabs', '特殊'); await pick('coffee'); await clickTile(page, 16, 16);
 ok(await G(() => __game.state.zones.some(z => z.id === 'premium')), 'premium zone active');
 await side(4); await tab('.tabs', '✨ 專區辭典');
 ok(await G(() => document.querySelectorAll('#panel .card.selected').length) >= 2, 'zone dictionary shows active zones');
@@ -124,8 +124,8 @@ ok(await G(() => __game.state.staff.length) === s0 + 1, 'hire');
 await page.click('#panel .btn:text-is("訓練")'); await page.waitForTimeout(150);
 await page.click('#panel .btn.danger:text-is("解僱")'); await confirm();
 ok(await G(() => __game.state.staff.length) === s0, 'fire');
-await side(3); await page.click('#panel .u-focus[data-id="ltc"]');
-ok(await G(() => __game.state.policy.focus) === 'ltc', 'focus changed');
+await side(3); await page.click('#panel .u-focus[data-id="community"]');
+ok(await G(() => __game.state.policy.focus) === 'community', 'focus changed');
 
 // --- save / load / export / import
 // (achievements are re-evaluated on every load and pay their reward once: settle them BEFORE taking the money snapshot)
@@ -144,11 +144,11 @@ ok(await money() === 777777, 'garbage import rejected');
 await page.click('#panel .panel-close');
 
 // --- modals: month end, event freeze, year-end inspection, game over
-await G(() => { const s = __game.state; s.time.week = 4; s.time.clock = 1185; s.nhi.monthPoints = 9e5; __game.bus.emit('speed:set', { speed: 3 }); });
+await G(() => { const s = __game.state; s.time.week = 4; s.time.clock = 1185; __game.bus.emit('speed:set', { speed: 3 }); });
 await page.waitForTimeout(2500);
 ok(await G(() => /營運報告/.test(document.querySelector('.modal-title')?.textContent || '')), 'month-end report modal');
-ok(await G(() => /點值被稀釋/.test(document.querySelector('.modal')?.textContent || '')), 'NHI dilution explained');
-ok(await G(() => { const t = document.querySelector('.modal')?.textContent || ''; return /健保給付/.test(t) && /自費收入/.test(t) && /部分負擔/.test(t) && /每位模擬客人代表 \d+ 位真實客人/.test(t); }), 'month report: 健保 / 自費 / 部分負擔 breakdown + patient-weight footnote');
+ok(await G(() => /毛利率 \d+%/.test(document.querySelector('.modal')?.textContent || '')), 'month report explains the gross margin');
+ok(await G(() => { const t = document.querySelector('.modal')?.textContent || ''; return /基本菜單收入/.test(t) && /特色料理收入/.test(t) && /食材成本/.test(t) && /每位模擬客人代表 \d+ 位真實客人/.test(t); }), 'month report: 基本菜單 / 特色料理 / 食材成本 breakdown + patient-weight footnote');
 await shot('play_month'); await closeModals();
 await G(async () => { const E = await import('/js/sim/events.js'); __game.state.events.cooldowns = {}; E.triggerEvent(__game.state, 'li_chief'); });
 await page.waitForTimeout(400);
@@ -159,13 +159,13 @@ ok(await G(() => !__game.state.events.pendingDilemma && !__game.state.time.pause
 await G(() => { const s = __game.state; s.time.month = 12; s.time.week = 4; s.time.clock = 1185; __game.bus.emit('speed:set', { speed: 3 }); });
 await page.waitForTimeout(2500);
 let titles = []; for (let i = 0; i < 4; i++) { titles.push(await G(() => document.querySelector('.modal-title')?.textContent)); await G(() => document.querySelector('.modal .btn.primary')?.click()); await page.waitForTimeout(250); }
-ok(titles.some(t => /督導/.test(t || '')), 'year-end inspection modal');
+ok(titles.some(t => /稽查/.test(t || '')), 'year-end inspection modal');
 await G(() => { const s = __game.state; s.money = -9e6; s.time.week = 4; s.time.clock = 1185; __game.bus.emit('speed:set', { speed: 3 }); });
 await page.waitForTimeout(2500);
 ok(await G(() => [...document.querySelectorAll('.modal-title')].some(t => /遊戲結束/.test(t.textContent))), 'game over modal');
 await shot('play_gameover');
 await G(() => [...document.querySelectorAll('.modal .btn')].find(b => /重新開業/.test(b.textContent))?.click()); await page.waitForTimeout(600);
-ok(await G(() => __game.state.objects.length === 7 && __game.state.money > 1e6), 'new game after game over');
+ok(await G(() => __game.state.objects.length === 14 && __game.state.money > 1e6), 'new game after game over');
 
 
 // =====================================================================================================
@@ -197,8 +197,8 @@ await side(3); await page.click('#panel .tab:has-text("稱號與徽章")'); awai
 // equip a title
 await page.click(`${card('t_cold_week')} .btn:text-is("配戴稱號")`); await page.waitForTimeout(250);
 ok(await G(() => __game.state.achv.title) === 't_cold_week', 'achv: equip title via button');
-ok(await G(() => document.querySelector('#topbar .tb-title') && !document.querySelector('#topbar .tb-title').hidden && /〔寒流守護者〕/.test(document.querySelector('#topbar .tb-title').textContent)), 'achv: topbar shows 〔稱號〕');
-ok(await G(() => /〔寒流守護者〕/.test(document.querySelector('#panel .u-curtitle').textContent)), 'achv panel: current title shows displayTitle');
+ok(await G(() => document.querySelector('#topbar .tb-title') && !document.querySelector('#topbar .tb-title').hidden && /〔熱湯守護者〕/.test(document.querySelector('#topbar .tb-title').textContent)), 'achv: topbar shows 〔稱號〕');
+ok(await G(() => /〔熱湯守護者〕/.test(document.querySelector('#panel .u-curtitle').textContent)), 'achv panel: current title shows displayTitle');
 ok(await G(() => document.querySelector('#panel [data-ach="t_cold_week"] .btn:not([hidden])').textContent) === '取消配戴', 'achv: equip button toggles to 取消配戴');
 await page.click(`${card('t_cold_week')} .btn:text-is("取消配戴")`); await page.waitForTimeout(250);
 ok(await G(() => __game.state.achv.title) === null && await G(() => document.querySelector('#topbar .tb-title').hidden), 'achv: unequip removes title from topbar');
@@ -224,7 +224,7 @@ ok(await G(() => document.querySelector('#panel [data-ach="c_zone_all"]')._keep 
 await G(async () => { const S = await import('/js/sim/save.js'); S.saveGame(__game.state, 'auto'); });
 await page.reload(); await page.waitForTimeout(1200); await closeModals();
 ok(await G(() => __game.state.achv.title === 't_cold_week' && __game.state.achv.badges.length === 3), 'achv: title + badges survive reload');
-ok(await G(() => /〔寒流守護者〕/.test(document.querySelector('#topbar .tb-title')?.textContent || '')), 'achv: topbar title after reload');
+ok(await G(() => /〔熱湯守護者〕/.test(document.querySelector('#topbar .tb-title')?.textContent || '')), 'achv: topbar title after reload');
 await G(() => { const A = __game.state.achv; A.title = null; A.badges = []; });
 
 const real = problems.filter(p => !/\[save\] import failed/.test(p));

@@ -758,7 +758,7 @@ html.style-concept .u-grade { border-radius: 12px; box-shadow: 0 0 0 2px var(--c
 html.style-concept .u-grade.u-grade-sm { border-radius: 8px; }
 html.style-concept .u-grade.u-grade-xl { border-radius: 18px; }
 html.style-concept .u-ob-mark { border-radius: 50%; box-shadow: 0 0 0 2px var(--c-line-2); background: #fff; }
-html.style-concept .u-obtask.u-done .u-ob-mark { background: #3aa56a; box-shadow: 0 0 0 2px var(--c-navy); }
+html.style-concept .u-obtask.u-done .u-ob-mark { background: #2a7f50; box-shadow: 0 0 0 2px var(--c-navy); }
 html.style-concept .u-obtask { background: #fff; }
 html.style-concept .u-goal.core { background: linear-gradient(#fffaf0, #fff4d8); box-shadow: 0 0 0 2px #e0a92c, 0 3px 8px rgba(224, 169, 44, 0.25); }
 html.style-concept .tag.u-gkind { background: #dcebfb; color: var(--c-navy); box-shadow: 0 0 0 1.5px var(--c-blue-hl); }

@@ -25,7 +25,7 @@ export async function boot({ w = W, h = H, dpr = 1 } = {}) {
   page.on('pageerror', e => problems.push('PAGEERR ' + e.message));
   page.on('requestfailed', r => problems.push('REQFAIL ' + r.url()));
   page.on('response', r => { if (r.status() >= 400) problems.push('HTTP ' + r.status() + ' ' + r.url()); });
-  // fresh clinic every run (no autosave from earlier runs)
+  // fresh shop every run (no autosave from earlier runs)
   await page.addInitScript(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
   await page.goto(url);
   await page.waitForTimeout(1200);
