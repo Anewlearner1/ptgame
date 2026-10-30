@@ -1070,9 +1070,9 @@ html.style-concept .modal-title {
   display: flex; align-items: center; gap: 10px; background: var(--c-navy); color: #fff; text-shadow: none;
   box-shadow: inset 0 -3px 0 rgba(20, 17, 27, 0.3);
 }
-html.style-concept .modal-title::before {
+html.style-concept .modal-title::before {   /* steaming bowl */
   content: ""; flex: 0 0 auto; width: 20px; height: 20px; background: no-repeat center / contain
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9.2 2.6h5.6v6.6h6.6v5.6h-6.6v6.6H9.2v-6.6H2.6V9.2h6.6z' fill='%23fff' stroke='%2314111b' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8 2.5c-1.2 1.6.9 2.6-.2 4.4M12 1.8c-1.2 1.6.9 2.6-.2 4.4M16 2.5c-1.2 1.6.9 2.6-.2 4.4' fill='none' stroke='%23fff' stroke-width='1.6' stroke-linecap='round'/%3E%3Cpath d='M2.4 10.2h19.2c0 5.3-4.3 9-9.6 9s-9.6-3.7-9.6-9z' fill='%23fff' stroke='%2314111b' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M8.6 19.2h6.8v2.2H8.6z' fill='%23fff' stroke='%2314111b' stroke-width='1.2'/%3E%3Cpath d='M4.6 13h14.8' stroke='%23c4402c' stroke-width='1.6'/%3E%3C/svg%3E");
 }
 html.style-concept .modal-title:has(.u-art)::before { display: none; }
 html.style-concept .modal-actions { background: var(--c-panel); box-shadow: inset 0 2px 0 0 var(--c-line); }
