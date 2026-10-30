@@ -245,7 +245,7 @@ function sanitize(m) {
 // achievements: counters numeric, unknown ids dropped, badges <= MAX_BADGES and unlocked, title must be an unlocked achievement with a title
 const ACHV_NUM_COUNTERS = ['totalSelfPayMonth', 'auditPassStreak', 'chatCount', 'slipThisYear', 'angryThisMonth', 'servedThisMonth', 'servedThisYear',
   'servedThisWeek', 'curedThisWeek', 'elderThisWeek', 'slipThisWeek'];
-const DILEMMA_KEYS = ['painkiller', 'skip_doctor', 'overtreat', 'complain'];
+const DILEMMA_KEYS = ['freebie', 'skip_main', 'overpush', 'complain'];
 function sanitizeAchv(m) {
   const defs = new Map(ACHIEVEMENTS.map(d => [d.id, d]));
   const a = m.achv && typeof m.achv === 'object' && !Array.isArray(m.achv) ? m.achv : {};

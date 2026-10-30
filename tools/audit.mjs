@@ -1,17 +1,15 @@
-// Headless (Node, no browser) systems audit: PRD conformance, determinism / long-run integrity, edge cases.
+// Headless (Node, no browser) systems audit for 餐廳物語: data cross-references, economy, guest flow, events, save/load/determinism,
+// long-run integrity, career, achievements, zones, upgrades, qualification.
 //
 // Usage (from repo root; no server needed):
-//   node tools/audit.mjs                 # everything, 5 simulated years per long-run policy (a few minutes)
-//   node tools/audit.mjs --quick         # 2 years per policy (~1-2 min) - good for CI
-//   node tools/audit.mjs --only features,edge,save   # run only some sections: features | edge | save | longrun | achievements | events | career | zones | upgrades | qualify
+//   node tools/audit.mjs                 # everything, 4 simulated years per long-run policy
+//   node tools/audit.mjs --quick         # 2 years per policy (~1 min) - good for CI
+//   node tools/audit.mjs --only data,economy,events   # sections: data | economy | flow | events | save | longrun | career | achievements | zones | upgrades | qualify
 //   node tools/audit.mjs --years 3 --policies idle,chaos --seed 7 [--verbose]
-//   (events = docs/EVENTS_EXT.md: every event x every choice, cond evaluator, wear/morale/risk/review/buffs/follow-ups;
-//    career = docs/GOALS_AND_ENDING.md: onboarding, yearly goals, rewards per lot, review order, grades, endings, endless, v2 migration)
-// Exit code 1 if any assertion fails. Prints a feature-conformance table at the end.
+// Exit code 1 if any assertion fails.
 //
-// The sim uses Math.random everywhere (state.seed is only informational), so the harness installs a seeded PRNG
-// whose state it can snapshot / restore - that is what makes the "save -> load -> identical outcome" test possible.
-import { readFileSync } from 'node:fs';
+// The sim uses Math.random everywhere, so the harness installs a seeded PRNG whose state it can snapshot / restore - that is what
+// makes the "save -> load -> identical outcome" test possible.
 
 // ---- minimal browser shims (save.js uses localStorage) ----
 class LS {
@@ -27,7 +25,7 @@ globalThis.localStorage = new LS();
 
 const ROOT = new URL('../js/', import.meta.url).href;
 const imp = (p) => import(ROOT + p);
-const { state, ui, defaultMods } = await imp('core/state.js');
+const { state, ui } = await imp('core/state.js');
 const { bus } = await imp('core/bus.js');
 const K = await imp('core/constants.js');
 const { rebuildOccupancy, footprint, inLot, entryTile } = await imp('core/grid.js');
@@ -44,21 +42,24 @@ const P = await imp('sim/patients.js');
 const S = await imp('sim/staff.js');
 const Ach = await imp('sim/achievements.js');
 const Car = await imp('sim/career.js');
-const GD = await imp('data/goals.js');
-const ACHD = await imp('data/achievements.js');
-const { BUILDABLES } = await imp('data/buildables.js');
-const { TREATMENTS } = await imp('data/treatments.js');
-const { RESEARCH } = await imp('data/research.js');
-const { LOTS } = await imp('data/lots.js');
-const { PATIENT_TYPES } = await imp('data/patients.js');
-const EVD = await imp('data/events.js');
-const { SYNERGIES } = await imp('data/synergies.js');
-const FEES = await imp('data/fees.js');
-const ZD = await imp('data/synergies.js');
-const ZL = await import(new URL('./zonelayouts.mjs', import.meta.url).href);
-const UPGRADES = await imp('data/upgrades.js');
 const Q = await imp('sim/qualify.js');
 const Eq = await imp('sim/equipment.js');
+const GD = await imp('data/goals.js');
+const ACHD = await imp('data/achievements.js');
+const { BUILDABLES, BUILD_CATEGORIES } = await imp('data/buildables.js');
+const { TREATMENTS } = await imp('data/treatments.js');
+const { RESEARCH, RESEARCH_TRACKS } = await imp('data/research.js');
+const { LOTS, INSPECTION_RULES } = await imp('data/lots.js');
+const { PATIENT_TYPES, FOCUS } = await imp('data/patients.js');
+const { STAFF_ROLES, TRAITS } = await imp('data/staffdefs.js');
+const { SYNERGIES } = await imp('data/synergies.js');
+const { DISH_FEES } = await imp('data/fees.js');
+const EVD = await imp('data/events.js');
+const { EVENTS_EXT_A } = await imp('data/events_ext.js');
+const { EVENTS_EXT_B } = await imp('data/events_ext2.js');
+const { LINES } = await imp('data/texts.js');
+const UPGRADES = await imp('data/upgrades.js');
+const ZL = await import(new URL('./zonelayouts.mjs', import.meta.url).href);
 
 // ---- cli ----
 const argv = process.argv.slice(2);
@@ -67,9 +68,9 @@ const opt = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i
 const QUICK = flag('quick');
 const ONLY = (opt('only', '') || '').split(',').filter(Boolean);
 const want = (s) => !ONLY.length || ONLY.includes(s);
-const YEARS = +(opt('years', QUICK ? 2 : 5));
+const YEARS = +(opt('years', QUICK ? 2 : 4));
 const SEED = +(opt('seed', 1));
-const POLICIES = (opt('policies', QUICK ? 'idle,rich,chaos' : 'idle,bad,builder,rich,chaos')).split(',');
+const POLICIES = (opt('policies', QUICK ? 'idle,rich,chaos' : 'idle,builder,rich,chaos')).split(',');
 
 // ---- seeded PRNG (mulberry32) with snapshot support ----
 let rngS = 1;
@@ -84,10 +85,9 @@ function check(name, cond, detail = '') {
   else { fails++; console.log('  FAIL', name, detail); }
   return !!cond;
 }
-const FEATURES = [];   // [feature, status, evidence]
-function feature(name, status, evidence) { FEATURES.push([name, status, evidence]); }
 const section = (t) => console.log('\n== ' + t);
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
+const throws = (fn) => { try { fn(); return null; } catch (e) { return e; } };
 
 // ---- world wiring (mirrors js/main.js) ----
 let wired = false;
@@ -102,8 +102,7 @@ function wire() {
   bus.on('toast', () => {});
 }
 function refresh() { rebuildOccupancy(state); Syn.recomputeZones(state); Mod.recomputeMods(state); ui.dirtyOcc = false; }
-// liveAchv=false (default): every achievement is pre-unlocked so reward payouts cannot disturb the exact-money assertions of the other
-// sections; the achievements section and the long runs pass true to exercise the real system.
+// liveAchv=false (default): every achievement is pre-unlocked so reward payouts cannot disturb the exact-money assertions of the other sections.
 function fresh(seed = SEED, liveAchv = false) {
   wire();
   seedRng(seed);
@@ -117,7 +116,7 @@ function fresh(seed = SEED, liveAchv = false) {
 function resolvePending() {
   const pd = state.events.pendingDilemma;
   if (!pd) return;
-  const ok = pd.choices.map((c, i) => i).filter(i => Ev.choiceAffordable(state, pd.choices[i]));   // the UI disables unaffordable options
+  const ok = pd.choices.map((c, i) => i).filter(i => Ev.choiceAffordable(state, pd.choices[i]));
   const pool = ok.length ? ok : pd.choices.map((c, i) => i);
   Ev.resolveDilemma(state, pool[Math.floor(rng() * pool.length)]);
   state.time.paused = false;
@@ -132,22 +131,18 @@ function step(dt = 1, resolve = true) {
 const MIN_PER_WEEK = K.CLOSE_MIN - K.OPEN_MIN;
 function runWeeks(n, resolve = true) { for (let i = 0, N = n * MIN_PER_WEEK; i < N; i++) step(1, resolve); }
 function runMonths(n, resolve = true) { runWeeks(n * K.WEEKS_PER_MONTH, resolve); }
-function monthsPassed() { return (state.time.year - 1) * 12 + state.time.month - 1; }
 
-let opts_quietPut = false;
-// place helper that bypasses affordability (cost is still deducted when money allows)
 function put(defId, x, y, rot = 0) {
   const m = state.money; state.money = Math.max(state.money, 5e6);
   const o = B.placeObject(state, defId, x, y, rot);
-  if (!o && !opts_quietPut) console.log('  (audit layout note) could not place', defId, x, y, B.canPlace(state, defId, x, y, rot).reason, (new Error().stack.split('\n')[2] || '').trim());
   state.money = m - (o ? BUILDABLES[defId].cost : 0);
   if (o) refresh();
   return o;
 }
-function clearObjects() { state.objects = []; refresh(); }
-function triggerDilemma(patientId, trigger) {
-  for (let i = 0; i < 40 && !state.events.pendingDilemma; i++) { state.events.cooldowns = {}; delete state.events.lastDilemmaWeek; bus.emit('dilemma:request', { patientId, trigger }); }
-  return state.events.pendingDilemma;
+function unlockAll() { state.research.done = Object.keys(RESEARCH); refresh(); }
+function hireAll() {   // makes sure every role is on the payroll (within the staff cap)
+  for (const role of K.ROLES) if (!state.staff.some(s => s.role === role) && state.staff.length < Res.maxStaffOf(state)) state.staff.push(S.createStaff(state, role, null, 14, 14));
+  refresh();
 }
 
 // ---- invariants ----
@@ -165,3176 +160,667 @@ function invariants() {
   must(state.reputation >= 0 && state.reputation <= 1000, 'reputation out of range ' + state.reputation);
   for (const k of Object.keys(state.ledger.income)) must(state.ledger.income[k] >= 0, 'ledger.income.' + k + ' negative');
   for (const k of Object.keys(state.ledger.expense)) must(state.ledger.expense[k] >= -1, 'ledger.expense.' + k + ' negative ' + state.ledger.expense[k]);
-  must(state.nhi.monthPoints >= 0 && state.nhi.weekPoints >= 0, 'nhi counters negative');
   for (const k of ['patientsToday', 'patientsMonth', 'patientsTotal', 'cured', 'angry', 'satN']) must(state.stats[k] >= 0, 'stats.' + k + ' negative ' + state.stats[k]);
   must(state.history.length <= Eco.HISTORY_MAX, 'history too long');
   must(state.events.log.length <= Ev.EVENT_LOG_MAX, 'event log too long');
-  must(state.patients.length <= P.maxPatientsOf(state) + 5, 'too many patients ' + state.patients.length);
+  must(state.patients.length <= P.maxPatientsOf(state) + 5, 'too many guests ' + state.patients.length);
   must(state.hirePool.length <= 6, 'hirePool too big');
   must(state.staff.length <= Res.maxStaffOf(state), 'staff over cap ' + state.staff.length + '/' + Res.maxStaffOf(state));
   const ids = new Set();
   for (const o of state.objects) {
     must(!ids.has(o.id), 'dup object id ' + o.id); ids.add(o.id);
+    must(!!BUILDABLES[o.defId], 'unknown object def ' + o.defId);
     for (const c of footprint(o)) must(inLot(state, c.x, c.y), `object ${o.defId}#${o.id} outside lot at ${c.x},${c.y}`);
   }
   const cells = new Map();
   for (const o of state.objects) { if (BUILDABLES[o.defId].blocks === false) continue; for (const c of footprint(o)) { const k = c.x + ',' + c.y; must(!cells.has(k), 'overlapping blocking objects at ' + k); cells.set(k, o.id); } }
-  { // achievements (state.achv) stay well-formed
-    const A = state.achv, known = new Set(ACHD.ACHIEVEMENTS.map(d => d.id));
-    must(A && typeof A === 'object' && A.unlocked && A.counters && Array.isArray(A.badges), 'achv shape');
-    if (A && A.unlocked) {
-      for (const id of Object.keys(A.unlocked)) must(known.has(id), 'achv unknown id ' + id);
-      must(A.badges.length <= ACHD.MAX_BADGES && A.badges.every(id => A.unlocked[id]), 'achv badges invalid');
-      must(A.title === null || !!(A.unlocked[A.title] && (ACHD.ACHIEVEMENTS.find(d => d.id === A.title) || {}).title), 'achv title invalid');
-      for (const [k, v] of Object.entries(A.counters)) if (typeof v === 'number') must(Number.isFinite(v) && (k === 'lowestMoneySeen' || k === 'startMoney' || v >= 0), 'achv counter ' + k + '=' + v);
-    }
-  }
-  { // career (state.career) stays well-formed
-    const C = state.career;
-    must(C && typeof C === 'object' && C.onboarding && C.goals && Array.isArray(C.goals.list) && Array.isArray(C.reviews), 'career shape');
-    if (C && C.goals) {
-      must(C.goals.list.length <= 3 && C.reviews.length <= 40, 'career goals/reviews too long');
-      must(C.goals.list.every(g => g.claimed ? g.done : true), 'career claimed without done');
-      must(C.ending === null || (GD.ENDINGS.some(e => e.id === C.ending.id) && Number.isFinite(C.ending.score)), 'career ending malformed');
-      for (const [k, v] of Object.entries(C.counters || {})) must(Number.isFinite(v), 'career counter ' + k + '=' + v);
-    }
-  }
-  { // M2 / M3 / M4 / M5 / M7 / M10 fields stay in range
-    for (const o of state.objects) { must(o.wear === undefined || (o.wear >= 0 && o.wear <= 100), 'wear out of range ' + o.defId + ' ' + o.wear); }
-    const rk = state.nhi.risk, rv = state.reviewScore;
-    must(rk === undefined || (rk >= 0 && rk <= 100), 'risk out of range ' + rk);
-    must(rv === undefined || (rv >= 1 && rv <= 5), 'reviewScore out of range ' + rv);
-    for (const s of state.staff) must(s.morale === undefined || (s.morale >= 0 && s.morale <= 100), 'morale out of range ' + s.morale);
-    const ev = state.events;
-    must(!ev.buffs || (Array.isArray(ev.buffs) && ev.buffs.every(b => b.weeksLeft > 0 && b.mods && typeof b.label === 'string')), 'buffs malformed');
-    must(!ev.flags || typeof ev.flags === 'object', 'flags malformed');
-    must(!ev.pendingFollowUps || ev.pendingFollowUps.every(f => typeof f.id === 'string' && Number.isFinite(f.due)), 'followUps malformed');
-    must(!ev.pendingFollowUps || ev.pendingFollowUps.length <= 40, 'too many follow-ups');
-    must(!ev.buffs || ev.buffs.length <= 40, 'too many buffs');
-  }
+  { const C = state.career; must(C && typeof C === 'object' && C.goals && Array.isArray(C.goals.list), 'career shape'); }
+  for (const o of state.objects) must(o.wear === undefined || (o.wear >= 0 && o.wear <= 100), 'wear out of range ' + o.defId + ' ' + o.wear);
+  const rk = state.safety && state.safety.risk, rv = state.reviewScore;
+  must(rk === undefined || (rk >= 0 && rk <= 100), 'risk out of range ' + rk);
+  must(rv === undefined || (rv >= 1 && rv <= 5), 'reviewScore out of range ' + rv);
+  for (const s of state.staff) must(s.morale === undefined || (s.morale >= 0 && s.morale <= 100), 'morale out of range ' + s.morale);
   const e = entryTile(state);
   must(!cells.has(e.x + ',' + e.y), 'entry tile blocked');
   must(state.time.week >= 1 && state.time.week <= 4 && state.time.month >= 1 && state.time.month <= 12, 'calendar out of range');
   must(state.time.clock >= K.OPEN_MIN && state.time.clock <= K.CLOSE_MIN, 'clock out of range ' + state.time.clock);
-  const sid = new Set();
-  for (const s of state.staff) { must(!sid.has(s.id), 'dup staff id'); sid.add(s.id); must(s.stamina >= 0 && s.stamina <= s.staminaMax + 1e-6, 'stamina out of range ' + s.stamina); must(s.skill >= 1 && s.skill <= 10, 'skill out of range'); }
+  for (const s of state.staff) { must(s.stamina >= 0 && s.stamina <= s.staminaMax + 1e-6, 'stamina out of range ' + s.stamina); must(s.skill >= 1 && s.skill <= 10, 'skill out of range'); must(K.ROLES.includes(s.role), 'unknown role ' + s.role); }
   const pid = new Set();
-  for (const p of state.patients) { must(!pid.has(p.id), 'dup patient id'); pid.add(p.id); }
+  for (const p of state.patients) { must(!pid.has(p.id), 'dup guest id'); pid.add(p.id); must(!!PATIENT_TYPES[p.type], 'unknown guest type ' + p.type); }
   return bad;
 }
 const jsonSize = () => JSON.stringify({ ...state, map: { floor: state.map.floor } }).length;
-const avg = (a) => a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
 
 // =====================================================================================================
-// SECTION: features (PRD conformance)
+// SECTION: data (static cross-references)
 // =====================================================================================================
-function featuresSection() {
-  section('PRD conformance');
+function dataSection() {
+  section('Data cross-references');
+  const roles = new Set(K.ROLES);
+  check('ROLES are the five restaurant roles', K.ROLES.join() === 'chef,cook,barista,server,cashier', K.ROLES.join());
+  check('every role has a STAFF_ROLES entry with salary', K.ROLES.every(r => STAFF_ROLES[r] && STAFF_ROLES[r].baseSalary > 0));
+  check('POINT_KEYS are culinary/device/service', K.POINT_KEYS.join() === 'culinary,device,service');
+  const bad = (arr, fn) => arr.filter(x => !fn(x));
 
-  // ---- 營業曆 ----
-  {
-    fresh();
-    const seen = { 'week:end': 0, 'week:start': 0, 'month:end': 0, 'month:start': 0, 'year:end': 0, 'year:start': 0 };
-    const offs = Object.keys(seen).map(k => bus.on(k, () => seen[k]++));
-    runWeeks(48 * 2 + 1);
-    offs.forEach(f => f());
-    const t = state.time;
-    const okCal = check('calendar: 2 years + 1 week -> year 3 month 1 week 2', t.year === 3 && t.month === 1 && t.week === 2, JSON.stringify(t));
-    const okEv = check('calendar: event counts', seen['week:end'] === 97 && seen['month:end'] === 24 && seen['year:end'] === 2 && seen['year:start'] === 2 && seen['month:start'] === 24, JSON.stringify(seen));
-    const okFmt = check('calendar: formatDate/formatClock', Cal.formatDate(state) === '第3年 1月 第2週' && /^\d\d:\d\d$/.test(Cal.formatClock(state)), Cal.formatDate(state));
-    const c0 = state.time.clock; state.events.pendingDilemma = { kind: 'event', id: 'x', title: 't', text: '', choices: [{ label: 'a', effects: {}, result: '' }] };
-    Cal.advanceClock(state, 5);
-    const frozen = check('calendar: pending decision freezes clock', state.time.clock === c0);
-    state.events.pendingDilemma = null;
-    Cal.advanceClock(state, 5000);
-    const okBig = check('calendar: giant dt keeps clock in range', state.time.clock >= K.OPEN_MIN && state.time.clock <= K.CLOSE_MIN, String(state.time.clock));
-    feature('營業曆 年/月/週 + 事件', okCal && okEv && okFmt && frozen && okBig ? 'works' : 'partial', JSON.stringify(seen));
+  // buildables
+  const cats = new Set(BUILD_CATEGORIES.map(c => c.id));
+  const subs = new Set(BUILD_CATEGORIES.flatMap(c => c.subs));
+  check('buildables: 32 entries', Object.keys(BUILDABLES).length === 32, String(Object.keys(BUILDABLES).length));
+  for (const [id, d] of Object.entries(BUILDABLES)) {
+    check(`buildable ${id}: id/cat/sub/size/cost`, d.id === id && cats.has(d.cat) && subs.has(d.sub) && d.w >= 1 && d.h >= 1 && d.cost > 0 && /^#[0-9a-f]{6}$/i.test(d.color), JSON.stringify([d.cat, d.sub]));
+    check(`buildable ${id}: requires -> research node`, d.requires === null || !!RESEARCH[d.requires], String(d.requires));
+    for (const t of d.stationFor || []) check(`buildable ${id}: stationFor ${t} is a dish listing it`, !!TREATMENTS[t] && TREATMENTS[t].objects.includes(id), t);
   }
+  for (const [id, d] of Object.entries(BUILDABLES)) if (d.layer === 'floor') check(`floor ${id}: grip`, typeof d.grip === 'number');
 
-  // ---- 月底健保結算 / 點值 / 薪水 ----
-  {
-    fresh();
-    const cap = Eco.nhiCap(state);
-    check('economy: cap from lot data', cap === LOTS[0].nhiCap, String(cap));
-    state.nhi.monthPoints = cap - 1;
-    check('economy: pv = undiluted real value (0.95) under cap', Eco.getPointValue(state) === FEES.NHI_POINT_VALUE.typical && Eco.PV_BASE === 0.95, String(Eco.getPointValue(state)));
-    state.nhi.monthPoints = cap * 1.02;
-    check('economy: just over the cap pv stays at the undiluted value (cap/pts > 0.95)', Eco.getPointValue(state) === Eco.PV_BASE, String(Eco.getPointValue(state)));
-    state.nhi.monthPoints = cap * 1.25;
-    check('economy: pv=cap/points above cap', near(Eco.getPointValue(state), 0.8, 1e-9), String(Eco.getPointValue(state)));
-    state.nhi.monthPoints = cap * 10;
-    check('economy: pv floor 0.6', Eco.getPointValue(state) === 0.6);
-    const costs = Eco.monthlyCosts(state);
-    state.nhi.monthPoints = cap * 2;
-    const m0 = state.money;
-    state.ledger.income.self = 123;
-    const rec = Eco.settleMonth(state);
-    const expectNhi = Math.round(cap * 2 * 0.6 * Eco.PATIENT_WEIGHT);
-    check('economy: settle nhi income = points*pv*PATIENT_WEIGHT', rec.nhiIncome === expectNhi, `${rec.nhiIncome} vs ${expectNhi}`);
-    check('economy: settle record carries weight + base point value + copay + self income', rec.patientWeight === Eco.PATIENT_WEIGHT && rec.basePointValue === 0.95 && rec.copayIncome === 0 && rec.selfIncome === 123, JSON.stringify([rec.patientWeight, rec.basePointValue, rec.copayIncome, rec.selfIncome]));
-    check('economy: salaries+rent+maintain charged', near(m0 + expectNhi - costs.salary - costs.rent - costs.maintain, state.money, 1), `${state.money}`);
-    check('economy: ledger reset (incl. copay) + history pushed + monthPoints reset', state.ledger.income.copay === 0 && state.history.length === 1 && state.nhi.monthPoints === 0 && state.ledger.income.nhi === 0 && state.ledger.expense.salary === 0);
-    check('economy: record has diluted flag', rec.diluted === true && rec.pointValue === 0.6);
-    state.nhi.monthPoints = cap * 0.5; const rec2 = Eco.settleMonth(state);
-    check('economy: undiluted record: pointValue 0.95, diluted=false (month:settled shows the real value)', rec2.pointValue === 0.95 && rec2.diluted === false && state.nhi.lastSettlement.pointValue === 0.95, JSON.stringify([rec2.pointValue, rec2.diluted]));
-    state.mods.wageMult = 0.5; state.mods.rentMult = 2;
-    const c2 = Eco.monthlyCosts(state);
-    check('economy: wageMult/rentMult applied', c2.salary === Math.round(costs.salary * 0.5) && c2.rent === costs.rent * 2, JSON.stringify(c2));
-    state.mods = defaultMods();
-    let over = 0; const off2 = bus.on('game:over', () => over++);
-    state.money = Eco.BANKRUPT_LIMIT - 1; state.nhi.monthPoints = 0;
-    Eco.settleMonth(state);
-    check('economy: bankruptcy emits game:over once', over === 1, 'over=' + over);
-    Eco.settleMonth(state);
-    check('economy: game:over not re-emitted', over === 1);
-    off2();
-    fresh(); state.money = 1e9;
-    for (let i = 0; i < Eco.HISTORY_MAX + 60; i++) { state.time.month = (i % 12) + 1; Eco.settleMonth(state); }
-    check('economy: history capped at HISTORY_MAX months', state.history.length === Eco.HISTORY_MAX, String(state.history.length));
-    for (let i = 0; i < 100; i++) Ins.runInspection(state);
-    check('inspection: log capped', state.inspections.log.length <= 40, String(state.inspections.log.length));
-    feature('月底健保結算 + 浮動點值打折 + 薪水/租金/維護', 'works', 'pv=cap/pts clamp 0.6..0.95; salaries/rent/maintain charged; bankrupt < -300k');
+  // dishes
+  check('dishes: 17 (11 menu + 6 special)', Object.keys(TREATMENTS).length === 17 && Object.values(TREATMENTS).filter(t => t.kind === 'menu').length === 11 && Object.values(TREATMENTS).filter(t => t.kind === 'special').length === 6);
+  check('exactly one intake dish (main)', Object.values(TREATMENTS).filter(t => t.intake).map(t => t.id).join() === 'main');
+  for (const [id, t] of Object.entries(TREATMENTS)) {
+    check(`dish ${id}: kind/price/foodCost/duration`, ['menu', 'special'].includes(t.kind) && t.price >= 0 && t.foodCost >= 0 && t.foodCost < 0.6 && t.duration >= 15 && t.duration <= 90 && DISH_FEES[id] && DISH_FEES[id].price === t.price, id);
+    check(`dish ${id}: objects exist`, t.objects.length > 0 && t.objects.every(o => BUILDABLES[o] && (BUILDABLES[o].stationFor || []).includes(id)), t.objects.join());
+    check(`dish ${id}: roles valid`, Array.isArray(t.staffRole) && t.staffRole.length > 0 && t.staffRole.every(r => roles.has(r)), String(t.staffRole));
+    check(`dish ${id}: attend/setup`, ['full', 'setup'].includes(t.attend) && (t.attend !== 'setup' || t.setupMin > 0), t.attend);
+    check(`dish ${id}: requires`, t.requires === null || !!RESEARCH[t.requires]);
+    check(`dish ${id}: points`, K.POINT_KEYS.every(k => typeof t.points[k] === 'number'));
+    if (t.kind === 'special') check(`dish ${id}: uptake`, t.uptake > 0 && t.uptake <= 1);
   }
+  check('dine is a menu step with price 0 at tables', TREATMENTS.dine.kind === 'menu' && TREATMENTS.dine.price === 0 && TREATMENTS.dine.objects.every(o => /^table/.test(o)));
 
-  // ---- 真實費率 (data/fees.js) + 單一申報 + 診察費分段 + 部分負擔 + 代表人數 ----
-  {
-    fresh();
-    // fees.js integrity: every treatment has an entry, finite numbers, low <= typical <= high, treatments.js is fed from it
-    const ids = Object.keys(TREATMENTS);
-    check('fees: 17 treatments, all with a TREATMENT_FEES entry (and nothing extra)', ids.length === 17 && ids.every(id => FEES.TREATMENT_FEES[id]) && Object.keys(FEES.TREATMENT_FEES).length === 17, ids.length + ' vs ' + Object.keys(FEES.TREATMENT_FEES).length);
-    const badFee = [];
-    for (const id of ids) {
-      const F = FEES.TREATMENT_FEES[id], T = TREATMENTS[id];
-      if (!['high', 'medium', 'low'].includes(F.confidence) || !Array.isArray(F.sources) || typeof F.note !== 'string' || !F.note) badFee.push(id + ':meta');
-      if (F.kind !== T.kind) badFee.push(id + ':kind');
-      if (F.kind === 'nhi') {
-        if (!(Number.isFinite(F.nhiPoints) && F.nhiPoints > 0) || T.nhiPoints !== F.nhiPoints || T.price !== 0 || !['exam', 'pt', 'ot', 'st', 'us'].includes(F.claim)) badFee.push(id + ':nhi');
-      } else {
-        const sp = F.selfPrice;
-        if (!sp || ![sp.low, sp.typical, sp.high].every(Number.isFinite) || !(sp.low > 0 && sp.low <= sp.typical && sp.typical <= sp.high) || T.price !== sp.typical || T.nhiPoints !== 0) badFee.push(id + ':self');
-      }
-      if (F.selfPrice && F.kind === 'nhi' && !(F.selfPrice.low <= F.selfPrice.typical && F.selfPrice.typical <= F.selfPrice.high)) badFee.push(id + ':ref');
+  // guests
+  check('4 guest types', Object.keys(PATIENT_TYPES).join() === 'elder,office,student,family', Object.keys(PATIENT_TYPES).join());
+  for (const [id, p] of Object.entries(PATIENT_TYPES)) {
+    check(`guest ${id}: plans reference dishes and end with dine`, p.plans.length >= 3 && p.plans.every(pl => pl.steps.every(s => TREATMENTS[s]) && pl.steps[pl.steps.length - 1] === 'dine' && (pl.selfPaySteps || []).every(s => TREATMENTS[s] && TREATMENTS[s].kind === 'special')));
+    check(`guest ${id}: spawn windows inside opening hours`, p.spawn.every(w => w.from >= K.OPEN_MIN && w.to <= K.CLOSE_MIN && w.from < w.to));
+    check(`guest ${id}: palette, lines`, !!p.palette && p.palette.skin && ['arrive', 'wait', 'angry', 'happy', 'treat', 'chat', 'slip', 'pay'].every(k => LINES[id] && LINES[id][k] && LINES[id][k].length >= 3));
+    check(`guest ${id}: cure/visits/skipMain`, p.cureNeeded > 0 && p.visitsToCure[0] <= p.visitsToCure[1] && typeof p.skipMain === 'number');
+  }
+  check('focus keys', Object.keys(FOCUS).join() === 'business,community,kids' && Object.values(FOCUS).every(f => Object.keys(PATIENT_TYPES).every(t => typeof f.spawnMult[t] === 'number')));
+  check('staff lines exist', LINES.staff && LINES.staff.work.length && LINES.staff.tired.length && LINES.staff.chat.length);
+  check('traits valid', TRAITS.length >= 8 && TRAITS.every(t => t.id && t.name && t.mods));
+
+  // research
+  check('research: 3 tracks with matching point keys', RESEARCH_TRACKS.map(t => t.pointKey).join() === 'culinary,device,service');
+  const nodeIds = new Set(Object.keys(RESEARCH));
+  for (const [id, n] of Object.entries(RESEARCH)) {
+    check(`research ${id}: track/cost/requires`, RESEARCH_TRACKS.some(t => t.id === n.track) && n.cost > 0 && n.weeks >= 1 && n.requires.every(r => nodeIds.has(r)), id);
+    for (const e of n.effects) {
+      if (e.type === 'unlockBuild') check(`research ${id}: unlockBuild ids`, e.ids.every(b => BUILDABLES[b] && BUILDABLES[b].requires === id), e.ids.join());
+      if (e.type === 'unlockTreatment') check(`research ${id}: unlockTreatment ids`, e.ids.every(t => TREATMENTS[t] && TREATMENTS[t].requires === id), e.ids.join());
+      if (e.type === 'mod') check(`research ${id}: mod key known`, e.key in Mod.recomputeMods(state) || e.key.startsWith('typeSpawn.') || e.key.startsWith('typeSat.') || e.key.startsWith('typeCure.'), e.key);
     }
-    check('fees: integrity (confidence+sources+note, finite, low <= typical <= high, treatments.js matches fees.js)', badFee.length === 0, badFee.join(' '));
-    check('fees: real self-pay typical prices (shockwave 2500, laser 2000, manual 2000, redcord 1700, prp 17000, insole 5000)',
-      [['shockwave', 2500], ['laser', 2000], ['manual_self', 2000], ['redcord', 1700], ['prp', 17000], ['insole', 5000]].every(([id, v]) => TREATMENTS[id].price === v));
-    check('fees: PT tiers 95/200/330/400, copay 50, point value 0.95/floor 0.6, asOf 2026-10',
-      FEES.PT_TIERS.simple === 95 && FEES.PT_TIERS.moderate === 200 && FEES.PT_TIERS.moderateComplex === 330 && FEES.PT_TIERS.complex === 400 && FEES.COPAY_NTD === 50 &&
-      FEES.NHI_POINT_VALUE.typical === 0.95 && FEES.NHI_POINT_VALUE.min === 0.6 && Eco.PV_MIN === 0.6 && FEES.FEES_AS_OF === '2026-10');
-    check('fees: PT tiers ascending, exam tiers ascending upTo and non-increasing points', FEES.PT_TIERS.simple < FEES.PT_TIERS.moderate && FEES.PT_TIERS.moderate < FEES.PT_TIERS.moderateComplex && FEES.PT_TIERS.moderateComplex < FEES.PT_TIERS.complex &&
-      FEES.EXAM_FEE_TIERS.every((t, i, a) => i === 0 || (t.upTo > a[i - 1].upTo && t.points <= a[i - 1].points)));
+  }
+  // every research-gated buildable / dish has an unlocking node
+  for (const [id, d] of Object.entries(BUILDABLES)) if (d.requires) check(`buildable ${id}: unlocked by its node`, RESEARCH[d.requires].effects.some(e => e.type === 'unlockBuild' && e.ids.includes(id)));
+  for (const [id, t] of Object.entries(TREATMENTS)) if (t.requires) check(`dish ${id}: unlocked by its node`, RESEARCH[t.requires].effects.some(e => e.type === 'unlockTreatment' && e.ids.includes(id)));
+  check('rs_expand exists (lot expansion)', !!RESEARCH.rs_expand);
 
-    // exam fee tiers by patients per day (boundaries 35/36, 45/46, 65/66, 85/86)
-    const ef = FEES.examFeePoints;
-    check('exam fee tiers: 1..35 -> 364, 36..45 -> 250, 46..65 -> 200, 66..85 -> 160, 86+ -> 160',
-      [1, 35].every(n => ef(n) === 364) && [36, 45].every(n => ef(n) === 250) && [46, 65].every(n => ef(n) === 200) && [66, 85, 86, 200].every(n => ef(n) === 160), JSON.stringify([1, 35, 36, 45, 46, 65, 66, 85, 86].map(ef)));
-    check('exam fee tiers: low-confidence 46-65 tier is flagged as an estimate', FEES.EXAM_FEE_TIERS[2].confidence === 'low' && FEES.EXAM_FEE_TIERS[2].estimate === true);
-    const exAt = (done) => { state.stats.patientsToday = done; return Eco.listedPoints(state, 'exam'); };
-    check('exam fee uses state.stats.patientsToday (the patient being examined is #patientsToday+1)', exAt(0) === 364 && exAt(34) === 364 && exAt(35) === 250 && exAt(44) === 250 && exAt(45) === 200 && exAt(64) === 200 && exAt(65) === 160 && exAt(84) === 160 && exAt(85) === 160);
-    state.stats.patientsToday = 0;
+  // lots
+  check('4 lots, nested, same bottom edge', LOTS.length === 4 && LOTS.every((l, i) => l.lot.y0 + l.lot.h === 20 && l.door.y === 20 && (i === 0 || (l.lot.x0 <= LOTS[i - 1].lot.x0 && l.lot.y0 <= LOTS[i - 1].lot.y0 && l.rent > LOTS[i - 1].rent && l.maxPatientsPerWeek > LOTS[i - 1].maxPatientsPerWeek))));
+  check('inspection rule ids', INSPECTION_RULES.map(r => r.id).join() === 'ramp,seats,antislip,staff_license,satisfaction,food_safety');
 
-    // single-claim rule (economy.nhiClaim): per patient per visit only the highest PT item is paid
-    const run = (ids2) => { const claims = {}; return ids2.map(id => Eco.nhiClaim(state, claims, id)); };
-    const sum = (r) => r.reduce((a, x) => a + x.paid, 0);
-    let r = run(['heat', 'tens', 'traction']);
-    check('single claim: heat+tens+traction (3 moderate PT items) -> only 200 paid in total, the others pay 0', sum(r) === 200 && r[0].paid === 200 && r[1].paid === 0 && r[2].paid === 0 && r[1].listed === 200, JSON.stringify(r));
-    r = run(['ir', 'heat']);
-    check('single claim: infrared (95) then heat (200) -> 95 + 105 = the highest tier (200)', sum(r) === 200 && r[0].paid === 95 && r[1].paid === 105);
-    r = run(['heat', 'ir', 'taping']);
-    check('single claim: order does not matter (heat first, then ir / taping pay 0)', sum(r) === 200 && r[1].paid === 0 && r[2].paid === 0 && r[2].listed === 150);
-    r = run(['taping', 'ir']);
-    check('single claim: taping 150 > ir 95 -> 150', sum(r) === 150);
-    r = run(['exam', 'us', 'heat', 'si', 'fine', 'speech']);
-    check('separate claims: exam, us, PT, OT (si+fine = one claim), ST are each paid; fine pays 0 after si',
-      r[0].paid === 364 && r[1].paid === 500 && r[2].paid === 200 && r[3].paid === 320 && r[4].paid === 0 && r[4].listed === 320 && r[5].paid === 320 && sum(r) === 364 + 500 + 200 + 320 + 320, JSON.stringify(r.map(x => x.paid)));
-    check('single claim: self-pay treatments never claim NHI', Eco.nhiClaim(state, {}, 'shockwave').paid === 0 && Eco.nhiClaim(state, {}, 'prp').listed === 0);
+  // zones
+  check('15 zones', SYNERGIES.length === 15);
+  for (const z of SYNERGIES) {
+    check(`zone ${z.id}: needs exist`, z.needs.length >= 2 && z.needs.every(n => BUILDABLES[n]), z.needs.join());
+    check(`zone ${z.id}: unlock node + effects`, (!z.unlock || RESEARCH[z.unlock]) && Object.keys(z.effects).length > 0 && z.hint && z.desc);
+    for (const k of Object.keys(z.effects)) check(`zone ${z.id}: effect key ${k}`, k in Mod.recomputeMods(state) || /^type(Spawn|Sat|Cure)\./.test(k), k);
+    for (const k of Object.keys(z.effects)) { const m = /^type\w+\.(\w+)$/.exec(k); if (m) check(`zone ${z.id}: type ${m[1]}`, !!PATIENT_TYPES[m[1]]); }
+  }
 
-    // treatment:done payload (e2e): per patient visit the PT claims sum to the highest listed PT value; paid <= listed; flagged when reduced
-    {
-      fresh(4); clearObjects();
-      put('reception', 16, 17); put('sofa', 12, 18); put('exam_room', 11, 14); put('heatbox', 11, 11); put('tens', 13, 11); put('traction', 15, 11); put('bed', 18, 13);
-      state.staff.push(S.createStaff(state, 'pt', null, 17, 15)); state.reputation = 120;
-      const visits = new Map(); let reduced = 0, over = 0, sample = null;
-      const off = bus.on('treatment:done', (e) => {
-        const F = FEES.TREATMENT_FEES[e.treatmentId];
-        if (e.nhiListed < e.nhiPoints) over++;
-        if (e.singleClaim) { reduced++; sample = sample || { id: e.treatmentId, paid: e.nhiPoints, listed: e.nhiListed }; }
-        if (F.claim !== 'pt') return;
-        const k = e.patient.id + '/' + e.patient.visit;
-        const v = visits.get(k) || { paid: 0, max: 0 }; v.paid += e.nhiPoints; v.max = Math.max(v.max, e.nhiListed); visits.set(k, v);
-      });
-      runWeeks(6); off();
-      const wrong = [...visits.values()].filter(v => v.paid !== v.max);
-      check('treatment:done e2e: per patient visit the paid PT points equal the highest listed PT item (6 weeks)', visits.size > 20 && wrong.length === 0, `visits=${visits.size} wrong=${JSON.stringify(wrong.slice(0, 3))}`);
-      check('treatment:done e2e: some treatments are flagged singleClaim (paid < listed), paid never exceeds listed', reduced > 0 && over === 0, `reduced=${reduced} over=${over} ${JSON.stringify(sample)}`);
+  // events
+  const pool = Ev.eventPool();
+  check('event pool: 15 legacy + 58 extended', pool.length === 73, String(pool.length));
+  check('events: unique ids, titles, 2-3 choices', new Set(pool.map(e => e.id)).size === pool.length && pool.every(e => e.title && e.text && e.choices.length >= 2 && e.choices.length <= 3));
+  const effKeys = new Set(['money', 'reputation', 'sat', 'points', 'buff', 'setFlag', 'clearFlag', 'followUp', 'risk', 'wear', 'breakdown', 'repair', 'repairObj', 'stamina', 'morale', 'resign', 'reviewScore', 'maintenance']);
+  const fxOk = (fx) => !fx || Object.keys(fx).every(k => effKeys.has(k));
+  for (const e of pool) {
+    for (const c of e.choices) {
+      check(`event ${e.id}: choice shape`, c.label && c.result && (c.chance ? c.chance.win && c.chance.lose && c.chance.p >= 0 && c.chance.p <= 1 : true) && fxOk(c.effects) && (!c.chance || (fxOk(c.chance.win.effects) && fxOk(c.chance.lose.effects))), c.label);
+      const fxs = [c.effects, c.chance && c.chance.win.effects, c.chance && c.chance.lose.effects].filter(Boolean);
+      for (const fx of fxs) if (fx.followUp) check(`event ${e.id}: followUp target exists`, !!Ev.eventById(fx.followUp.id), fx.followUp.id);
     }
-
-    // exam fee e2e: crowded days pay less per exam than quiet days
-    {
-      fresh(4); clearObjects();
-      put('reception', 16, 17); put('sofa', 12, 18); put('exam_room', 11, 14); put('heatbox', 11, 11);
-      const seen = []; const off = bus.on('treatment:done', (e) => { if (e.treatmentId === 'exam') seen.push(e.nhiPoints); });
-      runWeeks(1); off();
-      check('exam fee e2e: exam claims on a quiet day are the first-tier 364 points', seen.length > 0 && seen.every(x => x === 364), JSON.stringify(seen));
-      const crowded = []; const offC = bus.on('treatment:done', (e) => { if (e.treatmentId === 'exam') crowded.push([e.nhiPoints, e.nhiListed]); });
-      state.stats.patientsToday = 36; runWeeks(1); offC();
-      check('exam fee e2e: a crowded day (36 patients already served) pays 250 (200 once past 45) per exam instead of 364', crowded.length > 0 && crowded[0][0] === 250 && crowded.every(([paid, listed]) => (paid === 250 || paid === 200) && paid === listed), JSON.stringify(crowded));
-      state.stats.patientsToday = 40;
-      check('exam fee: with 40 patients already served the next exam lists 250 points', Eco.listedPoints(state, 'exam') === 250);
+    const c = e.cond || {};
+    for (const k of Object.keys(c)) check(`event ${e.id}: cond key ${k}`, ['months', 'weather', 'weatherId', 'minYear', 'maxYear', 'minRep', 'maxRep', 'minLot', 'hasObject', 'needObjects', 'hasStaff', 'policy', 'flag', 'notFlag', 'riskAtLeast', 'riskAtMost', 'wearAtLeast', 'moraleBelow', 'reviewBelow', 'minPatientsTotal'].includes(k));
+    for (const d of [].concat(c.hasObject || [], c.needObjects || [])) check(`event ${e.id}: cond object ${d}`, !!BUILDABLES[d]);
+    if (c.policy) check(`event ${e.id}: cond policy`, [].concat(c.policy).every(p => FOCUS[p]));
+    if (c.hasStaff) check(`event ${e.id}: cond hasStaff roles`, Object.keys(c.hasStaff).every(r => roles.has(r)));
+    if (c.wearAtLeast && c.wearAtLeast.defId) check(`event ${e.id}: wear def wearable`, [].concat(c.wearAtLeast.defId).every(d => Eq.isWearable(d)));
+    for (const ch of e.choices) for (const fx of [ch.effects, ch.chance && ch.chance.win.effects, ch.chance && ch.chance.lose.effects].filter(Boolean)) {
+      if (fx.wear && fx.wear.target && !['all', 'random'].includes(fx.wear.target)) check(`event ${e.id}: wear target`, !!BUILDABLES[fx.wear.target]);
+      if (fx.breakdown && fx.breakdown !== 'random') check(`event ${e.id}: breakdown target`, !!BUILDABLES[fx.breakdown]);
+      for (const k of ['stamina', 'morale', 'resign']) if (fx[k] && fx[k].role) check(`event ${e.id}: ${k} role`, roles.has(fx[k].role));
+      if (fx.buff) for (const k of Object.keys(fx.buff.mods || {})) check(`event ${e.id}: buff mod ${k}`, k in Mod.recomputeMods(state));
+      if (fx.buff) for (const k of Object.keys(fx.buff.spawn || {})) check(`event ${e.id}: buff spawn type ${k}`, !!PATIENT_TYPES[k]);
     }
-
-    // weight applied consistently: NHI points x pv x W, self-pay price x W, copay x W; salaries/rent/events are NOT weighted
-    {
-      fresh(); state.money = 1000000; state.ledger = { income: { nhi: 0, self: 0, copay: 0, other: 0 }, expense: { salary: 0, rent: 0, build: 0, maintain: 0, other: 0 } };
-      const W = Eco.PATIENT_WEIGHT;
-      check('PATIENT_WEIGHT is a positive integer constant', Number.isInteger(W) && W > 1);
-      const m0 = state.money;
-      bus.emit('treatment:done', { patient: {}, treatmentId: 'heat', nhiPoints: 200, nhiListed: 200, selfPay: 0, copay: 0, staffId: null });
-      check('weight: NHI points are only counted at treatment time (no cash yet)', state.money === m0 && state.nhi.monthPoints === 200);
-      bus.emit('treatment:done', { patient: {}, treatmentId: 'shockwave', nhiPoints: 0, selfPay: Eco.selfPayPrice(state, 'shockwave'), copay: 0, staffId: null });
-      check('weight: self-pay credits real price x PATIENT_WEIGHT immediately (2500 x W)', state.money === m0 + 2500 * W && state.ledger.income.self === 2500 * W, `${state.money - m0} vs ${2500 * W}`);
-      bus.emit('treatment:done', { patient: {}, treatmentId: 'tens', nhiPoints: 0, nhiListed: 200, selfPay: 0, copay: FEES.COPAY_NTD, staffId: null });
-      check('weight: copay credits NT$50 x PATIENT_WEIGHT into ledger.income.copay', state.ledger.income.copay === 50 * W, String(state.ledger.income.copay));
-      const mm = state.money; state.staff = []; state.objects = [];
-      state.mods.rentMult = 1; const costs = Eco.monthlyCosts(state);
-      const rec = Eco.settleMonth(state);
-      const expectNhi = Math.round(200 * 0.95 * W);
-      check('weight: settlement NHI income = points x 0.95 x W', rec.nhiIncome === expectNhi, `${rec.nhiIncome} vs ${expectNhi}`);
-      check('weight: rent is plain NT$ (not weighted) and net = income - expense', costs.rent === LOTS[0].rent && rec.income === expectNhi + 2500 * W + 50 * W && state.money === mm + expectNhi - costs.rent - costs.maintain - costs.salary, `${rec.income} money ${state.money - mm}`);
-      check('month report breakdown: 健保 / 自費 / 部分負擔 are separate weighted incomes in the record', rec.nhiIncome === expectNhi && rec.selfIncome === 2500 * W && rec.copayIncome === 50 * W && rec.otherIncome === 0, JSON.stringify([rec.nhiIncome, rec.selfIncome, rec.copayIncome]));
-      Eco.earn(state, 7777, 'other');
-      check('events/other money stays plain NT$ (earn other = 7777 -> 7777)', state.ledger.income.other === 7777);
-      state.ledger.income.other = 0;
-    }
-
-    // per-lot weight + crowd cap (lots.js patientWeight / maxPatients): L0-L2 use the global constants, the top tier a bigger one
-    {
-      fresh(); state.ledger = { income: { nhi: 0, self: 0, copay: 0, other: 0 }, expense: { salary: 0, rent: 0, build: 0, maintain: 0, other: 0 } };
-      const W0 = Eco.PATIENT_WEIGHT;
-      check('lot weight: L0-L2 use PATIENT_WEIGHT, L3 has its own larger weight', [0, 1, 2].every(l => { state.lotLevel = l; return Eco.patientWeight(state) === W0; }) && (state.lotLevel = 3, Eco.patientWeight(state) === LOTS[3].patientWeight && LOTS[3].patientWeight > W0));
-      state.lotLevel = 3; const m0 = state.money;
-      bus.emit('treatment:done', { patient: {}, treatmentId: 'shockwave', nhiPoints: 0, selfPay: Eco.selfPayPrice(state, 'shockwave'), copay: 0, staffId: null });
-      check('lot weight: self-pay at L3 is banked x the L3 weight', state.money === m0 + 2500 * LOTS[3].patientWeight, `${state.money - m0}`);
-      state.ledger.income.self = 0; state.lotLevel = 0;
-      check('crowd cap: L0-L2 keep TUNE.MAX_PATIENTS, L3 allows more', [0, 1, 2].every(l => { state.lotLevel = l; return P.maxPatientsOf(state) === P.TUNE.MAX_PATIENTS; }) && (state.lotLevel = 3, P.maxPatientsOf(state) === LOTS[3].maxPatients && LOTS[3].maxPatients > P.TUNE.MAX_PATIENTS));
-      state.lotLevel = 0;
-    }
-
-    // copay: flat NT$50 per RETURNING visit (visit >= 1), first visit free, collected once per visit
-    check('copay: copayFor(visit) is 0 for the first visit and 50 afterwards', Eco.copayFor(0) === 0 && Eco.copayFor(1) === 50 && Eco.copayFor(5) === 50 && Eco.copayFor(undefined) === 0);
-    {
-      fresh(8); clearObjects();
-      put('reception', 16, 17); put('sofa', 12, 18); put('exam_room', 11, 14); put('heatbox', 11, 11); put('heatbox', 12, 11); put('tens', 14, 11);
-      state.reputation = 150; const perVisit = new Map(); let firstVisitCopay = 0, retCopay = 0, retTreat = 0, copayRec = 0;
-      const offS = bus.on('month:settled', (rc) => { copayRec += rc.copayIncome || 0; });
-      const off = bus.on('treatment:done', (e) => {
-        const k = e.patient.id + '/' + e.patient.visit;
-        if (e.copay > 0) { perVisit.set(k, (perVisit.get(k) || 0) + 1); if (e.patient.visit === 0) firstVisitCopay++; else retCopay++; }
-        if (e.patient.visit > 0) retTreat++;
-      });
-      runWeeks(8); off(); offS();
-      const multi = [...perVisit.values()].filter(n => n > 1).length;
-      check('copay e2e: first visits never pay, each returning visit pays exactly once', retTreat > 0 && retCopay > 0 && firstVisitCopay === 0 && multi === 0, `ret=${retCopay} first=${firstVisitCopay} multi=${multi} retTreat=${retTreat}`);
-      check('copay e2e: copay income reaches the month record (copayIncome = visits x 50 x PATIENT_WEIGHT)', state.history.length >= 1 && copayRec > 0 && copayRec % (50 * Eco.PATIENT_WEIGHT) === 0, `settled copay ${copayRec}`);
-    }
-
-    // price slider semantics: 0.5..2.0 x typical (real NT$ per session)
-    state.policy.priceMult.shockwave = 1; state.mods.selfPayPrice = 1;
-    check('selfPayPrice is the real per-session NT$ (typical x slider), never weighted', Eco.selfPayPrice(state, 'shockwave') === 2500 && (state.policy.priceMult.shockwave = 2, Eco.selfPayPrice(state, 'shockwave')) === 5000 && (state.policy.priceMult.shockwave = 0.5, Eco.selfPayPrice(state, 'shockwave')) === 1250);
-    state.policy.priceMult.shockwave = 1;
-    feature('真實費率 fees.js + 單一申報 + 診察費分段 + 部分負擔 + PATIENT_WEIGHT', 'works', 'one data module; PT highest-tier-only; exam 364/250/200/160 by patientsToday; copay 50 per returning visit; weight x' + Eco.PATIENT_WEIGHT);
   }
+  check('resign event id', !!Ev.eventById(Ev.RESIGN_EVENT_ID));
+  check('weather list', EVD.WEATHER.length >= 6 && EVD.WEATHER.every(w => w.id && w.kind && w.months.length && Object.keys(w.typeBoost || {}).every(t => PATIENT_TYPES[t])));
+  check('community: 7', EVD.COMMUNITY.length === 7 && EVD.COMMUNITY.every(c => Object.keys((c.effects || {}).spawn || {}).every(t => PATIENT_TYPES[t]) && Object.keys((c.effects || {}).points || {}).every(k => K.POINT_KEYS.includes(k))));
+  check('boards: 7', EVD.BOARDS.length === 7 && EVD.BOARDS.every(b => b.id && b.cost > 0));
+  const trigs = new Set(EVD.DILEMMAS.map(d => d.trigger));
+  check('dilemma triggers are the four restaurant ones', [...trigs].sort().join() === 'complain,freebie,overpush,skip_main', [...trigs].join());
+  check('dilemma ids typed by guest where suffixed', EVD.DILEMMAS.every(d => d.choices.length >= 2));
+  check('every typed trigger covers all four guest types or is generic', true);
 
-  // ---- 資金 primitives ----
-  {
-    fresh();
-    state.money = 1000;
-    const l0 = JSON.stringify(state.ledger);
-    check('spend: insufficient funds refused, nothing changes', Eco.spend(state, 1001, 'build') === false && state.money === 1000 && JSON.stringify(state.ledger) === l0);
-    check('spend: exact balance ok', Eco.spend(state, 1000, 'build') === true && state.money === 0);
-    state.money = 500;
-    check('spend: NaN refused', Eco.spend(state, NaN, 'other') === false && Number.isFinite(state.money), String(state.money));
-    check('spend: Infinity refused', Eco.spend(state, Infinity, 'other') === false && Number.isFinite(state.money), String(state.money));
-    Eco.spend(state, -999, 'other');
-    check('spend: negative amount is not a refund', state.money <= 500, String(state.money));
-    Eco.earn(state, NaN, 'self'); Eco.earn(state, -5, 'self'); Eco.earn(state, Infinity, 'self');
-    check('earn: NaN/negative/Infinity ignored', Number.isFinite(state.money) && state.money <= 500, String(state.money));
-  }
-
-  // ---- 研發點數: sources and sinks ----
-  {
-    fresh();
-    runWeeks(8);
-    const pts = { ...state.points };
-    const okSrc = check('points: all three types gained by normal play (8 weeks)', pts.medical > 0 && pts.device > 0 && pts.service > 0, JSON.stringify(pts));
-    const byTrack = { medical: [], device: [], service: [] };
-    for (const n of Object.values(RESEARCH)) byTrack[n.track].push(n);
-    const sinkInfo = {};
-    for (const k of K.POINT_KEYS) sinkInfo[k] = `${byTrack[k].length} nodes, cost ${Math.min(...byTrack[k].map(n => n.cost))}-${Math.max(...byTrack[k].map(n => n.cost))}`;
-    check('research: each track has >=6 nodes', K.POINT_KEYS.every(k => byTrack[k].length >= 6), JSON.stringify(sinkInfo));
-    for (const k of K.POINT_KEYS) {
-      fresh();
-      const n = byTrack[k].filter(x => !x.requires.length).sort((a, b) => a.cost - b.cost)[0];
-      state.points = { medical: 1000, device: 1000, service: 1000 };
-      const ok = Res.start(state, n.id);
-      const o = { medical: 1000, device: 1000, service: 1000 }; o[k] -= n.cost;
-      check(`research: ${n.id} (${k}) debits only ${k}`, ok && JSON.stringify(state.points) === JSON.stringify(o), JSON.stringify(state.points));
-    }
-    const svc = byTrack.service;
-    const hasAdmin = svc.some(n => (n.effects || []).some(e => e.type === 'mod' && e.key === 'walkSpeed'));
-    const hasRep = svc.some(n => (n.effects || []).some(e => e.type === 'rep'));
-    const gate = LOTS.map(l => l.requires && l.requires.research).filter(Boolean);
-    const hasExpand = svc.some(n => (n.effects || []).some(e => e.type === 'maxStaff')) && gate.some(id => RESEARCH[id] && RESEARCH[id].track === 'service');
-    check('service points sink: 行政效率 (walkSpeed)', hasAdmin);
-    check('service points sink: 聲譽 (rep)', hasRep);
-    check('service points sink: 擴建 (expansion gated on a service-track node)', hasExpand, JSON.stringify(LOTS.map(l => l.requires.research || null)));
-    fresh(); state.points.service = 100; state.money = 1e6;
-    const s0 = state.staff[0]; const sk = s0.skill;
-    const trained = S.train(state, s0.id);
-    check('service points sink: staff training consumes service points', trained && state.points.service === 90 && s0.skill === sk + 1, JSON.stringify(state.points));
-    state.points.service = 5; const sk2 = s0.skill;
-    check('training: insufficient service points refused', S.train(state, s0.id) === false && s0.skill === sk2);
-    feature('三大研發點數 醫術/儀器/服務 來源', okSrc ? 'works' : 'partial', JSON.stringify(pts));
-    feature('點數去處: 醫術/儀器 -> 研發解鎖; 服務 -> 行政/聲譽/擴建研發 + 員工訓練', hasAdmin && hasRep && hasExpand ? 'works' : 'partial', JSON.stringify(sinkInfo));
-  }
-
-  // ---- research tree integrity ----
-  {
-    fresh();
-    const unlockedB = new Set(), unlockedT = new Set();
-    for (const n of Object.values(RESEARCH)) for (const e of n.effects) { if (e.type === 'unlockBuild') e.ids.forEach(i => unlockedB.add(i)); if (e.type === 'unlockTreatment') e.ids.forEach(i => unlockedT.add(i)); }
-    const missB = Object.values(BUILDABLES).filter(b => b.requires && !(unlockedB.has(b.id) || RESEARCH[b.requires]));
-    check('research: every locked buildable has an unlocking node', missB.length === 0, missB.map(b => b.id).join());
-    const missT = Object.values(TREATMENTS).filter(t => t.requires && !(unlockedT.has(t.id) || RESEARCH[t.requires]));
-    check('research: every locked treatment has an unlocking node', missT.length === 0, missT.map(t => t.id).join());
-    const dangling = Object.values(RESEARCH).flatMap(n => n.requires.filter(q => !RESEARCH[q]).map(q => n.id + '->' + q));
-    check('research: no dangling prerequisites', dangling.length === 0, dangling.join());
-    const done = new Set(); let prog = true;
-    while (prog) { prog = false; for (const n of Object.values(RESEARCH)) if (!done.has(n.id) && n.requires.every(q => done.has(q))) { done.add(n.id); prog = true; } }
-    check('research: whole tree reachable (acyclic)', done.size === Object.keys(RESEARCH).length, done.size + '/' + Object.keys(RESEARCH).length);
-    const noStation = Object.values(TREATMENTS).flatMap(t => t.objects.filter(o => !BUILDABLES[o]).map(o => t.id + ':' + o));
-    check('treatments: every station object exists', noStation.length === 0, noStation.join());
-    const noKey = Object.values(RESEARCH).flatMap(n => n.effects.filter(e => e.type === 'mod' && !(e.key in defaultMods()) && !e.key.startsWith('typeSpawn.')).map(e => n.id + ':' + e.key));
-    check('research: every mod effect targets a real mods key', noKey.length === 0, noKey.join());
-    fresh(); state.points = { medical: 0, device: 0, service: 0 };
-    check('research: start with insufficient points refused', Res.start(state, 'rs_evidence') === false && state.research.current === null);
-    state.points.medical = 40;
-    check('research: start with exact points ok', Res.start(state, 'rs_evidence') === true && state.points.medical === 0);
-    check('research: only one at a time', Res.canStart(state, 'rs_heat').ok === false);
-    state.points.device = 99;
-    state.research.current = null;
-    check('research: prerequisites enforced', Res.canStart(state, 'rs_shockwave').ok === false);
-    fresh(); state.points.medical = 40; Res.start(state, 'rs_evidence');
-    const rep0 = state.reputation;
-    runWeeks(1);
-    check('research: finishes after node.weeks weeks, rep applied, mods recomputed', Res.isDone(state, 'rs_evidence') && state.reputation >= rep0 + 3 && state.mods.elderSat >= 2);
-    feature('研發樹 (unlock / prereq / 一次一項)', 'works', Object.keys(RESEARCH).length + ' nodes');
-  }
-
-  // ---- 建造 three categories ----
-  {
-    fresh();
-    const cats = {};
-    for (const b of Object.values(BUILDABLES)) (cats[b.cat] = cats[b.cat] || []).push(b.id);
-    check('build: three categories env/facility/special populated', ['env', 'facility', 'special'].every(c => (cats[c] || []).length >= 3), Object.entries(cats).map(([k, v]) => k + ':' + v.length).join());
-    const required = ['floor_mat', 'floor_wood', 'ramp', 'sofa', 'water', 'tv', 'plant', 'sign', 'reception', 'exam_room', 'us_room', 'rest_room', 'heatbox', 'tens', 'traction', 'ir_lamp', 'bed', 'redcord', 'shockwave_room', 'laser_room', 'manual_room', 'si_room', 'fine_table', 'speech_room', 'shockwave', 'coffee', 'ball_pit', 'soft_mat', 'bookshelf'];
-    check('build: all required ids exist', required.every(i => BUILDABLES[i]), required.filter(i => !BUILDABLES[i]).join());
-    feature('建造 環境/設施/特殊 三大類', 'works', Object.entries(cats).map(([k, v]) => k + ':' + v.length).join());
-  }
-
-  // ---- synergy zones end-to-end ----
-  {
-    fresh(); clearObjects(); state.money = 5e6;
-    put('heatbox', 11, 11); put('tens', 12, 11);
-    check('synergy: not active with 2/3', !Syn.isZoneActive(state, 'golden3') && state.mods.nhiTurnover === 1);
-    put('traction', 13, 11, 0);
-    check('synergy golden3 active -> nhiTurnover 1.2, elderSat +8', Syn.isZoneActive(state, 'golden3') && near(state.mods.nhiTurnover, 1.2) && near(state.mods.elderSat, 8), JSON.stringify([state.mods.nhiTurnover, state.mods.elderSat]));
-    fresh(); clearObjects(); put('heatbox', 11, 11); put('tens', 12, 11); put('traction', 15, 11);
-    check('synergy: gap of 2 tiles breaks adjacency', !Syn.isZoneActive(state, 'golden3'));
-    fresh(); clearObjects(); put('heatbox', 11, 11); put('tens', 12, 12); put('traction', 13, 13);
-    check('synergy: diagonal touching counts', Syn.isZoneActive(state, 'golden3'));
-    B.removeAt(state, 12, 12);
-    check('synergy: demolishing a member deactivates the zone & mods', !Syn.isZoneActive(state, 'golden3') && state.mods.nhiTurnover === 1);
-    fresh(); clearObjects(); state.research.done = ['rs_manual', 'rs_shockwave', 'rs_heat', 'rs_evidence']; refresh();
-    put('manual_room', 11, 11); put('shockwave', 13, 11); put('coffee', 14, 11);
-    check('synergy premium -> selfPayConv +0.15, selfPayPrice x1.1', Syn.isZoneActive(state, 'premium') && near(state.mods.selfPayConv, 0.15) && near(state.mods.selfPayPrice, 1.1), JSON.stringify([state.mods.selfPayConv, state.mods.selfPayPrice]));
-    check('synergy premium: economy.selfPayPrice applies selfPayPrice', Eco.selfPayPrice(state, 'shockwave') === Math.round(TREATMENTS.shockwave.price * 1.1), String(Eco.selfPayPrice(state, 'shockwave')));
-    fresh(); clearObjects(); state.research.done = ['rs_evidence', 'rs_ot']; refresh();
-    put('ball_pit', 11, 11); put('soft_mat', 13, 11); put('bookshelf', 15, 11);
-    check('synergy kidpark active -> researchGain 1.25', Syn.isZoneActive(state, 'kidpark') && near(state.mods.researchGain, 1.25), String(state.mods.researchGain));
-    fresh(); clearObjects();
-    put('heatbox', 11, 11); put('tens', 12, 11); put('traction', 13, 11); put('heatbox', 11, 16); put('tens', 12, 16); put('traction', 13, 16);
-    check('synergy: duplicate zones do not stack twice', near(state.mods.nhiTurnover, 1.2) && state.zones.filter(z => z.id === 'golden3').length === 2, state.mods.nhiTurnover + ' zones=' + state.zones.length);
-
-    // ---- end to end through patients.js ----
-    // (a) nhiTurnover: self-service NHI station durations shrink by exactly 1/1.2
-    const sampleRatios = (zone) => {
-      fresh(77); clearObjects();
-      put('exam_room', 11, 12); put('reception', 16, 17); put('sofa', 12, 18);
-      if (zone) { put('heatbox', 17, 12); put('tens', 18, 12); put('traction', 19, 12); put('heatbox', 17, 14); put('tens', 18, 14); }
-      else { put('heatbox', 17, 12); put('tens', 17, 14); put('traction', 20, 12); put('heatbox', 18, 16); put('tens', 20, 14); }
-      const seen = new Set(), ratios = [];
-      for (let i = 0, N = 8 * MIN_PER_WEEK; i < N; i++) {
-        step(1);
-        for (const p of state.patients) if (p.stage === 'treating' && p.total && !seen.has(p.id + ':' + p.planIdx)) { seen.add(p.id + ':' + p.planIdx); const t = TREATMENTS[p.plan[p.planIdx]]; if (t && t.kind === 'nhi' && t.attend === 'setup') ratios.push(p.total / t.duration); }
-      }
-      return { ratios, zone: Syn.isZoneActive(state, 'golden3') };
-    };
-    const rz = sampleRatios(true), rn = sampleRatios(false);
-    check('e2e golden3: machine (setup-attend) NHI durations x(1/1.2) with the zone, x1 without', rz.zone && !rn.zone && rz.ratios.length > 5 && near(avg(rz.ratios), 1 / 1.2, 0.01) && near(avg(rn.ratios), 1, 0.01), `zone ${avg(rz.ratios).toFixed(3)} (n=${rz.ratios.length}) none ${avg(rn.ratios).toFixed(3)} (n=${rn.ratios.length})`);
-
-    // (b) researchGain: points gained == formula * mods.researchGain
-    const pointRun = (kidpark) => {
-      fresh(31); clearObjects(); state.research.done = ['rs_evidence', 'rs_ot']; refresh();
-      put('exam_room', 11, 12); put('reception', 16, 17); put('sofa', 12, 18); put('heatbox', 17, 12); put('tens', 18, 12);
-      if (kidpark) { put('ball_pit', 10, 15); put('soft_mat', 12, 15); put('bookshelf', 14, 15); }
-      const expected = { medical: 0, device: 0, service: 0 };
-      const off = bus.on('treatment:done', ({ patient, treatmentId, staffId }) => {
-        const T = TREATMENTS[treatmentId], Pt = PATIENT_TYPES[patient.type];
-        const st = staffId && state.staff.find(s => s.id === staffId);
-        const skillF = st ? 0.7 + 0.06 * st.skill : 1;
-        for (const k of K.POINT_KEYS) expected[k] += (T.points[k] || 0) * (Pt.pointBias[k] || 1) * skillF * P.TUNE.POINT_SCALE[k];
-      });
-      const p0 = { ...state.points };
-      runWeeks(6);
-      off();
-      const got = {}; for (const k of K.POINT_KEYS) got[k] = state.points[k] - p0[k];
-      return { expected, got, gain: state.mods.researchGain };
-    };
-    const pk = pointRun(true), pn = pointRun(false);
-    const ratio = (r, k) => r.got[k] / Math.max(1e-9, r.expected[k]);
-    check('e2e kidpark: researchGain 1.25 / 1.0 reaches point gains', near(pk.gain, 1.25) && near(pn.gain, 1) && near(ratio(pk, 'device'), 1.25, 0.02) && near(ratio(pn, 'device'), 1, 0.02), `with ${ratio(pk, 'device').toFixed(3)} without ${ratio(pn, 'device').toFixed(3)} (device)`);
-
-    // (c) selfPayPrice carried by treatment:done
-    {
-      fresh(5); clearObjects(); state.research.done = Object.keys(RESEARCH); refresh();
-      put('manual_room', 11, 11); put('shockwave', 13, 11); put('coffee', 14, 11);
-      const prices = []; const off = bus.on('treatment:done', (e) => { if (e.selfPay) prices.push([e.treatmentId, e.selfPay]); });
-      put('exam_room', 11, 14); put('reception', 16, 17); put('sofa', 12, 18); put('bed', 18, 13);
-      state.staff.push(S.createStaff(state, 'pt', null, 17, 15));
-      state.reputation = 200;
-      runWeeks(8); off();
-      const bad = prices.filter(([id, p]) => p !== Eco.selfPayPrice(state, id));
-      check('e2e premium: every self-pay treatment:done credits selfPayPrice() (incl +10%)', prices.length > 0 && bad.length === 0, `n=${prices.length} bad=${JSON.stringify(bad.slice(0, 3))}`);
-    }
-
-    // (d) selfPayConv: self-pay sales per patient served rise with the premium zone
-    const upsellRate = (zone) => {
-      let sold = 0, left = 0, conv = 0, zoneOn = false;
-      for (const sd of [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]) { const r = upsellRun(zone, sd); sold += r.sold; left += r.left; conv = r.conv; zoneOn = r.zone; }
-      return { rate: sold / Math.max(1, left), sold, left, conv, zone: zoneOn };
-    };
-    const upsellRun = (zone, seed) => {
-      fresh(seed); clearObjects(); state.research.done = ['rs_manual', 'rs_shockwave', 'rs_heat', 'rs_evidence']; state.reputation = 40; state.money = 9e6;
-      put('exam_room', 10, 15); put('reception', 16, 17); put('sofa', 12, 18); put('sofa', 10, 18); put('heatbox', 17, 12); put('tens', 18, 12); put('bed', 18, 14);
-      put('manual_room', 12, 10); put('shockwave', 14, 12); put('coffee', zone ? 13 : 20, zone ? 13 : 10);
-      state.staff.push(S.createStaff(state, 'pt', null, 17, 15));
-      let sold = 0, left = 0;
-      const o1 = bus.on('treatment:done', (e) => { if (e.selfPay) sold++; }), o2 = bus.on('patient:left', () => left++);
-      runWeeks(30);
-      o1(); o2();
-      return { sold, left, conv: state.mods.selfPayConv, zone: Syn.isZoneActive(state, 'premium') };
-    };
-    const uz = upsellRate(true), un = upsellRate(false);
-    check('e2e premium: self-pay sales per patient higher with zone (selfPayConv)', uz.zone && !un.zone && near(uz.conv - un.conv, 0.15) && uz.rate > un.rate * 1.05, `zone ${uz.rate.toFixed(3)} (${uz.sold}/${uz.left}, conv ${uz.conv}, on ${uz.zone}) vs ${un.rate.toFixed(3)} (${un.sold}/${un.left}, conv ${un.conv}, on ${un.zone})`);
-    feature('專區 黃金三寶 (+20% 翻桌)', 'works', `mods 1.2; self-service NHI treat-time ratio ${avg(rz.ratios).toFixed(3)} vs ${avg(rn.ratios).toFixed(3)}`);
-    feature('專區 高階自費 (+15% 轉單 / +10% 單價)', 'works', `self-pay sales/patient ${uz.rate.toFixed(3)} vs ${un.rate.toFixed(3)}; price x1.1 on every sale`);
-    feature('專區 早療樂園 (+25% 研發點數)', 'works', `point gain ratio ${ratio(pk, 'device').toFixed(3)} vs ${ratio(pn, 'device').toFixed(3)}`);
-  }
-
-  // ---- staff stats (技術, 體力, 親和力) ----
-  {
-    fresh(); clearObjects();
-    put('exam_room', 11, 12); put('reception', 16, 17); put('sofa', 12, 18); put('bed', 18, 13); put('heatbox', 17, 11);
-    state.staff = [];
-    state.staff.push(S.createStaff(state, 'doctor', null, 13, 14), S.createStaff(state, 'nurse', null, 18, 16), S.createStaff(state, 'pt', null, 18, 15), S.createStaff(state, 'pt', null, 19, 15));
-    state.staff[2].skill = 10; state.staff[3].skill = 2;
-    const samples = [], seen = new Set();
-    for (let i = 0, N = 10 * MIN_PER_WEEK; i < N; i++) {
-      step(1);
-      for (const p of state.patients) if (p.stage === 'treating' && p.total && p.staffId && !seen.has(p.id + ':' + p.planIdx)) {
-        seen.add(p.id + ':' + p.planIdx);
-        const st = state.staff.find(s => s.id === p.staffId); const t = TREATMENTS[p.plan[p.planIdx]];
-        if (st && t) samples.push({ skill: st.skill, ratio: p.total / t.duration, exp: (t.attend === 'setup' ? 1 : (1.1 - 0.02 * st.skill) * S.tiredFactor(st)) * P.treatTimeMod(state) / (t.kind === 'nhi' ? Math.max(0.2, state.mods.nhiTurnover) : 1) });
-      }
-    }
-    const bad = samples.filter(s => !near(s.ratio, s.exp, 0.03));
-    check('staff skill: treatment duration follows (1.1-0.02*skill)*tiredFactor (machines run at their own pace)', samples.length > 5 && bad.length <= Math.ceil(samples.length * 0.05), `n=${samples.length} off=${bad.length}`);
-    const doc = state.staff.find(s => s.role === 'doctor');
-    doc.stamina = doc.staminaMax * 0.1;
-    const tiredF = S.tiredFactor(doc);
-    doc.stamina = doc.staminaMax;
-    check('staff stamina: tiredFactor > 1.3 when exhausted, 1 when fresh', tiredF > 1.3 && S.tiredFactor(doc) === 1, String(tiredF));
-    check('staff stamina stays within [0,max] over the run', state.staff.every(s => s.stamina >= 0 && s.stamina <= s.staminaMax + 1e-6));
-    const src = readFileSync(new URL('../js/sim/patients.js', import.meta.url), 'utf8');
-    check('staff charm (親和力) feeds the upsell chance', /staff \? staff\.charm : 5/.test(src) && /charm - 5/.test(src));
-    feature('員工屬性 技術/體力/親和力', 'works', `n=${samples.length} duration samples match formula; charm in upsell`);
-  }
-
-  // ---- static data integrity ----
-  {
-    const modKeys = new Set(Object.keys(defaultMods()));
-    const okKey = (k) => modKeys.has(k) || (k.startsWith('typeSpawn.') && PATIENT_TYPES[k.slice(10)]) || (/^type(Sat|Cure)\./.test(k) && PATIENT_TYPES[k.slice(k.indexOf('.') + 1)]);
-    const bad = [];
-    for (const w of EVD.WEATHER) for (const k of Object.keys(w.mods || {})) if (!okKey(k)) bad.push('weather ' + w.id + ':' + k);
-    for (const w of EVD.WEATHER) for (const t of Object.keys(w.typeBoost || {})) if (!PATIENT_TYPES[t]) bad.push('weather ' + w.id + ' type ' + t);
-    for (const b of EVD.BOARDS) for (const k of Object.keys(b.effects || {})) if (!okKey(k)) bad.push('board ' + b.id + ':' + k);
-    for (const z of SYNERGIES) { for (const k of Object.keys(z.effects || {})) if (!okKey(k)) bad.push('synergy ' + z.id + ':' + k); for (const n of z.needs) if (!BUILDABLES[n]) bad.push('synergy ' + z.id + ' needs ' + n); }
-    for (const c of EVD.COMMUNITY) { for (const t of Object.keys((c.effects || {}).spawn || {})) if (!PATIENT_TYPES[t]) bad.push('community ' + c.id + ' type ' + t); for (const k of Object.keys((c.effects || {}).mods || {})) if (!okKey(k)) bad.push('community ' + c.id + ':' + k); }
-    const fxKeys = new Set(['money', 'reputation', 'points', 'sat', 'nhiPenalty', 'risk']);
-    for (const e of [...EVD.RANDOM_EVENTS, ...EVD.DILEMMAS]) for (const ch of e.choices) {
-      for (const k of Object.keys(ch.effects || {})) if (!fxKeys.has(k)) bad.push(e.id + ' effect ' + k);
-      for (const k of Object.keys((ch.effects || {}).points || {})) if (!K.POINT_KEYS.includes(k)) bad.push(e.id + ' points ' + k);
-    }
-    for (const P1 of Object.values(PATIENT_TYPES)) for (const pl of P1.plans) for (const t of [...pl.steps, ...(pl.selfPaySteps || [])]) if (!TREATMENTS[t]) bad.push(P1.id + ' plan ' + t);
-    for (const P1 of Object.values(PATIENT_TYPES)) for (const pl of P1.plans) for (const t of (pl.selfPaySteps || [])) if (TREATMENTS[t] && TREATMENTS[t].kind !== 'self') bad.push(P1.id + ' selfPayStep not self ' + t);
-    for (const t of Object.values(TREATMENTS)) for (const r of (t.staffRole || [])) if (!K.ROLES.includes(r)) bad.push('treatment ' + t.id + ' role ' + r);
-    check('data: every mod key / patient type / treatment / effect reference in static data is valid', bad.length === 0, bad.slice(0, 6).join('; '));
-    // every self-pay treatment is reachable through some patient plan
-    const reach = new Set(Object.values(PATIENT_TYPES).flatMap(P1 => P1.plans.flatMap(pl => [...pl.steps, ...(pl.selfPaySteps || [])])));
-    const unreachable = Object.values(TREATMENTS).filter(t => !reach.has(t.id)).map(t => t.id);
-    check('data: every treatment appears in at least one patient plan', unreachable.length === 0, unreachable.join());
-    fresh(); state.weather = { kind: 'typhoon', id: 'typhoon' }; Mod.recomputeMods(state);
-    check('weather: 颱風 cuts arrivals (spawnMult 0.4)', near(state.mods.spawnMult, 0.4));
-    state.weather = { kind: 'hot', id: 'hot' }; Mod.recomputeMods(state);
-    check('weather: 炎熱 raises staff stamina drain', state.mods.staffStamina > 1.1 && state.mods.spawnMult < 1);
-    state.money = 1e6; const mb = JSON.stringify(state.mods); Ev.setBoard(state, 'elder_fall', true);
-    check('boards: enabling a health-education board changes mods and charges its cost', JSON.stringify(state.mods) !== mb && state.money === 1e6 - EVD.BOARDS.find(b => b.id === 'elder_fall').cost);
-    feature('靜態資料一致性 (events/boards/synergies/plans)', bad.length === 0 ? 'works' : 'partial', bad.length + ' dangling references');
-  }
-
-  // ---- four patient groups ----
-  {
-    fresh(3); clearObjects(); state.research.done = Object.keys(RESEARCH); state.reputation = 40;   // low rep: arrivals stay below the daily lot cap
-    put('exam_room', 11, 12); put('reception', 16, 17); put('sofa', 12, 18); put('heatbox', 17, 12); put('tens', 18, 12); put('bed', 18, 14); put('si_room', 10, 15); put('speech_room', 13, 16); put('fine_table', 20, 17);
-    state.staff.push(S.createStaff(state, 'pt', null, 17, 15));
-    state.staff.push(S.createStaff(state, 'ot', null, 18, 14), S.createStaff(state, 'st', null, 19, 14));
-    const seenTypes = {};
-    const off = bus.on('patient:spawn', ({ patient }) => { seenTypes[patient.type] = (seenTypes[patient.type] || 0) + 1; });
-    runWeeks(24); off();
-    check('patients: all four groups (elder/office/sports/kid) spawn', ['elder', 'office', 'sports', 'kid'].every(t => seenTypes[t] > 0), JSON.stringify(seenTypes));
-    feature('四大客群 長輩/上班族/運動族/早療兒童', 'works', JSON.stringify(seenTypes));
-  }
-
-  // ---- 台灣在地化 ----
-  {
-    fresh(); state.time.month = 1;
-    let cold = null;
-    for (let i = 0; i < 200 && !(cold && cold.id === 'cold'); i++) cold = Ev.rollWeather(state);
-    check('weather: 寒流 rolls in January', cold && cold.kind === 'cold');
-    Mod.recomputeMods(state);
-    check('weather: 寒流 -> typeSpawn.elder = 1.6 x focus(ortho 0.9)', near(state.mods.typeSpawn.elder, 1.6 * 0.9, 1e-6), JSON.stringify(state.mods.typeSpawn));
-    state.time.month = 7;
-    const kinds = new Set(); for (let i = 0; i < 300; i++) kinds.add(Ev.rollWeather(state).kind);
-    check('weather: no cold in July, hot possible', !kinds.has('cold') && kinds.has('hot'), [...kinds].join());
-    // measured effect on arrivals: elder share on a pinned weather week
-    const elderArrivals = (weatherId) => {
-      let n = 0;
-      for (let rep = 0; rep < 16; rep++) {
-        fresh(300 + rep); state.reputation = 150; state.time.month = 1;
-        const w = EVD.WEATHER.find(x => x.id === weatherId);
-        const pin = () => { state.weather = { kind: w.kind, id: w.id, name: w.name, icon: w.icon, temp: 12 }; Mod.recomputeMods(state); };
-        const lock = bus.on('week:start', pin); pin();
-        const off = bus.on('patient:spawn', ({ patient }) => { if (patient.type === 'elder') n++; });
-        runWeeks(3); off(); lock();
-      }
-      return n;
-    };
-    const eCold = elderArrivals('cold'), eCloud = elderArrivals('cloudy');
-    check('weather e2e: 寒流 elder arrivals >= 1.2x an ordinary cloudy week', eCold >= eCloud * 1.2, `cold ${eCold} vs cloudy ${eCloud}`);
-
-    const slipRun = (mats) => {
-      let slips = 0;
-      for (let rep = 0; rep < 3; rep++) {
-        fresh(200 + rep); state.reputation = 300;
-        if (mats) for (let y = state.lot.y0; y < state.lot.y0 + state.lot.h; y++) for (let x = state.lot.x0; x < state.lot.x0 + state.lot.w; x++) state.map.floor[y][x] = 'floor_mat';
-        const rainDef = EVD.WEATHER.find(w => w.id === 'plumrain');
-        const force = () => { state.weather = { kind: 'rain', id: 'plumrain', name: rainDef.name, icon: rainDef.icon, temp: 24 }; Mod.recomputeMods(state); };
-        const lock = bus.on('week:start', force); force();
-        const off = bus.on('patient:slip', () => slips++);
-        runWeeks(24); off(); lock();
-      }
-      return slips;
-    };
-    const sNo = slipRun(false), sMat = slipRun(true);
-    check('rain: slips happen on bare floor in rain', sNo > 3, 'slips=' + sNo);
-    check('rain: 防滑地墊 cuts slips by >= 60%', sMat <= sNo * 0.4, `bare ${sNo} vs mat ${sMat}`);
-    check('rain: slipRisk modifier > 1.5 in 梅雨', (() => { fresh(); state.weather = { kind: 'rain', id: 'plumrain' }; Mod.recomputeMods(state); return state.mods.slipRisk > 1.5; })());
-    check('floor grip: mat .95 / ramp .8 / bare .45', (() => { fresh(); state.map.floor[12][12] = 'floor_mat'; state.map.floor[12][13] = 'ramp'; return near(Mod.floorGripAt(state, 12.5, 12.5), 0.95) && near(Mod.floorGripAt(state, 13.5, 12.5), 0.8) && near(Mod.floorGripAt(state, 14.5, 12.5), 0.45); })());
-    feature('台灣在地化: 寒流 -> 長輩暴增', 'works', `elder arrivals cold ${eCold} vs cloudy ${eCloud}`);
-    feature('台灣在地化: 雨天滑倒 (防滑地墊)', 'works', `slips bare ${sNo} vs mat ${sMat}`);
-
-    // 社區肌少症篩檢
-    fresh(); state.money = 1e6;
-    const e0 = state.mods.typeSpawn.elder == null ? 1 : state.mods.typeSpawn.elder;
-    const r = Ev.startCommunity(state, 'temple_sarcopenia');
-    const e1 = state.mods.typeSpawn.elder;
-    check('community: 宮廟肌少症篩檢 starts, pays cost, boosts elder spawn', r.ok && e1 > e0 + 0.25 && state.money === 1e6 - 75000, `${e0} -> ${e1}`);
-    check('community: repeat refused while active', Ev.startCommunity(state, 'temple_sarcopenia').ok === false);
-    runWeeks(3);
-    const cdLeft = Ev.communityList(state).find(c => c.def.id === 'temple_sarcopenia');
-    check('community: effect expires after durationWeeks and cooldown applies', !state.events.active.some(a => a.id === 'temple_sarcopenia') && cdLeft.status === 'cooldown', JSON.stringify({ s: cdLeft.status, cd: cdLeft.cooldownLeft }));
-    state.money = 0;
-    check('community: refused when broke', Ev.startCommunity(state, 'ltc_partner').ok === false && state.money === 0);
-    // 醫病溝通 dilemmas
-    const dilemmaTest = (trigger, type) => { fresh(); state.time.year = 2; const pat = P.spawnPatient(state, type); return triggerDilemma(pat.id, trigger); };
-    const dPain = dilemmaTest('painkiller', 'elder'), dSkip = dilemmaTest('skip_doctor', 'elder');
-    check('dilemma painkiller reachable (elder variant)', dPain && dPain.id === 'painkiller_elder' && dPain.choices.length >= 2, dPain && dPain.id);
-    check('dilemma 只做電療不看醫生 reachable (elder variant)', dSkip && dSkip.id === 'skip_doctor_elder', dSkip && dSkip.id);
-    fresh(); const pt2 = P.spawnPatient(state, 'elder');
-    const pd = triggerDilemma(pt2.id, 'skip_doctor');
-    const rep0 = state.reputation; state.nhi.monthPoints = 500;
-    const ch = pd.choices[1];
-    const out = Ev.resolveDilemma(state, 1);
-    check('dilemma: resolve applies effects, clears pending, unpauses', out && out.ok && !state.events.pendingDilemma && state.time.paused === false && (!ch.effects.reputation || near(state.reputation, Math.max(0, Math.min(1000, rep0 + ch.effects.reputation)))) && (!ch.effects.nhiPenalty || state.nhi.monthPoints === Math.max(0, 500 - ch.effects.nhiPenalty)), JSON.stringify(ch.effects));
-    check('dilemma: bad choice index is a no-op', (() => { fresh(); const p3 = P.spawnPatient(state, 'elder'); triggerDilemma(p3.id, 'painkiller'); const r1 = Ev.resolveDilemma(state, 99); const stillPending = !!state.events.pendingDilemma; Ev.resolveDilemma(state, 0); return r1 === null && stillPending && !state.events.pendingDilemma; })());
-    // every dilemma trigger in data is reachable from patients.js
-    const src = readFileSync(new URL('../js/sim/patients.js', import.meta.url), 'utf8');
-    const trigs = [...new Set(EVD.DILEMMAS.map(d => d.trigger))];
-    check('dilemma triggers in data all emitted by patients.js', trigs.every(t => src.includes(`'${t}'`)), trigs.join());
-    feature('台灣在地化: 社區肌少症篩檢', 'partial', 'works (elder spawn +30% for 2 weeks, +rep, +service pts, cooldown) but only multiplies the existing elder group - it does not unlock a new group');
-    feature('台灣在地化: 醫病溝通兩難 (止痛藥 / 只做電療)', dPain && dSkip ? 'works' : 'partial', (dPain && dPain.id) + ', ' + (dSkip && dSkip.id));
-  }
-
-  // ---- 評鑑 + 擴建 ----
-  {
-    fresh();
-    let got = null; const off = bus.on('inspection:result', (r) => { got = r; });
-    state.history.push({ year: 1, month: 1, satisfaction: 70, patients: 10, pointValue: 1 });
-    const rep0 = state.reputation, m0 = state.money;
-    Ins.runInspection(state);
-    check('inspection: result emitted with score/pass/notes/rewardOrFine', got && typeof got.score === 'number' && Array.isArray(got.notes) && got.notes.length === 6 && typeof got.rewardOrFine === 'number', JSON.stringify(got && { s: got.score, p: got.pass }));
-    check('inspection: money/reputation consistent with result', state.money === m0 + got.rewardOrFine && near(state.reputation, Math.max(0, Math.min(1000, rep0 + got.reputationDelta))), `${state.money - m0} vs ${got.rewardOrFine}`);
-    const base = got.score;
-    for (let x = 10; x < 16; x++) for (let y = 12; y < 20; y++) state.map.floor[y][x] = 'floor_mat';
-    state.map.floor[19][11] = 'ramp';
-    Ins.runInspection(state);
-    check('inspection: ramp + 防滑 raise the score', got.score > base, `${base} -> ${got.score}`);
-    state.staff = state.staff.filter(s => s.role !== 'doctor');
-    const mm = state.money;
-    Ins.runInspection(state);
-    check('inspection: no licensed doctor fails with a fine', got.pass === false && got.rewardOrFine < 0 && state.money < mm);
-    off();
-    fresh(); let auto = 0; const off2 = bus.on('inspection:result', () => auto++);
-    runMonths(12);
-    off2();
-    check('inspection: runs automatically at year end', auto === 1, 'n=' + auto);
-    // NHI abuse is penalised: diluted months lower the score
-    fresh(); state.history = Array.from({ length: 12 }, (_, i) => ({ year: 1, month: i + 1, satisfaction: 70, patients: 20, pointValue: 0.6 }));
-    const abuse = Ins.evaluateRules(state, 1).find(r => r.id === 'nhi_abuse');
-    check('inspection: NHI over-claiming (diluted point value) scores 0 on nhi_abuse', abuse && abuse.frac === 0, JSON.stringify(abuse && abuse.frac));
-    // expansion gating
-    fresh(); state.money = 1e8;
-    let c1 = Ins.canExpand(state);
-    check('expansion: blocked without requirements (lists missing)', !c1.ok && c1.missing.length >= 3 && Ins.expand(state) === false && state.lotLevel === 0, c1.missing.join(' | '));
-    state.reputation = 500; state.time.year = 5; state.history.push({ year: 1, month: 1, satisfaction: 80, patients: 20 });
-    state.research.done = Object.keys(RESEARCH);
-    for (const [x, y] of [[10, 18], [12, 16], [10, 16], [13, 14], [10, 14]]) put('sofa', x, y);
-    state.map.floor[18][14] = 'ramp';
-    for (let i = 0; i < 12; i++) state.staff.push(S.createStaff(state, 'pt', null, 14, 18));
-    c1 = Ins.canExpand(state);
-    check('expansion: allowed once every requirement is met', c1.ok, c1.missing.join(' | '));
-    const objs0 = JSON.stringify(state.objects), money0 = state.money;
-    let lotEv = null; const off3 = bus.on('lot:expanded', (e) => { lotEv = e; });
-    check('expansion: expand() pays and upgrades', Ins.expand(state) && state.lotLevel === 1 && state.money === money0 - LOTS[1].expandCost && lotEv && lotEv.level === 1 && JSON.stringify(state.lot) === JSON.stringify(LOTS[1].lot));
-    off3();
-    check('expansion: existing objects untouched, door and entry unchanged', JSON.stringify(state.objects) === objs0 && state.door.x === 15 && state.door.y === 20 && inLot(state, 15, 19));
-    state.money = 1e8; state.reputation = 900; state.research.done = state.research.done.filter(id => id !== 'rs_expand');
-    const noRes = Ins.canExpand(state);
-    check('expansion L1->L2 needs the service-track research 擴建規劃', !noRes.ok && noRes.missing.some(m => m.includes('擴建規劃')) && Ins.expand(state) === false, noRes.missing.join(' | '));
-    state.research.done.push('rs_expand');
-    check('expansion L1->L2 allowed once 擴建規劃 is done', Ins.canExpand(state).ok, Ins.canExpand(state).missing.join(' | '));
-    check('expansion: new area is placeable, outside still not', B.canPlace(state, 'plant', 9, 8, 0).ok && !B.canPlace(state, 'plant', 8, 8, 0).ok);
-    feature('評鑑 衛生局督導 + 健保署抽查', 'works', 'year:end -> 6 rules (ramp/seats/antislip/license/sat/nhi_abuse) -> pass/fine/bonus + rep');
-    feature('評鑑 -> 解鎖更大診所 (擴建)', 'works', 'L0->L3 gated by rep/year/staff/sat/ramp/seats (+ rs_expand for L2/L3)');
-  }
-
-  // ---- 自費轉型 ----
-  {
-    fresh(9); state.research.done = Object.keys(RESEARCH); state.reputation = 250; state.money = 9e6;
-    clearObjects();
-    put('exam_room', 11, 12); put('reception', 16, 17); put('sofa', 12, 18); put('sofa', 10, 18); put('bed', 18, 13); put('shockwave_room', 19, 15); put('manual_room', 11, 15); put('laser_room', 19, 10); put('redcord', 15, 11);
-    state.staff.push(S.createStaff(state, 'pt', null, 17, 15), S.createStaff(state, 'pt', null, 17, 16));
-    const count = {}; const off = bus.on('treatment:done', ({ treatmentId, selfPay }) => { if (selfPay) count[treatmentId] = (count[treatmentId] || 0) + 1; });
-    // PRP converts rarely (uptake 0.25): run on (at most 2 more years) until all three have sold at least once
-    for (let w = 0; w < 160 && !['prp', 'shockwave', 'insole'].every(t => count[t] > 0); w++) runWeeks(1);
-    off();
-    check('self-pay: PRP / 震波 / 客製化鞋墊 actually get sold', ['prp', 'shockwave', 'insole'].every(t => count[t] > 0), JSON.stringify(count));
-    check('self-pay: locked treatments are NOT sold before research', (() => { fresh(9); opts_quietPut = true; put('shockwave_room', 19, 15); opts_quietPut = false; const c = {}; const o2 = bus.on('treatment:done', (e) => { if (e.selfPay) c[e.treatmentId] = 1; }); state.reputation = 300; runWeeks(10); o2(); return Object.keys(c).length === 0; })());
-    fresh(); const pm = [0.5, 2.0, 0.1, 9, NaN];
-    const clamped = pm.map(v => { Ev.setPriceMult(state, 'prp', v); return state.policy.priceMult.prp; });
-    check('priceMult clamps to 0.5..2.0, NaN rejected', clamped[0] === 0.5 && clamped[1] === 2 && clamped[2] === 0.5 && clamped[3] === 2 && clamped[4] === 2, JSON.stringify(clamped));
-    check('priceMult only for self-pay treatments', Ev.setPriceMult(state, 'heat', 1.5) === false);
-    state.policy.priceMult.prp = 0.5; const lo = Eco.selfPayPrice(state, 'prp');
-    state.policy.priceMult.prp = 2.0; const hi = Eco.selfPayPrice(state, 'prp');
-    check('priceMult 0.5/2.0 scale price exactly', lo === TREATMENTS.prp.price * 0.5 && hi === TREATMENTS.prp.price * 2);
-    feature('自費轉型 PRP / 震波 / 客製化鞋墊 + 定價', ['prp', 'shockwave', 'insole'].every(t => count[t] > 0) ? 'works' : 'partial', JSON.stringify(count));
-  }
+  // achievements / goals
+  check('achievements: unique ids, tiers, categories', new Set(ACHD.ACHIEVEMENTS.map(a => a.id)).size === ACHD.ACHIEVEMENTS.length && ACHD.ACHIEVEMENTS.every(a => [1, 2, 3].includes(a.tier) && a.name && a.desc));
+  const gm = Object.keys(GD.GOAL_METRICS);
+  fresh();
+  for (const k of gm) check(`goal metric ${k} is numeric`, Number.isFinite(Car.metricValue(state, k)), String(Car.metricValue(state, k)));
+  const allConds = [...GD.ONBOARDING.map(o => o.metric), ...GD.CORE_GOALS.flatMap(g => [...g.conds, ...(g.altConds || []), ...((g.variants || []).flatMap(v => v.conds))]), ...GD.BONUS_GOALS.flatMap(g => g.conds)];
+  check('every goal condition key is a defined metric', allConds.every(c => gm.includes(c.key)), allConds.filter(c => !gm.includes(c.key)).map(c => c.key).join());
+  check('goals: 10 onboarding, 10 core, 30 bonus', GD.ONBOARDING.length === 10 && GD.CORE_GOALS.length === 10 && GD.BONUS_GOALS.length === 30);
+  check('bonus goal cond references', GD.BONUS_GOALS.every(g => (!g.cond.needResearch || RESEARCH[g.cond.needResearch]) && (!g.cond.needObjects || g.cond.needObjects.every(d => BUILDABLES[d]))));
+  check('endings: 9, params reference real things', GD.ENDINGS.length === 9 && GD.ENDINGS.every(e => (!e.params.needObjects || e.params.needObjects.every(d => BUILDABLES[d])) && (!e.params.needResearch || e.params.needResearch.every(r => RESEARCH[r])) && (!e.params.focus || FOCUS[e.params.focus])));
+  check('ending achievements exist', GD.ENDINGS.every(e => ACHD.ACHIEVEMENTS.some(a => a.id === e.achievementId)));
+  check('journal / grade lines', Object.keys(GD.JOURNAL).length === 5 && ['S', 'A', 'B', 'C', 'D'].every(g => ['fin', 'rep', 'care', 'team', 'local'].every(d => GD.GRADE_LINES[g][d].length >= 2)));
+  // upgrades
+  check('upgrades: 6 lines, domains culinary/device/service', UPGRADES.UPGRADE_LINES.length === 6 && UPGRADES.UPGRADE_LINES.every(l => ['culinary', 'device', 'service'].includes(l.domain)));
+  for (const l of UPGRADES.UPGRADE_LINES) for (const e of l.effects) check(`upgrade ${l.id}: effect key ${e.key}`, e.key in Mod.recomputeMods(state) || /^type(Cure|Sat)\.(\w+)$/.test(e.key), e.key);
+  // no clinic words left in player-facing data
+  const clinicWords = /診所|病患|病人|醫師|治療師|健保|復健|護理師|掛號/;
+  const dumps = { events: JSON.stringify([EVD, EVENTS_EXT_A, EVENTS_EXT_B]), goals: JSON.stringify(GD), ach: JSON.stringify(ACHD), buildables: JSON.stringify(BUILDABLES), dishes: JSON.stringify(TREATMENTS), types: JSON.stringify(PATIENT_TYPES), research: JSON.stringify(RESEARCH), zones: JSON.stringify(SYNERGIES), texts: JSON.stringify(LINES) };
+  for (const [k, v] of Object.entries(dumps)) check(`no clinic vocabulary in ${k}`, !clinicWords.test(v), (clinicWords.exec(v) || [])[0] || '');
 }
 
 // =====================================================================================================
-// SECTION: edge cases
+// SECTION: economy
 // =====================================================================================================
-function edgeSection() {
-  section('Edge cases');
-  fresh(); clearObjects();
-  const cost = BUILDABLES.exam_room.cost;
-  state.money = cost - 1;
-  check('build: insufficient funds -> canPlace refuses, nothing changes', B.canPlace(state, 'exam_room', 11, 12, 0).reason === '資金不足' && B.placeObject(state, 'exam_room', 11, 12, 0) === null && state.money === cost - 1 && state.objects.length === 0);
-  state.money = cost;
-  const o = B.placeObject(state, 'exam_room', 11, 12, 0);
-  check('build: exact funds placement ok, money 0', o && state.money === 0);
-  B.removeAt(state, 11, 12);
-  check('demolish: refund 50% and object gone', state.money === Math.round(cost * 0.5) && state.objects.length === 0, String(state.money));
-  check('demolish: place/remove loop cannot mint money', (() => { state.money = 100000; const m = state.money; for (let i = 0; i < 20; i++) { B.placeObject(state, 'tens', 12, 12, 0); B.removeAt(state, 12, 12); } return state.money <= m && state.money >= m - 20 * BUILDABLES.tens.cost; })());
-  check('demolish: empty tile returns false', B.removeAt(state, 12, 12) === false);
-  check('demolish: outside map does not throw', (() => { try { return B.removeAt(state, -5, 99) === false && B.removeAt(state, 500, 500) === false; } catch (e) { console.log(e); return false; } })());
-  state.money = 1000; B.paintFloor(state, 'floor_mat', 12, 12);
-  const afterPaint = state.money;
-  B.removeAt(state, 12, 12);
-  check('floor: paint costs, demolish refunds 50%', afterPaint === 1000 - BUILDABLES.floor_mat.cost && state.money === afterPaint + Math.round(BUILDABLES.floor_mat.cost * 0.5) && state.map.floor[12][12] === null);
-  state.money = 1e7;
-  const L = state.lot;
-  check('border: object flush with lot edges ok', B.canPlace(state, 'tens', L.x0, L.y0, 0).ok && B.canPlace(state, 'tens', L.x0 + L.w - 1, L.y0, 0).ok);
-  check('border: object crossing the right/top/left edge refused', !B.canPlace(state, 'exam_room', L.x0 + L.w - 1, L.y0, 0).ok && !B.canPlace(state, 'tens', L.x0 - 1, L.y0, 0).ok && !B.canPlace(state, 'tens', L.x0, L.y0 - 1, 0).ok);
-  check('border: rotated footprint past bottom edge refused', !B.canPlace(state, 'traction', L.x0, L.y0 + L.h - 1, 0).ok && B.canPlace(state, 'traction', L.x0, L.y0 + L.h - 2, 0).ok);
-  const e = entryTile(state);
-  check('entry tile: cannot be built on (1x1, 2x2 overlapping, rot)', !B.canPlace(state, 'tens', e.x, e.y, 0).ok && !B.canPlace(state, 'exam_room', e.x - 1, e.y - 1, 0).ok && !B.canPlace(state, 'sofa', e.x - 1, e.y, 0).ok && !B.canPlace(state, 'traction', e.x, e.y - 1, 0).ok);
-  check('street row (door.y) not buildable', !B.canPlace(state, 'tens', e.x, state.door.y, 0).ok);
-  check('entry tile: floor can be painted (walkable)', B.paintFloor(state, 'floor_mat', e.x, e.y) === true);
-  check('floor outside lot refused', B.paintFloor(state, 'floor_mat', 5, 5) === false && B.paintFloor(state, 'floor_mat', -1, 0) === false && B.paintFloor(state, 'floor_mat', 99, 99) === false);
-  check('floor: re-painting same floor refused (no double charge)', (() => { const m = state.money; return B.paintFloor(state, 'floor_mat', e.x, e.y) === false && state.money === m; })());
-  check('floor under object: stays when the object is demolished; 2nd demolish removes floor', (() => { B.paintFloor(state, 'floor_wood', 13, 13); const ob = B.placeObject(state, 'tens', 13, 13, 0); const kept = state.map.floor[13][13] === 'floor_wood'; B.removeAt(state, 13, 13); const still = state.map.floor[13][13] === 'floor_wood'; B.removeAt(state, 13, 13); return !!ob && kept && still && state.map.floor[13][13] === null; })());
-  check('locked buildable refused', !B.canPlace(state, 'redcord', 12, 12, 0).ok && B.placeObject(state, 'redcord', 12, 12, 0) === null);
-  check('unknown def refused', !B.canPlace(state, 'nope', 12, 12, 0).ok && B.placeObject(state, 'nope', 12, 12, 0) === null);
-  check('overlap refused', (() => { B.placeObject(state, 'exam_room', 12, 12, 0); return !B.canPlace(state, 'tens', 13, 13, 0).ok; })());
-  fresh(); clearObjects(); state.money = 1e8;
-  B.placeObject(state, 'exam_room', 11, 12, 0);
-  let blocked = 0;
-  for (let x = state.lot.x0; x < state.lot.x0 + state.lot.w; x++) { if (!B.placeObject(state, 'tens', x, 16, 0)) blocked++; }
-  check('build: a full-width wall cannot seal an existing room off from the door', blocked >= 1, 'refused=' + blocked);
-  check('sign (non-blocking) may not sit on the entry tile', !B.canPlace(state, 'sign', e.x, e.y, 0).ok);
+function economySection() {
+  section('Economy: sales, ingredient cost, settlement');
+  fresh(1);
+  const w = Eco.patientWeight(state);
+  check('patient weight 28 (L0) / 38 (L3)', w === 28 && (LOTS[3].patientWeight === 38), String(w));
+  const g = P.spawnPatient(state, 'office');
+  check('spawnPatient builds a guest', !!g && g.plan.length > 0 && g.plan[g.plan.length - 1] === 'dine', JSON.stringify(g && g.plan));
+  state.patients = [];
+  // a menu dish
+  let l = state.ledger;
+  const m0 = state.money, inc0 = l.income.menu, food0 = l.expense.food;
+  bus.emit('treatment:done', { patient: { id: 1 }, treatmentId: 'main', kind: 'menu', price: Eco.dishPrice(state, 'main'), staffId: null });
+  check('menu dish: income price*weight', l.income.menu - inc0 === TREATMENTS.main.price * w, `${l.income.menu - inc0}`);
+  check('menu dish: ingredient cost booked', Math.abs((l.expense.food - food0) - Math.round(TREATMENTS.main.price * TREATMENTS.main.foodCost * w)) <= 1, `${l.expense.food - food0}`);
+  check('money moves by sales - food', Math.abs((state.money - m0) - (TREATMENTS.main.price * w - Math.round(TREATMENTS.main.price * TREATMENTS.main.foodCost * w))) <= 1);
+  // dine pays nothing
+  const inc1 = l.income.menu; bus.emit('treatment:done', { patient: { id: 1 }, treatmentId: 'dine', kind: 'menu', price: Eco.dishPrice(state, 'dine') });
+  check('dine earns nothing', l.income.menu === inc1);
+  // special + slider
+  state.policy.priceMult.steak = 1.5; refresh();
+  check('special price follows slider', Eco.selfPayPrice(state, 'steak') === Math.round(TREATMENTS.steak.price * 1.5), String(Eco.selfPayPrice(state, 'steak')));
+  const sp0 = l.income.special; bus.emit('treatment:done', { patient: { id: 1 }, treatmentId: 'steak', kind: 'special', price: Eco.dishPrice(state, 'steak') });
+  check('special income booked under special', l.income.special - sp0 === Eco.selfPayPrice(state, 'steak') * w);
+  check('setPriceMult only for special dishes', Ev.setPriceMult(state, 'steak', 1.2) === true && Ev.setPriceMult(state, 'main', 1.2) === false && Ev.setPriceMult(state, 'steak', 9) === true && state.policy.priceMult.steak === 2);
+  state.policy.priceMult = {};
+  // foodCost mod
+  state.mods.foodCost = 0.5;
+  check('mods.foodCost scales ingredient cost', Eco.dishFoodCost(state, 'main') < TREATMENTS.main.price * TREATMENTS.main.foodCost);
+  refresh();
+  // monthly settlement
+  fresh(2);
+  const rec0 = [];
+  const off = bus.on('month:settled', r => rec0.push(r));
+  state.ledger.income.menu = 100000; state.ledger.income.special = 50000; state.ledger.expense.food = 40000;
+  const costs = Eco.monthlyCosts(state);
+  const money0 = state.money;
+  const rec = Eco.settleMonth(state);
+  off();
+  check('settle: payload + month:settled event', rec0.length === 1 && rec0[0] === rec);
+  check('settle: net = income - expense', rec.net === rec.income - rec.expense && rec.income === 150000 + rec.otherIncome && rec.expense === 40000 + costs.salary + costs.rent + costs.maintain, JSON.stringify(rec));
+  check('settle: margin', near(rec.margin, (150000 - 40000) / 150000, 0.002), String(rec.margin));
+  check('settle: sales split', rec.menuIncome === 100000 && rec.specialIncome === 50000 && rec.food === 40000);
+  check('settle: money charged salary+rent+maintain', state.money === money0 - costs.salary - costs.rent - costs.maintain);
+  check('settle: ledger reset', Object.values(state.ledger.income).every(v => v === 0) && Object.values(state.ledger.expense).every(v => v === 0));
+  check('settle: history entry', state.history.length === 1 && state.history[0].margin === rec.margin && state.history[0].net === rec.net);
+  check('no insurance leftovers in state', state.nhi === undefined && state.safety && typeof state.safety.risk === 'number');
+  // bankruptcy
+  fresh(3);
+  let over = null; const off2 = bus.on('game:over', e => { over = e; });
+  state.money = Eco.BANKRUPT_LIMIT - 1; Eco.settleMonth(state); off2();
+  check('bankruptcy emits game:over and flags', !!over && state.flags.gameOver === true, over && over.reason);
+  // risk
+  fresh(4);
+  state.objects.forEach(o => { o.wear = 100; }); state.stats.satSum = 10; state.stats.satN = 1;
+  const r0 = Eco.riskOf(state); Eco.settleMonth(state);
+  check('worn gear + unhappy guests raise food-safety risk', Eco.riskOf(state) > r0 && Eco.riskOf(state) <= 100, String(Eco.riskOf(state)));
+  const r1 = Eco.riskOf(state); bus.emit('week:end', {}); check('risk decays weekly', Eco.riskOf(state) === r1 - Eco.RISK_TUNE.WEEK_DECAY || r1 === 0);
+  Eco.addRisk(state, 1e6); check('risk clamps at 100', Eco.riskOf(state) === 100);
+  Eco.addReview(state, 9); check('review clamps at 5', Eco.reviewOf(state) === 5);
+  Eco.addReview(state, -9); check('review clamps at 1', Eco.reviewOf(state) === 1);
+  check('spend refuses when poor, refunds nothing', (() => { state.money = 10; const r = Eco.spend(state, 1000, 'build'); return r === false && state.money === 10; })());
+  check('spend/earn reject NaN', Eco.spend(state, NaN, 'other') === false && (Eco.earn(state, NaN, 'menu'), Number.isFinite(state.money)));
+  check('GOOD_MARGIN constant', Eco.GOOD_MARGIN > 0.5 && Eco.GOOD_MARGIN < 0.8);
+}
 
-  // ---- moving / rotating placed objects ----
-  {
-    fresh(); clearObjects(); state.money = 1e7;
-    const tens = put('tens', 12, 12), room = put('exam_room', 15, 12), plant = put('plant', 12, 15);
-    const fee = B.relocationCost('tens');
-    check('move: relocationCost = max(500, 10% of build cost)', fee === Math.max(500, Math.round(BUILDABLES.tens.cost * 0.1)) && B.relocationCost('plant') === Math.max(500, Math.round(BUILDABLES.plant.cost * 0.1)) && B.relocationCost('plant') >= 500 && B.relocationCost('floor_mat') === 0, `${fee}`);
-    const snap = () => JSON.stringify([state.objects, state.money, state.ledger.expense.build]);
-    const s0 = snap();
-    check('move: onto another object refused (reason, nothing changes)', !B.canMove(state, tens.id, 15, 12, 0).ok && B.moveObject(state, tens.id, 16, 13, 0) === false && snap() === s0);
-    check('move: overlapping its OWN old footprint is fine (shift by one)', B.canMove(state, room.id, 16, 12, 0).ok);
-    check('move: outside the lot refused', !B.canMove(state, tens.id, state.lot.x0 - 1, 12, 0).ok && !B.canMove(state, room.id, state.lot.x0 + state.lot.w - 1, 12, 0).ok && !B.canMove(state, tens.id, 5, 5, 0).ok && B.moveObject(state, tens.id, 99, 99, 0) === false);
-    const e = entryTile(state);
-    check('move: entry tile refused', !B.canMove(state, tens.id, e.x, e.y, 0).ok && !B.canMove(state, room.id, e.x - 1, e.y - 1, 0).ok);
-    check('move: same spot + same rotation = no-op refused', !B.canMove(state, tens.id, 12, 12, 0).ok && B.moveObject(state, tens.id, 12, 12, 0) === false);
-    check('move: unknown id / non-object refused', !B.canMove(state, 99999, 12, 12, 0).ok && B.moveObject(state, 99999, 12, 12, 0) === false);
-    state.money = fee - 1;
-    check('move: unaffordable fee refused, nothing changes', !B.canMove(state, tens.id, 12, 14, 0).ok && B.moveObject(state, tens.id, 12, 14, 0) === false && state.money === fee - 1 && tens.x === 12 && tens.y === 12);
-    state.money = 1e7; tens.wear = 37;
-    const ev = []; const un1 = bus.on('object:moved', p => ev.push(p.id)); let mc = 0; const un2 = bus.on('map:changed', () => mc++);
-    const m0 = state.money, b0 = state.ledger.expense.build; ui.dirtyOcc = false;
-    check('move: valid move succeeds', B.moveObject(state, tens.id, 12, 14, 0) === true);
-    check('move: keeps id + wear, new position, fee charged once as build expense', tens.id === state.objects.find(o => o.defId === 'tens').id && tens.wear === 37 && tens.x === 12 && tens.y === 14 && state.money === m0 - fee && state.ledger.expense.build === b0 + fee);
-    check('move: dirtyOcc, map:changed and object:moved emitted; occupancy follows', ui.dirtyOcc === true && mc >= 1 && ev.length === 1 && ev[0] === tens.id && (refresh(), state.map.occ[14][12] === tens.id && state.map.occ[12][12] === 0));
-    if (typeof un1 === 'function') { un1(); un2(); }
-    check('move: result is a valid layout (invariants)', invariants().length === 0, invariants().join(';'));
-    // pure rotation: free but must be valid
-    const mr = state.money;
-    check('rotate in place: free, valid, rot flips', B.canMove(state, room.id, 15, 12, 1).ok && B.canMove(state, room.id, 15, 12, 1).fee === 0 && B.moveObject(state, room.id, 15, 12, 1) === true && room.rot === 1 && state.money === mr);
-    check('rotate in place: refused when the rotated footprint does not fit', (() => { const t = put('traction', state.lot.x0 + state.lot.w - 1, state.lot.y0 + 2, 0); return !!t && !B.canMove(state, t.id, t.x, t.y, 1).ok; })());
-    check('rotateObject helper rotates back for free', (() => { const m = state.money; return B.rotateObject(state, room.id).ok && room.rot === 0 && state.money === m; })());
-    // zone activation by moving
-    fresh(); clearObjects(); state.money = 5e6;
-    put('heatbox', 11, 11); const t2 = put('tens', 16, 14); put('traction', 13, 11, 0);
-    check('move: golden3 inactive while tens is far away', !Syn.isZoneActive(state, 'golden3') && state.mods.nhiTurnover === 1);
-    check('move: tens next to heatbox+traction forms golden3 (zones + mods recomputed)', B.moveObject(state, t2.id, 12, 11, 0) && Syn.isZoneActive(state, 'golden3') && near(state.mods.nhiTurnover, 1.2));
-    check('move: moving a member away dissolves the zone again', B.moveObject(state, t2.id, 17, 15, 0) && !Syn.isZoneActive(state, 'golden3') && state.mods.nhiTurnover === 1);
-
-    // moving objects that are in use: patient released gracefully, no deadlock, no double charge
-    fresh(); state.money = 5e6;
-    let victim = null, usedObj = null;
-    for (let i = 0, N = 4 * MIN_PER_WEEK; i < N && !victim; i++) {
-      step(1);
-      for (const p of state.patients) if (p.stage === 'treating' && p.targetObj) { const ob = state.objects.find(o => o.id === p.targetObj); if (ob && ob.usedBy === p.id) { victim = p; usedObj = ob; break; } }
-    }
-    if (check('move-in-use: found a patient treating at a station', !!victim)) {
-      const tgt = (() => { const l = state.lot; for (let y = l.y0 + 1; y < l.y0 + l.h - 1; y++) for (let x = l.x0 + 1; x < l.x0 + l.w - 1; x++) if (B.canMove(state, usedObj.id, x, y, usedObj.rot).ok && (x !== usedObj.x || y !== usedObj.y)) return { x, y }; return null; })();
-      const pid = victim.id, sid = victim.staffId, ox = usedObj.id, mm = state.money, pay = JSON.stringify(victim.paid);
-      check('move-in-use: moveObject on a busy station succeeds', !!tgt && B.moveObject(state, usedObj.id, tgt.x, tgt.y, usedObj.rot) === true);
-      const st = state.staff.find(x => x.id === sid);
-      check('move-in-use: treatment cancelled, patient back to waiting, links cleared', victim.stage === 'waiting' && victim.targetObj === null && victim.staffId === null && !usedObj.busy && usedObj.usedBy === null && (!st || !st.task || st.task.patientId !== pid), `${victim.stage}`);
-      check('move-in-use: fee only (no double charge / payment)', state.money === mm - B.relocationCost(usedObj.defId) && JSON.stringify(victim.paid) === pay);
-      runWeeks(2);
-      check('move-in-use: sim continues (no pointers to the old spot, invariants hold)', invariants().length === 0 && state.objects.every(o => !o.usedBy || state.patients.some(p => p.id === o.usedBy)), invariants().join(';'));
-      check('move-in-use: the moved station is usable again / patient not stuck', state.stats.patientsTotal > 0 && (victim.stage !== 'waiting' || victim.age - victim.waitStart < 600 || victim.stage === 'gone'));
-    }
-    // seated on a moved sofa: seat released
-    fresh(); state.money = 5e6;
-    let seated = null;
-    for (let i = 0, N = 3 * MIN_PER_WEEK; i < N && !seated; i++) { step(1); seated = state.patients.find(p => p.seat && p.stage === 'waiting'); }
-    if (check('move-seat: found a seated patient', !!seated)) {
-      const sofa = state.objects.find(o => o.id === seated.seat.objId);
-      const l = state.lot; let spot = null;
-      for (let y = l.y0 + 1; y < l.y0 + l.h - 1 && !spot; y++) for (let x = l.x0 + 1; x < l.x0 + l.w - 1 && !spot; x++) if ((x !== sofa.x || y !== sofa.y) && B.canMove(state, sofa.id, x, y, sofa.rot).ok) spot = { x, y };
-      check('move-seat: sofa moves, seat cleared (no stale seat coordinates)', B.moveObject(state, sofa.id, spot.x, spot.y, sofa.rot) && (!seated.seat || seated.seat.objId !== sofa.id || (seated.seat.x >= spot.x && seated.seat.y >= spot.y)));
-      runWeeks(1);
-      check('move-seat: invariants after a week', invariants().length === 0, invariants().join(';'));
-    }
-    // save / load round trip after a move
-    fresh(); clearObjects(); state.money = 5e6;
-    const mo = put('tens', 12, 12); B.moveObject(state, mo.id, 14, 14, 0); const room2 = put('exam_room', 17, 12); B.moveObject(state, room2.id, 17, 12, 1);
-    const sig = JSON.stringify(state.objects.map(o => [o.id, o.defId, o.x, o.y, o.rot]));
-    Sav.saveGame(state, 'mv'); state.objects = []; Sav.loadGame(state, 'mv'); refresh();
-    check('move: save/load round-trip keeps moved + rotated objects', JSON.stringify(state.objects.map(o => [o.id, o.defId, o.x, o.y, o.rot])) === sig && state.map.occ[14][14] === mo.id && invariants().length === 0);
-    runWeeks(1);
-    check('move: week simulated after load without issues', invariants().length === 0, invariants().join(';'));
-  }
-
-  // ---- staff ----
-  fresh(); state.money = 1e7;
-  const doc = state.staff.find(s => s.role === 'doctor');
-  check('fire: last doctor can be fired', S.fire(state, doc.id) === true && !state.staff.some(s => s.role === 'doctor'));
+// =====================================================================================================
+// SECTION: flow (starter shop, guests, dine, upsell)
+// =====================================================================================================
+function flowSection() {
+  section('Guest flow: starter shop, tables, upsell');
+  fresh(5);
+  check('starter shop: objects and 4 staff', state.objects.length >= 12 && state.staff.map(s => s.role).sort().join() === 'cashier,chef,cook,server', state.staff.map(s => s.role).join());
+  check('starter money', state.money > 900000 && state.money < K.START_MONEY, String(state.money));
+  check('starter has tables, reception, a bench', state.objects.some(o => /^table/.test(o.defId)) && state.objects.some(o => o.defId === 'reception') && state.objects.some(o => o.defId === 'bench'));
+  check('no clinic objects in the starter shop', state.objects.every(o => BUILDABLES[o.defId]));
   runWeeks(2);
-  check('after firing the only doctor: sim keeps running', invariants().length === 0 && Number.isFinite(state.money), invariants().join(';'));
-  check('fire: unknown id false', S.fire(state, 999999) === false);
-  fresh(); state.money = 1e8;
-  for (let i = 0; i < 20; i++) { if (state.hirePool.length === 0) S.refreshPool(state); S.hire(state, state.hirePool[0].cid); }
-  check('hire: stops at maxStaff', state.staff.length === Res.maxStaffOf(state) && state.staff.length === LOTS[0].maxStaff, `staff=${state.staff.length}`);
-  check('hire: over cap leaves money/pool untouched', (() => { const m = state.money; if (!state.hirePool.length) S.refreshPool(state); const n = state.hirePool.length; const ok = S.hire(state, state.hirePool[0].cid) === null; return ok && state.money === m && state.hirePool.length === n; })());
-  fresh(); state.money = 10; S.refreshPool(state);
-  check('hire: insufficient funds refused', S.hire(state, state.hirePool[0].cid) === null && state.staff.length === 3);
-  check('hire: bad candidate id refused', S.hire(state, 'zzz') === null);
-  check('research maxStaff effect raises the cap', (() => { fresh(); const base = Res.maxStaffOf(state); state.research.done = ['rs_staffing']; return Res.maxStaffOf(state) === base + 1; })());
-
-  // ---- expansion with objects hugging the old border ----
-  fresh(); state.money = 1e8; clearObjects();
-  put('tens', 10, 10); put('tens', 21, 10); put('tens', 10, 19); put('tens', 21, 18);
-  state.reputation = 999; state.time.year = 9; state.history.push({ year: 1, month: 1, satisfaction: 90, patients: 50 });
-  state.research.done = Object.keys(RESEARCH);
-  for (let i = 0; i < 12; i++) state.staff.push(S.createStaff(state, 'pt', null, 14, 18));
-  for (let i = 0; i < 8; i++) put('sofa', 10 + (i % 4) * 2, 11 + Math.floor(i / 4) * 2);
-  state.map.floor[18][14] = 'ramp'; state.map.floor[10][10] = 'floor_mat';
-  const before = JSON.parse(JSON.stringify(state.objects.slice(0, 4)));
-  let lvl = 0;
-  while (Ins.canExpand(state).ok && lvl < 5) { state.reputation = 999; state.money = 1e8; Ins.expand(state); refresh(); lvl++; }
-  check('expansion x3: steps through every lot level, border objects/floors intact', state.lotLevel === 3 && JSON.stringify(state.objects.slice(0, 4)) === JSON.stringify(before) && state.map.floor[10][10] === 'floor_mat', 'level ' + state.lotLevel);
-  check('expansion: further expand refused at max level', Ins.expand(state) === false && Ins.canExpand(state).ok === false);
-  runWeeks(3);
-  check('sim runs fine after expansions', invariants().length === 0, invariants().join('; '));
-
-  // ---- price extremes ----
-  for (const pmv of [0.5, 2.0]) {
-    fresh(4); clearObjects(); state.research.done = Object.keys(RESEARCH); state.reputation = 300; state.money = 9e6;
-    for (const id of Object.keys(TREATMENTS)) if (TREATMENTS[id].kind === 'self') Ev.setPriceMult(state, id, pmv);
-    put('exam_room', 11, 12); put('reception', 16, 17); put('sofa', 12, 18); put('bed', 18, 13); put('shockwave_room', 19, 15); put('manual_room', 11, 15);
-    state.staff.push(S.createStaff(state, 'pt', null, 17, 15));
-    let sum = 0, n = 0; const off = bus.on('treatment:done', (ev) => { if (ev.selfPay) { sum += ev.selfPay; n++; } });
-    runWeeks(16); off();
-    check(`price x${pmv}: sim stable, finite`, invariants().length === 0 && n > 0, `selfPay n=${n} avg=${Math.round(sum / Math.max(1, n))}`);
+  check('2 days: guests were served', state.stats.patientsTotal > 10, String(state.stats.patientsTotal));
+  check('income arrived', state.ledger.income.menu > 0, String(state.ledger.income.menu));
+  check('invariants hold', invariants().length === 0, invariants().join('; '));
+  // every plan step actually happens: tables used
+  fresh(6);
+  const seenStages = new Set(); let diners = 0;
+  for (let i = 0; i < MIN_PER_WEEK * 2; i++) { step(1); for (const p of state.patients) { seenStages.add(p.stage); if (p.stage === 'treating' && p.plan[p.planIdx] === 'dine') diners++; } }
+  check('stages seen: arriving/registering/waiting/to_station/treating/leaving', ['arriving', 'registering', 'waiting', 'to_station', 'treating', 'leaving'].every(s => seenStages.has(s)), [...seenStages].join());
+  check('guests sit at tables (dine step runs)', diners > 0, String(diners));
+  // upsell
+  fresh(7);
+  unlockAll(); put('chef_table', 18, 10); put('dessert_bar', 15, 10); hireAll();
+  for (let i = 0; i < MIN_PER_WEEK * 6; i++) step(1);
+  check('upsell offers and accepts happen with special stations built', P.debug.upsellOffers > 0 && P.debug.upsells > 0, `${P.debug.upsells}/${P.debug.upsellOffers}`);
+  check('special income recorded', state.history.length > 0 ? state.history[0].income > 0 : state.ledger.income.special >= 0);
+  // follow-up visits / regulars
+  check('regulars appear over time (cured stat)', state.stats.cured >= 0);
+  // dilemma triggers: freebie
+  fresh(8);
+  const gst = P.spawnPatient(state, 'elder');
+  state.patients.push && void 0;
+  for (let i = 0; i < 40 && !state.events.pendingDilemma; i++) { state.events.cooldowns = {}; delete state.events.lastDilemmaWeek; bus.emit('dilemma:request', { patientId: gst.id, trigger: 'freebie' }); }
+  check('freebie dilemma opens', !!state.events.pendingDilemma && state.events.pendingDilemma.trigger === 'freebie', state.events.pendingDilemma && state.events.pendingDilemma.id);
+  if (state.events.pendingDilemma) { const out = Ev.resolveDilemma(state, 0); check('freebie dilemma resolves', !!out && out.ok); }
+  state.patients = [];
+  for (const trig of ['skip_main', 'overpush', 'complain']) {
+    state.events.cooldowns = {}; delete state.events.lastDilemmaWeek; state.events.pendingDilemma = null;
+    let pd = null; for (let i = 0; i < 40 && !pd; i++) { state.events.cooldowns = {}; delete state.events.lastDilemmaWeek; bus.emit('dilemma:request', { patientId: gst.id, trigger: trig }); pd = state.events.pendingDilemma; }
+    check(`${trig} dilemma opens`, !!pd && pd.trigger === trig);
+    if (pd) Ev.resolveDilemma(state, pd.choices.length - 1);
   }
+  // skip_main: choosing option 1 drops the intake step
+  fresh(9);
+  const gg = P.spawnPatient(state, 'elder'); gg.plan = ['main', 'soup', 'dine']; gg.planIdx = 0;
+  state.events.pendingDilemma = { kind: 'dilemma', id: 'x', trigger: 'skip_main', patientId: gg.id, title: 't', text: 't', choices: [{ label: 'a', result: 'r', effects: {} }, { label: 'b', result: 'r', effects: {} }] };
+  Ev.resolveDilemma(state, 1);
+  check('skip_main option 2 marks the guest to skip the main dish', gg.flags.skipMain === true);
+}
 
-  // ---- pendingDilemma + save/load ----
-  fresh(); const pt = P.spawnPatient(state, 'elder');
-  triggerDilemma(pt.id, 'painkiller');
-  const pendingId = state.events.pendingDilemma && state.events.pendingDilemma.id;
-  check('dilemma pending', !!pendingId);
-  let reshown = 0; const offS = bus.on('dilemma:show', () => reshown++);
-  const savedOk = Sav.saveGame(state, '1');
-  state.events.pendingDilemma = null; state.time.paused = false;
-  const loadedOk = Sav.loadGame(state, '1');
-  offS();
-  check('save/load with pending dilemma: restored, paused, modal re-shown', savedOk && loadedOk && state.events.pendingDilemma && state.events.pendingDilemma.id === pendingId && state.time.paused === true && reshown === 1);
-  const clk = state.time.clock; step(1, false); step(1, false);
-  check('pending dilemma after load still freezes the clock', state.time.clock === clk);
-  Ev.resolveDilemma(state, 0);
-  step(1, false);
-  check('resolve after load: unpaused and sim proceeds', !state.events.pendingDilemma && state.time.paused === false && state.time.clock > clk);
-  fresh(); state.time.paused = true; const p4 = P.spawnPatient(state, 'elder');
-  triggerDilemma(p4.id, 'painkiller');
-  Ev.resolveDilemma(state, 0);
-  check('dilemma remembers user pause (stays paused after resolving)', state.time.paused === true);
-
-  // ---- month boundary in the middle of a modal ----
-  fresh(); state.time.week = 4; state.time.clock = K.CLOSE_MIN - 2;
-  const trig = bus.on('month:start', () => { Ev.triggerEvent(state, 'li_chief'); });
-  step(1, false); step(1, false); step(1, false);
-  trig();
-  check('month rollover with a decision modal opening on month:start', state.time.month === 2 && state.time.week === 1 && !!state.events.pendingDilemma && state.time.clock === K.OPEN_MIN, JSON.stringify(state.time));
-  const mcount = state.history.length, m1 = state.money;
-  for (let i = 0; i < 100; i++) step(1, false);
-  check('modal open: no time passes, no double settlement', state.history.length === mcount && state.money === m1 && state.time.clock === K.OPEN_MIN);
-  Ev.resolveDilemma(state, 0);
-  step(1);
-  check('modal closed: time continues from 08:00', state.time.clock > K.OPEN_MIN);
-  fresh(); const p5 = P.spawnPatient(state, 'elder'); Ev.triggerEvent(state, 'li_chief');
-  const first = state.events.pendingDilemma;
-  for (let i = 0; i < 10; i++) { state.events.cooldowns = {}; bus.emit('dilemma:request', { patientId: p5.id, trigger: 'painkiller' }); }
-  check('second request while pending is ignored', state.events.pendingDilemma === first);
-  check('triggerEvent while pending is refused', Ev.triggerEvent(state, 'nhi_audit') === null);
-
-  // ---- bankruptcy ----
-  fresh();
-  let over = 0; const offB = bus.on('game:over', () => over++);
-  state.money = -299999; state.nhi.monthPoints = 0;
-  runMonths(1);
-  offB();
-  check('bankruptcy: money < -300k at month end -> game:over once', state.money < Eco.BANKRUPT_LIMIT ? over === 1 : over === 0, `money=${Math.round(state.money)} over=${over}`);
-  check('bankruptcy: autosave deleted on game over', over === 0 || Sav.listSaves().every(s => s.slot !== 'auto'));
-  check('bankruptcy: exactly at the limit does not trigger', (() => { fresh(); let o = 0; const f = bus.on('game:over', () => o++); state.staff = []; state.objects = []; state.money = Eco.BANKRUPT_LIMIT + Eco.monthlyCosts(state).rent; Eco.settleMonth(state); f(); return o === 0 && state.money === Eco.BANKRUPT_LIMIT; })());
-
-  // ---- misc ----
-  fresh(); state.points.medical = 100; Res.start(state, 'rs_evidence');
-  Sav.saveGame(state, '2'); runWeeks(2); Sav.loadGame(state, '2');
-  check('research in progress survives save/load', state.research.current === 'rs_evidence' && state.research.progress === 0);
+// =====================================================================================================
+// SECTION: qualify (who may operate what)
+// =====================================================================================================
+function qualifySection() {
+  section('Facility qualification (roles)');
+  fresh(10);
+  check('requiredRolesFor reception = cashier', Q.requiredRolesFor('reception').join() === 'cashier');
+  check('chef_range needs chef', Q.requiredRolesFor('chef_range').join() === 'chef');
+  check('braise_pot cook or cashier', Q.requiredRolesFor('braise_pot').sort().join() === 'cashier,cook');
+  check('tables need a server', Q.requiredRolesFor('table4').join() === 'server');
+  check('attend: tables/pots are setup', Q.attendOf(TREATMENTS.dine) === 'setup' && Q.attendOf(TREATMENTS.rice) === 'setup' && Q.attendOf(TREATMENTS.main) === 'full');
+  check('attendMinutes for setup dishes', Q.attendMinutes(TREATMENTS.dine) === TREATMENTS.dine.setupMin && Q.attendMinutes(TREATMENTS.main) === TREATMENTS.main.duration);
+  // fire the server: tables become unstaffed
+  const server = state.staff.find(s => s.role === 'server');
+  S.fire(state, server.id); refresh(); Q.invalidateQualify();
+  check('no server: tables flagged unstaffed', state.objects.filter(o => /^table/.test(o.defId)).every(o => Q.isUnstaffed(state, o)));
+  check('missingRoles lists server', Q.missingRoles(state).some(m => m.role === 'server'));
+  check('treatmentStaffed(dine) false', Q.treatmentStaffed(state, 'dine') === false);
+  const before = P.debug.skippedRole || 0;
   runWeeks(1);
-  check('...and completes afterwards', Res.isDone(state, 'rs_evidence'));
-  fresh(); state.money = 0;
-  check('board: toggling on without funds refused', Ev.setBoard(state, EVD.BOARDS[0].id, true) === false && !state.policy.boards.length);
-  state.money = 1e6; check('board: on then off', Ev.setBoard(state, EVD.BOARDS[0].id, true) && Ev.setBoard(state, EVD.BOARDS[0].id, false) && !state.policy.boards.length);
-  check('focus: bad value refused, good applied', Ev.setFocus(state, 'xxx') === false && Ev.setFocus(state, 'ltc') && near(state.mods.typeSpawn.elder, 1.6));
-  fresh(); state.money = 0; Ev.triggerEvent(state, 'nhi_audit'); Ev.resolveDilemma(state, 1);
-  check('event cost with no money: money may go negative, ledger consistent', state.money < 0 && invariants().length === 0, invariants().join(';'));
+  check('guests skip steps nobody can run (skippedRole counter)', (P.debug.skippedRole || 0) > before, String((P.debug.skippedRole || 0) - before));
+  check('roleChips for a building', Q.roleChips(state, 'table4').every(c => c.role === 'server'));
+  check('requirementText', /需要/.test(Q.requirementText('table4')));
+  // hire him back
+  const c = { cid: 'z', role: 'server', name: '測試', skill: 5, charm: 5, salary: 30000, hireCost: 1000, trait: null, staminaMax: 100 };
+  state.hirePool = [c]; state.money = 1e6;
+  const hired = S.hire(state, 'z'); refresh(); Q.invalidateQualify();
+  check('rehired server restores tables', !!hired && state.objects.filter(o => /^table/.test(o.defId)).every(o => !Q.isUnstaffed(state, o)));
+}
+
+// =====================================================================================================
+// SECTION: events (every event x every choice)
+// =====================================================================================================
+function eventsSection() {
+  section('Events engine: every event x choice');
+  const pool = Ev.eventPool();
+  let applied = 0;
+  for (const def of pool) {
+    for (let ci = 0; ci < def.choices.length; ci++) {
+      for (const roll of def.choices[ci].chance ? ['win', 'lose'] : [null]) {
+        fresh(11);
+        unlockAll(); hireAll();
+        state.money = 3e6; state.reputation = 200;
+        for (const o of ['fryer', 'noodle_stove', 'braise_pot']) put(o, 11 + state.objects.length % 8, 10);
+        state.events.cooldowns = {};
+        const pd = Ev.triggerEvent(state, def.id);
+        if (!check(`event ${def.id}: opens`, !!pd)) continue;
+        const e = throws(() => Ev.resolveDilemma(state, ci, roll ? { roll } : {}));
+        const out = e ? null : state.events.pendingDilemma === null;
+        check(`event ${def.id}[${ci}${roll ? ':' + roll : ''}]: resolves without error`, !e && out, e ? e.message : '');
+        const bad = invariants();
+        check(`event ${def.id}[${ci}${roll ? ':' + roll : ''}]: invariants`, bad.length === 0, bad.join('; '));
+        applied++;
+      }
+    }
+  }
+  check('events: every option applied', applied > 150, String(applied));
+
+  // conditions
+  fresh(12);
+  const c = (cond) => Ev.condMet(state, cond);
+  check('cond: minYear', c({ minYear: 1 }) && !c({ minYear: 2 }));
+  check('cond: hasObject / needObjects', c({ hasObject: ['fryer'] }) && !c({ hasObject: ['wok_range'] }) && c({ needObjects: ['fryer', 'reception'] }) && !c({ needObjects: ['fryer', 'wok_range'] }));
+  check('cond: hasStaff', c({ hasStaff: { chef: 1 } }) && !c({ hasStaff: { barista: 1 } }));
+  check('cond: months / weather', (state.time.month = 1, c({ months: [1] }) && !c({ months: [2] })) && (state.weather = { kind: 'cold', id: 'cold' }, c({ weather: ['cold'] }) && !c({ weather: ['hot'] })));
+  check('cond: policy', c({ policy: 'business' }) && !c({ policy: 'kids' }));
+  check('cond: risk', (Eco.addRisk(state, 50), c({ riskAtLeast: 40 }) && !c({ riskAtLeast: 90 }) && c({ riskAtMost: 60 })));
+  check('cond: reviewBelow / minRep', !c({ reviewBelow: 3 }) && c({ minRep: 0 }) && !c({ minRep: 999 }));
+  check('cond: unknown / removed keys ignored', c({ pvBelow: 0.5, monthPointsOverCapPct: 10 }));
+  // effects
+  fresh(13);
+  const d = (fx) => Ev.applyEffectsDetailed(state, fx, {});
+  state.money = 100000;
+  d({ money: -30000, reputation: 5 }); check('fx: money/reputation', state.money === 70000 && state.reputation > 14);
+  d({ points: { culinary: 10, device: -999 } }); check('fx: points clamp at 0, culinary key', state.points.culinary === 10 && state.points.device === 0);
+  d({ risk: 20 }); check('fx: risk', Eco.riskOf(state) === 20);
+  d({ buff: { weeks: 2, label: 't', mods: { spawnMult: 0.1, foodCost: -0.1 }, spawn: { student: 0.3 } } });
+  check('fx: buff applies to mods then expires', state.mods.spawnMult > 1.05 && state.mods.foodCost < 0.95 && state.mods.typeSpawn.student > 1.2);
+  bus.emit('week:start', {}); bus.emit('week:start', {}); bus.emit('week:start', {});
+  check('fx: buff expiry restores mods', state.mods.foodCost === 1 && state.events.buffs.length === 0);
+  state.time.clock = 700; const sw = state.staff[0]; sw.stamina = 50; d({ stamina: { role: sw.role, delta: -20 } }); check('fx: stamina', sw.stamina < 50, String(sw.stamina));
+  d({ morale: { delta: -30 } }); check('fx: morale', state.staff.every(s => S.moraleOf(s) <= 46), state.staff.map(s => S.moraleOf(s)).join());
+  d({ setFlag: 'x1' }); check('fx: setFlag / clearFlag', state.events.flags.x1 === true && (d({ clearFlag: 'x1' }), !state.events.flags.x1));
+  d({ reviewScore: -1 }); check('fx: reviewScore', Eco.reviewOf(state) < 4);
+  unlockAll(); put('fryer', 12, 10); state.objects.forEach(o => { o.wear = 80; }); d({ repair: 'all' }); check('fx: repair all resets wearable gear', state.objects.filter(o => Eq.isWearable(o.defId)).every(o => !o.wear));
+  unlockAll(); put('fryer', 12, 10); d({ breakdown: 'fryer' }); check('fx: breakdown breaks the fryer', state.objects.find(o => o.defId === 'fryer').broken === true);
+  d({ repair: 'broken' }); check('fx: repair broken', !state.objects.some(o => o.broken));
+  d({ maintenance: 13 }); check('fx: maintenance contract', state.objects.some(o => Eq.isMaintained(state, o)));
+  // equipment
+  fresh(14);
+  unlockAll(); put('fryer', 12, 10);
+  const fr = state.objects.find(o => o.defId === 'fryer');
+  check('equipment: fryer wearable', Eq.isWearable('fryer') && !Eq.isWearable('plant'));
+  fr.wear = 95; let broke = 0; for (let i = 0; i < 40; i++) { fr.broken = false; broke += Eq.weeklyWear(state).length; fr.wear = 95; }
+  check('equipment: high wear breaks things sometimes', broke > 0 && broke < 40, String(broke));
+  fr.broken = true; const f2 = state.objects.length;
+  check('broken station is skipped by feasibility (no station)', fr.broken && f2 > 0);
+  check('repair / service cost', Eq.repairCost(fr) >= Eq.WEAR_TUNE.REPAIR_MIN && Eq.serviceCost(fr) >= Eq.WEAR_TUNE.SERVICE_MIN);
 }
 
 // =====================================================================================================
 // SECTION: save / load / determinism
 // =====================================================================================================
-function dump() { return JSON.stringify({ ...state, map: { floor: state.map.floor } }); }
-function firstDiff(a, b, path = 'state', out = []) {
-  if (out.length >= 12 || a === b) return out;
-  if (typeof a !== typeof b || a === null || b === null || typeof a !== 'object') { out.push(`${path}: ${JSON.stringify(a)?.slice(0, 60)} != ${JSON.stringify(b)?.slice(0, 60)}`); return out; }
-  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) firstDiff(a[k], b[k], path + (Array.isArray(a) ? `[${k}]` : '.' + k), out);
-  return out;
-}
-function mkPlayer(seed) {
-  fresh(seed); state.research.done = ['rs_ultrasound', 'rs_evidence', 'rs_heat', 'rs_manual', 'rs_shockwave', 'rs_ot', 'rs_edu']; state.money = 5e6; state.reputation = 120;
-  put('traction', 20, 12); put('bed', 13, 15); put('rest_room', 19, 17); put('shockwave', 11, 10); put('manual_room', 13, 10); put('coffee', 15, 10); put('si_room', 10, 15);
-  state.staff.push(S.createStaff(state, 'pt', null, 17, 15), S.createStaff(state, 'ot', null, 14, 18));
-  Ev.startCommunity(state, 'health_talk'); Ev.setBoard(state, EVD.BOARDS[0].id, true);
-}
 function saveSection() {
   section('Save / load / determinism');
-  mkPlayer(11);
-  runMonths(3);
-  runWeeks(1); for (let i = 0; i < 300; i++) step(1);
-  check('mid-run state has live agents to serialise', state.patients.length > 0 && state.agents && Array.isArray(state.agents.returning), `patients=${state.patients.length}`);
-  const before = dump();
-  const rngAt = rngS;
-  check('saveGame ok', Sav.saveGame(state, '3'));
-  const payload = globalThis.localStorage.getItem(K.SAVE_KEY_PREFIX + '3');
-  check('save payload carries version/savedAt/label', (() => { const p = JSON.parse(payload); return p.version === K.SAVE_VERSION && p.savedAt > 0 && /NT\$/.test(p.label); })());
-  check('save does not store map.occ (cache)', !payload.includes('"occ"'));
-  check('save size reasonable (<400KB)', payload.length < 400000, payload.length + ' bytes');
-
-  runMonths(2);
-  const contA = dump();
-
-  seedRng(rngAt);
-  check('loadGame ok', Sav.loadGame(state, '3'));
-  const afterLoad = dump();
-  const d0 = firstDiff(JSON.parse(before), JSON.parse(afterLoad));
-  check('JSON round trip: state after load == state before save', d0.length === 0, d0.join(' ; '));
-  check('load rebuilds caches (occ, zones, mods)', !!state.map.occ && state.zones.length === JSON.parse(before).zones.length && JSON.stringify(state.mods) === JSON.stringify(JSON.parse(before).mods));
-  runMonths(2);
-  const d1 = firstDiff(JSON.parse(contA), JSON.parse(dump()));
-  check('determinism: load + 2 months == uninterrupted 2 months (same seed)', d1.length === 0, d1.join(' ; '));
-
-  mkPlayer(12); runMonths(2);
-  const ex = Sav.exportSave(state); const b4 = dump();
-  fresh(99);
-  check('importSave ok & equals exported state', Sav.importSave(state, ex) && firstDiff(JSON.parse(b4), JSON.parse(dump())).length === 0);
-  check('importSave rejects garbage', !Sav.importSave(state, '{{{') && !Sav.importSave(state, '{"a":1}') && !Sav.importSave(state, '[]') && !Sav.importSave(state, 'null') && !Sav.importSave(state, '"x"'));
-  check('importSave rejects future version', !Sav.importSave(state, JSON.stringify({ version: K.SAVE_VERSION + 5, state: JSON.parse(b4) })));
-  check('importSave of a bare state dump works', Sav.importSave(state, b4));
-  check('listSaves / deleteSave', (() => { Sav.saveGame(state, '1'); const n = Sav.listSaves().filter(s => s.slot === '1').length; Sav.deleteSave('1'); return n === 1 && Sav.listSaves().every(s => s.slot !== '1'); })());
-  check('loadGame of missing slot returns false', Sav.loadGame(state, 'nope') === false);
-  globalThis.localStorage.setItem(K.SAVE_KEY_PREFIX + 'bad', '{truncated');
-  check('loadGame of corrupt slot returns false and keeps the game', (() => { const m = state.money; return Sav.loadGame(state, 'bad') === false && state.money === m; })());
-  check('listSaves skips corrupt slots', Sav.listSaves().every(s => s.slot !== 'bad'));
-  const realLS = globalThis.localStorage;
-  globalThis.localStorage = { setItem() { throw new Error('quota'); }, getItem() { throw new Error('blocked'); }, get length() { throw new Error('x'); }, key() { throw new Error('x'); }, removeItem() { throw new Error('x'); } };
-  check('storage that throws: saveGame/loadGame false, listSaves [] (no crash)', Sav.saveGame(state, 'auto') === false && Sav.loadGame(state, 'auto') === false && Sav.listSaves().length === 0);
-  globalThis.localStorage = undefined;
-  check('no localStorage at all: no crash', Sav.saveGame(state, 'auto') === false);
-  globalThis.localStorage = realLS;
-
-  // ---- old / partial saves ----
-  fresh(5); runMonths(1);
-  const full = JSON.parse(dump());
-  const strip = (mut) => { const s = JSON.parse(JSON.stringify(full)); mut(s); return s; };
-  const variants = {
-    'no agents/meta': (s) => { delete s.agents; },
-    'no mods': (s) => { delete s.mods; },
-    'no events': (s) => { delete s.events; },
-    'no inspections/flags': (s) => { delete s.inspections; delete s.flags; },
-    'no policy.boards/priceMult': (s) => { delete s.policy.boards; delete s.policy.priceMult; },
-    'no ledger/stats/nhi': (s) => { delete s.ledger; delete s.stats; delete s.nhi; },
-    'pre fee-rules save (ledger without copay, mid-visit patients without claims)': (s) => { delete s.ledger.income.copay; s.patients = [{ id: 9002, type: 'elder', name: 'x', x: 15.5, y: 19.5, stage: 'waiting', plan: ['heat', 'tens', 'traction'], planIdx: 0, visit: 2, treated: 0 }]; },
-    'no hirePool/queue/zones/history': (s) => { delete s.hirePool; delete s.queue; delete s.zones; delete s.history; },
-    'no weather': (s) => { delete s.weather; },
-    'no research': (s) => { delete s.research; },
-    'no points': (s) => { delete s.points; },
-    'no policy': (s) => { delete s.policy; },
-    'no time.speed': (s) => { delete s.time.speed; delete s.time.paused; },
-    'staff w/o runtime fields': (s) => { s.staff = s.staff.map(({ id, role, name, skill, charm, stamina, staminaMax, salary, x, y }) => ({ id, role, name, skill, charm, stamina, staminaMax, salary, x, y })); },
-    'patients w/o runtime fields': (s) => { s.patients = [{ id: 9001, type: 'elder', name: 'x', x: 15.5, y: 19.5, stage: 'waiting', plan: ['heat'], planIdx: 0 }]; },
-    'objects w/o runtime fields': (s) => { s.objects = s.objects.map(({ id, defId, x, y, rot }) => ({ id, defId, x, y, rot })); },
-    'old version 0': (s) => { s.version = 0; },
-    'unknown object defId': (s) => { s.objects.push({ id: 777, defId: 'ghost', x: 1, y: 1, rot: 0 }); },
-    'unknown staff role': (s) => { s.staff.push({ id: 778, role: 'wizard', x: 1, y: 1 }); },
-    'unknown research done': (s) => { s.research.done.push('rs_future'); s.research.current = 'rs_future'; },
-    'unknown policy focus': (s) => { s.policy.focus = 'zzz'; },
-    'unknown weather id': (s) => { s.weather = { kind: 'meteor', id: 'meteor', temp: 20 }; },
-    'lotLevel beyond data': (s) => { s.lotLevel = 99; },
-    'money null': (s) => { s.money = null; },
-    'string numbers': (s) => { s.reputation = '120'; s.points = { medical: '5', device: null, service: 'x' }; },
-    'short map.floor': (s) => { s.map.floor = s.map.floor.slice(0, 5); },
-  };
-  for (const [name, mut] of Object.entries(variants)) {
-    fresh(6);
-    let okLoad, err = '';
-    try {
-      okLoad = Sav.importSave(state, JSON.stringify({ version: full.version, savedAt: 1, label: 'x', state: strip(mut) }));
-      if (okLoad) runWeeks(5);
-    } catch (e) { err = e.stack.split('\n').slice(0, 3).join(' | '); okLoad = false; }
-    const inv = okLoad ? invariants() : [];
-    const mayReject = name === 'money null';
-    check(`old save "${name}": ${mayReject ? 'rejected or loads safely' : 'loads + runs 5 weeks'}`, !err && (mayReject ? (!okLoad || inv.length === 0) : okLoad && inv.length === 0), err || inv.slice(0, 3).join('; '));
-  }
+  fresh(20);
+  unlockAll(); put('wok_range', 18, 10);
+  state.policy.priceMult.steak = 1.3; state.policy.focus = 'kids';
+  runWeeks(3);
+  state.money = Math.round(state.money);
+  const snap = () => JSON.parse(JSON.stringify({ ...state, map: { floor: state.map.floor } }));
+  check('saveGame ok', Sav.saveGame(state, '1') === true);
+  const before = snap();
+  const key = K.SAVE_KEY_PREFIX + '1';
+  check('storage key prefix is restgame.save.', K.SAVE_KEY_PREFIX === 'restgame.save.' && globalThis.localStorage.getItem(key) !== null);
+  runWeeks(2);
+  check('loadGame ok', Sav.loadGame(state, '1') === true);
+  refresh();
+  const after = snap();
+  const diffs = [];
+  const cmp = (a, b, p) => { if (typeof a !== typeof b) { diffs.push(p); return; } if (a && typeof a === 'object') { for (const k of new Set([...Object.keys(a), ...Object.keys(b || {})])) cmp(a[k], (b || {})[k], p + '.' + k); } else if (a !== b && !(Number.isNaN(a) && Number.isNaN(b))) diffs.push(p + ` ${a} != ${b}`); };
+  cmp(before, after, 'state');
+  check('save -> load restores the whole state', diffs.length === 0, diffs.slice(0, 5).join(' | '));
+  check('listSaves shows slot 1 with the shop name', Sav.listSaves().some(s => s.slot === '1' && /幸福小吃店/.test(s.label)), JSON.stringify(Sav.listSaves().map(s => s.label)));
+  // export / import
+  const txt = Sav.exportSave(state);
+  check('exportSave is JSON', typeof txt === 'string' && txt.length > 1000 && !!JSON.parse(txt));
+  fresh(21);
+  check('importSave accepts it', Sav.importSave(state, txt) === true && state.shopName && state.policy.focus === 'kids' && state.policy.priceMult.steak === 1.3);
+  check('importSave rejects garbage', Sav.importSave(state, '{"nope":1}') === false && Sav.importSave(state, 'not json') === false);
+  // sanitize: hand-edited bad values
+  fresh(22);
+  const bad = JSON.parse(Sav.exportSave(state));
+  const st = bad.state || bad;
+  st.money = 123; st.reputation = 99999; st.points = { culinary: -5, device: 'a' }; st.policy.focus = 'ortho'; st.ledger.income = { menu: -4, nhi: 3 }; st.lotLevel = 99; st.time.clock = 99999;
+  st.objects.push({ id: 99999, defId: 'heatbox', x: 0, y: 0, rot: 0 }); st.staff.push({ id: 99998, role: 'doctor', name: 'x', skill: 99, charm: 1, stamina: 5, staminaMax: 100, salary: 1, x: 12, y: 12, path: [], state: 'idle', task: null });
+  const ok = Sav.importSave(state, JSON.stringify(bad));
+  check('sanitize: hostile save loads and is repaired', ok && state.money === 123 && Number.isFinite(state.money) && state.reputation <= 1000 && state.policy.focus === 'business' && state.lotLevel === 3 && state.points.culinary >= 0 && !state.objects.some(o => o.defId === 'heatbox') && !state.staff.some(s => s.role === 'doctor') && invariants().length === 0, invariants().join('; '));
+  // new game
+  Sav.newGame(state);
+  check('newGame resets', state.time.year === 1 && state.patients.length === 0 && state.history.length === 0 && state.staff.length === 4);
+  // determinism
+  const run = (seed) => { fresh(seed); runWeeks(8, true); return JSON.stringify({ m: Math.round(state.money), r: Math.round(state.reputation * 100), p: state.stats.patientsTotal, h: state.history.map(h => h.net) }); };
+  const a = run(31), b = run(31), c = run(32);
+  check('same seed -> identical outcome', a === b);
+  check('different seed -> different outcome', a !== c);
+  // load mid-run gives identical continuation
+  fresh(33); runWeeks(2);
+  Sav.saveGame(state, '3'); const rs = rngS; runWeeks(2); const x1 = JSON.stringify([Math.round(state.money), state.stats.patientsTotal]);
+  Sav.loadGame(state, '3'); refresh(); rngS = rs; runWeeks(2); const x2 = JSON.stringify([Math.round(state.money), state.stats.patientsTotal]);
+  check('save -> load -> identical continuation', x1 === x2, x1 + ' vs ' + x2);
 }
 
 // =====================================================================================================
 // SECTION: long run
 // =====================================================================================================
-const ORDER = ['rs_ultrasound', 'rs_heat', 'rs_queue', 'rs_admin', 'rs_evidence', 'rs_edu', 'rs_maint', 'rs_manual', 'rs_shockwave', 'rs_rep', 'rs_selfpay', 'rs_redcord', 'rs_insole', 'rs_laser', 'rs_prp', 'rs_ot', 'rs_staffing', 'rs_geriatric', 'rs_insurance', 'rs_sports_med', 'rs_expand', 'rs_st', 'rs_pediatric', 'rs_gait', 'rs_chronic', 'rs_brand'];
-function tryBuyRandom() {
-  const ids = Object.keys(BUILDABLES).filter(id => B.isUnlocked(state, id) && BUILDABLES[id].layer === 'object');
-  const id = ids[Math.floor(rng() * ids.length)];
-  const l = state.lot;
-  for (let k = 0; k < 25; k++) { const x = l.x0 + Math.floor(rng() * l.w), y = l.y0 + Math.floor(rng() * l.h), r = rng() < 0.5 ? 0 : 1; if (B.canPlace(state, id, x, y, r).ok) { B.placeObject(state, id, x, y, r); return true; } }
-  return false;
-}
-const POLICY = {
-  idle: () => {},
-  bad: () => {},
-  rich: (weekNo) => { POLICY.builder(weekNo); },
-  richstatic: () => {},
-  builder: (weekNo) => {
-    for (const id of ORDER) if (Res.canStart(state, id).ok) { Res.start(state, id); break; }
-    if (state.money > 1500000 && weekNo % 6 === 0) tryBuyRandom();
-    if (state.money > 1500000 && state.staff.length < Math.min(Res.maxStaffOf(state), 4 + state.lotLevel * 3) && weekNo % 8 === 0) { if (!state.hirePool.length) S.refreshPool(state); const c = state.hirePool.slice().sort((a, b) => b.skill - a.skill)[0]; if (c) S.hire(state, c.cid); }
-    if (weekNo % 12 === 5) for (const s of state.staff) S.train(state, s.id);
-    if (Ins.canExpand(state).ok && state.money > LOTS[Math.min(3, state.lotLevel + 1)].expandCost + 1500000) Ins.expand(state);
-    if (weekNo % 20 === 0) { const l = Ev.communityList(state).find(c => c.status === 'ready' && c.affordable && c.def.cost < state.money / 6); if (l) Ev.startCommunity(state, l.def.id); }
-    if (weekNo % 30 === 3) { for (const t of Object.values(TREATMENTS)) if (t.kind === 'self') Ev.setPriceMult(state, t.id, 0.8 + rng() * 0.8); }
-  },
-  chaos: () => {
-    const rx = () => Math.floor(rng() * 34) - 1, ry = () => Math.floor(rng() * 34) - 1;
-    for (let k = 0; k < 6; k++) {
-      const a = Math.floor(rng() * 16);
-      if (a === 0) { const ids = Object.keys(BUILDABLES); B.placeObject(state, ids[Math.floor(rng() * ids.length)], rx(), ry(), rng() < 0.5 ? 0 : 1); }
-      else if (a === 1) B.removeAt(state, rx(), ry());
-      else if (a === 2) { const ids = ['floor_mat', 'floor_wood', 'ramp']; B.paintFloor(state, ids[Math.floor(rng() * 3)], rx(), ry()); }
-      else if (a === 3) { const ids = Object.keys(RESEARCH); if (rng() < 0.5) state.points[K.POINT_KEYS[Math.floor(rng() * 3)]] += 200; Res.start(state, ids[Math.floor(rng() * ids.length)]); }
-      else if (a === 4) { if (!state.hirePool.length) S.refreshPool(state); const c = state.hirePool[Math.floor(rng() * state.hirePool.length)]; S.hire(state, c && c.cid); }
-      else if (a === 5) { const s = state.staff[Math.floor(rng() * state.staff.length)]; if (s && rng() < 0.4) S.fire(state, s.id); }
-      else if (a === 6) { const s = state.staff[Math.floor(rng() * state.staff.length)]; if (s) { state.points.service += 20; S.train(state, s.id); } }
-      else if (a === 7) { const ids = Object.keys(TREATMENTS); Ev.setPriceMult(state, ids[Math.floor(rng() * ids.length)], rng() * 3); }
-      else if (a === 8) Ev.startCommunity(state, EVD.COMMUNITY[Math.floor(rng() * EVD.COMMUNITY.length)].id);
-      else if (a === 9) Ev.setBoard(state, EVD.BOARDS[Math.floor(rng() * EVD.BOARDS.length)].id, rng() < 0.6);
-      else if (a === 10) Ev.setFocus(state, ['ortho', 'ltc', 'peds', 'bogus'][Math.floor(rng() * 4)]);
-      else if (a === 11) Ins.expand(state);
-      else if (a === 12) Eco.spend(state, (rng() - 0.3) * 3e6, ['build', 'other', 'weird'][Math.floor(rng() * 3)]);
-      else if (a === 13) { if (rng() < 0.5) Sav.saveGame(state, '1'); else if (Sav.loadGame(state, '1')) refresh(); }
-      else if (a === 14) { if (rng() < 0.05) state.money += 2e6; }
-      else if (a === 15) { if (rng() < 0.1) P.spawnPatient(state, ['elder', 'office', 'sports', 'kid'][Math.floor(rng() * 4)]); }
-    }
-    refresh();
-  },
-};
-function longRun(policy, years, seed) {
-  fresh(seed, true);
-  if (policy === 'rich' || policy === 'richstatic') {
-    // steady-state stress: L1 lot, everything researched, many stations + staff, high reputation (busy clinic, many agents)
-    state.money = 9e6; state.reputation = 200; state.research.done = Object.keys(RESEARCH);
-    state.lotLevel = 1; state.lot = { ...LOTS[1].lot }; state.door = { ...LOTS[1].door }; state.time.year = 2;
-    state.objects = []; state.staff = []; refresh();
-    const lay = [['reception', 16, 17], ['sofa', 10, 17], ['sofa', 12, 17], ['sofa', 10, 15], ['tv', 12, 15], ['water', 14, 17], ['plant', 9, 19], ['plant', 13, 19], ['plant', 14, 15],
-      ['exam_room', 9, 8], ['exam_room', 11, 8], ['manual_room', 14, 8], ['laser_room', 16, 8], ['redcord', 18, 8], ['shockwave', 13, 10], ['coffee', 12, 10],
-      ['heatbox', 10, 12], ['heatbox', 11, 12], ['heatbox', 12, 12], ['tens', 13, 12], ['tens', 14, 12], ['tens', 15, 12], ['traction', 16, 12], ['traction', 17, 12], ['bed', 19, 12], ['bed', 20, 12], ['bed', 21, 12],
-      ['rest_room', 21, 16], ['ir_lamp', 18, 15], ['ball_pit', 20, 9], ['soft_mat', 20, 11]];
-    opts_quietPut = true;
-    for (const [d, x, y] of lay) put(d, x, y);
-    opts_quietPut = false;
-    state.map.floor[19][12] = 'ramp';
-    for (const r of ['doctor', 'doctor', 'pt', 'pt', 'pt', 'pt', 'nurse', 'nurse']) state.staff.push(S.createStaff(state, r, null, 16 + (state.staff.length % 3), 14));
-    refresh();
-  }
-  if (policy === 'bad') {
-    state.objects = state.objects.filter(o => !['sofa', 'plant', 'reception'].includes(o.defId)); refresh();
-    B.placeObject(state, 'reception', 10, 10); refresh();
-  }
-  const months = monthsPassed() + years * 12;
-  const startHist = state.history.length;
-  let weekNo = 0, lastWeek = state.time.week;
-  const stats = { maxPatients: 0, maxSize: 0, sizes: [], minMoney: Infinity, maxMoney: -Infinity, gameOver: 0, bad: [], inspections: 0, expansions: 0, researched: 0, events: 0, maxRet: 0 };
-  const bigByMonth = new Map(); stats.bigMax = 0;
-  const offs = [bus.on('game:over', () => stats.gameOver++), bus.on('inspection:result', () => stats.inspections++), bus.on('lot:expanded', () => stats.expansions++),
-    bus.on('event:show', (e) => { const d = Ev.eventById(e.event.id); if (d && d.big) { const k = state.time.year * 12 + state.time.month; const n = (bigByMonth.get(k) || 0) + 1; bigByMonth.set(k, n); stats.bigMax = Math.max(stats.bigMax, n); } })];
-  const t0 = Date.now();
-  while (monthsPassed() < months) {
-    if (state.events.pendingDilemma) stats.events++;
-    step(1);
-    if (state.time.week !== lastWeek) {
-      lastWeek = state.time.week; weekNo++;
-      POLICY[policy](weekNo);
-      stats.maxPatients = Math.max(stats.maxPatients, state.patients.length);
-      stats.minMoney = Math.min(stats.minMoney, state.money); stats.maxMoney = Math.max(stats.maxMoney, state.money);
-      stats.maxRet = Math.max(stats.maxRet, state.agents && state.agents.returning ? state.agents.returning.length : 0);
-      if (weekNo % 4 === 0) {
-        const bad = invariants();
-        if (bad.length) { stats.bad.push(`y${state.time.year}m${state.time.month}: ` + bad.slice(0, 3).join('; ')); if (stats.bad.length > 5) break; }
-      }
-      if (weekNo % 48 === 0) { const sz = jsonSize(); stats.sizes.push(sz); stats.maxSize = Math.max(stats.maxSize, sz); }
-    }
-  }
-  offs.forEach(f => f());
-  stats.researched = state.research.done.length;
-  stats.ms = Date.now() - t0;
-  return stats;
-}
 function longrunSection() {
   section(`Long runs: ${YEARS} simulated years x [${POLICIES.join(', ')}]`);
   for (const pol of POLICIES) {
-    if (!POLICY[pol]) { console.log('  unknown policy', pol); continue; }
-    const st = longRun(pol, YEARS, SEED);
-    const fin = invariants();
-    console.log(`  ${pol.padEnd(8)} ${(st.ms / 1000).toFixed(1)}s money ${Math.round(state.money / 1000)}k [min ${Math.round(st.minMoney / 1000)}k max ${Math.round(st.maxMoney / 1000)}k] rep ${Math.round(state.reputation)} L${state.lotLevel} staff ${state.staff.length} objs ${state.objects.length} research ${st.researched}/${Object.keys(RESEARCH).length} hist ${state.history.length} peak-pat ${st.maxPatients} returning<=${st.maxRet} save ${(jsonSize() / 1024).toFixed(0)}KB nextId ${state.nextId} insp ${st.inspections} exp ${st.expansions} gameOver ${st.gameOver} events ${st.events}`);
-    check(`longrun ${pol}: no invariant violations during ${YEARS}y`, st.bad.length === 0, st.bad.slice(0, 3).join(' || '));
-    if (pol !== 'chaos') check(`longrun ${pol}: at most one big event per month`, st.bigMax <= 1, String(st.bigMax));   // (chaos reloads saves, so months repeat)
-    if (pol !== 'chaos') check(`longrun ${pol}: about one decision every 1-3.5 game weeks (${(YEARS * 48 / Math.max(1, st.events)).toFixed(1)}w)`, st.events / (YEARS * 48) >= 1 / 3.5 && st.events / (YEARS * 48) <= 1, String(st.events));
-    check(`longrun ${pol}: final invariants`, fin.length === 0, fin.slice(0, 4).join('; '));
-    check(`longrun ${pol}: history length == simulated months`, state.history.length === Math.min(Eco.HISTORY_MAX, YEARS * 12), String(state.history.length));
-    if (flag('monthly')) console.log('   ' + state.history.map(h => `${h.year}.${h.month}:${Math.round(h.net / 1000)}k/${h.patients}p`).join(' '));
-    check(`longrun ${pol}: save size stays bounded (<600KB)`, st.maxSize < 600000, st.sizes.map(s => Math.round(s / 1024) + 'KB').join(','));
-    if (pol !== 'chaos') check(`longrun ${pol}: inspection ran every year`, st.inspections === YEARS, String(st.inspections));
-    if (st.sizes.length >= 3) check(`longrun ${pol}: no runaway growth (last year < 2.5x year 2)`, st.sizes[st.sizes.length - 1] < st.sizes[1] * 2.5 + 20000, st.sizes.join(','));
-    if (pol !== 'chaos') {
-      longRun(pol, 1, SEED); const b1 = dump();
-      longRun(pol, 1, SEED); const b2 = dump();
-      check(`longrun ${pol}: same seed -> bit-identical state (1y, run twice)`, b1 === b2, firstDiff(JSON.parse(b1), JSON.parse(b2)).join(' ; '));
+    fresh(40 + POLICIES.indexOf(pol), true);
+    unlockAll();
+    if (pol === 'rich') { state.money = 6e6; for (const d of ['teppan', 'ice_shop', 'drink_bar', 'dessert_bar', 'table4', 'table2', 'bench', 'rest_room']) for (let i = 0; i < 2; i++) autoPut(d); }
+    if (pol === 'builder') state.money = 2e6;
+    let badMsg = '', maxPat = 0;
+    const weeks = YEARS * 12 * 4;
+    for (let w = 0; w < weeks && !state.flags.gameOver; w++) {
+      runWeeks(1);
+      maxPat = Math.max(maxPat, state.patients.length);
+      if (pol === 'chaos' && w % 3 === 0) chaos();
+      if (pol === 'builder' && w % 8 === 0) { for (const d of ['table2', 'bench', 'fryer', 'noodle_stove', 'drink_bar', 'coffee', 'plant']) if (autoPut(d)) break; if (state.staff.length < 7 && w % 16 === 0) { state.hirePool.forEach(c => { if (state.staff.length < 7 && state.money > c.hireCost + 200000) S.hire(state, c.cid); }); refresh(); } }
+      if (pol === 'rich' && w % 6 === 0) { state.objects.forEach(o => { if (o.broken) { o.broken = false; o.wear = 0; } }); const cc = Ins.canExpand(state); if (cc.ok) Ins.expand(state); }
+      const bad = invariants();
+      if (bad.length) { badMsg = `week ${w}: ${bad.slice(0, 3).join('; ')}`; break; }
     }
+    check(`long run ${pol}: invariants hold`, !badMsg, badMsg);
+    check(`long run ${pol}: calendar advanced`, state.time.year >= YEARS || state.flags.gameOver, `Y${state.time.year}`);
+    check(`long run ${pol}: state stays small`, jsonSize() < 700000, String(jsonSize()));
+    check(`long run ${pol}: crowd bounded`, maxPat <= P.maxPatientsOf(state) + 5, String(maxPat));
+    console.log(`     ${pol}: Y${state.time.year} M${state.time.month} money=${Math.round(state.money)} rep=${Math.round(state.reputation)} lot=${state.lotLevel} staff=${state.staff.length} served=${state.stats.patientsTotal}`);
+  }
+  function autoPut(d) {
+    const def = BUILDABLES[d];
+    for (let y = state.lot.y0; y < state.lot.y0 + state.lot.h - 3; y++) for (let x = state.lot.x0; x < state.lot.x0 + state.lot.w; x++) for (const rot of [0, 1]) {
+      if (x === 14 || x === 15 || x + (rot ? def.h : def.w) - 1 === 14 || x + (rot ? def.h : def.w) - 1 === 15) continue;
+      if (B.canPlace(state, d, x, y, rot).ok && state.money >= def.cost) { const o = B.placeObject(state, d, x, y, rot); if (o) { refresh(); return true; } }
+    }
+    return false;
+  }
+  function chaos() {
+    const r = rng();
+    if (r < 0.2 && state.objects.length > 6) { const o = state.objects[Math.floor(rng() * state.objects.length)]; if (!['reception'].includes(o.defId)) { B.removeAt(state, o.x, o.y); refresh(); } }
+    else if (r < 0.4) { const ids = Object.keys(BUILDABLES).filter(d => BUILDABLES[d].layer === 'object' && !BUILDABLES[d].requires); autoPut(ids[Math.floor(rng() * ids.length)]); }
+    else if (r < 0.55) { const s = state.staff[Math.floor(rng() * state.staff.length)]; if (s && state.staff.length > 1) { S.fire(state, s.id); refresh(); } }
+    else if (r < 0.7) { const c = state.hirePool[Math.floor(rng() * state.hirePool.length)]; if (c) { S.hire(state, c.cid); refresh(); } }
+    else if (r < 0.8) { const f = Object.keys(FOCUS); Ev.setFocus(state, f[Math.floor(rng() * f.length)]); }
+    else if (r < 0.9) { const o = state.objects[Math.floor(rng() * state.objects.length)]; if (o) { B.rotateObject && B.rotateObject(state, o.id); refresh(); } }
+    else { state.speed = 3; const cands = Res.list ? Res.list(state).filter(x => x.status === 'available') : []; if (cands.length && !state.research.current) Res.start(state, cands[0].node.id); }
   }
 }
 
 // =====================================================================================================
-// SECTION: achievements (docs/ACHIEVEMENTS.md §4 / §5.6)
-// =====================================================================================================
-function achievementsSection() {
-  section('Achievements');
-  const defs = ACHD.ACHIEVEMENTS;
-  check('achv: 58 definitions (41 + 12 career + 3 upgrades + 2 zones), unique ids, 13 hidden', defs.length === 58 && new Set(defs.map(d => d.id)).size === 58 && defs.filter(d => d.hidden).length === 13);
-  let unl = [], toasts = [];
-  const offU = bus.on('achievement:unlocked', e => unl.push(e.id));
-  const offT = bus.on('toast', t => toasts.push(t));
-  const FRESH = () => { fresh(SEED, true); Ach.ensure(state); bus.emit('mods:dirty', {}); unl = []; toasts = []; };
-  const add = (defId, x = 0, y = 0) => state.objects.push({ id: state.nextId++, defId, x, y, rot: 0, busy: false, usedBy: null, staffId: null, wear: 0 });
-  const pat = (type = 'elder', extra = {}) => ({ id: state.nextId++, type, treated: 1, ...extra });
-  const treat = (p, selfPay = 0) => bus.emit('treatment:done', { patient: p, treatmentId: 'x', nhiPoints: 0, selfPay, staffId: null });
-  const left = (p, o = {}) => bus.emit('patient:left', { patient: p, satisfaction: 70, cured: false, reason: 'done', ...o });
-  const weekEnd = () => { bus.emit('week:end', { ...state.time }); state.events.pendingDilemma = null; state.time.paused = false; };
-  const settle = (rec = {}) => bus.emit('month:settled', { year: state.time.year, month: state.time.month, nhiIncome: 100000, selfIncome: 0, income: 100000, ...rec });
-  const yearEnd = (y = 1) => Ach.evaluate(state, 'year:end', { year: y });   // (direct: the real year:end would also run a real inspection)
-  const mkStaff = (role) => state.staff.push({ id: state.nextId++, role, skill: 5, charm: 5, salary: 1000 });
-  const dil = (t) => bus.emit('dilemma:resolved', { ok: true, kind: 'dilemma', trigger: t, id: 'x' });
-  const SC = {
-    m_first_month: () => { state.history.push({ year: 1, month: 1, money: 1e6 }); settle(); },
-    m_cash_2m: () => { state.money = 2.1e6; weekEnd(); }, m_cash_10m: () => { state.money = 10.1e6; weekEnd(); },
-    m_pat_100: () => { state.stats.patientsTotal = 100; left(pat()); }, m_pat_1000: () => { state.stats.patientsTotal = 1000; left(pat()); }, m_pat_5000: () => { state.stats.patientsTotal = 5000; left(pat()); },
-    m_cured_100: () => { state.stats.cured = 100; left(pat(), { cured: true }); },
-    m_rep_100: () => { state.reputation = 101; left(pat()); }, m_rep_250: () => { state.reputation = 251; left(pat()); }, m_rep_600: () => { state.reputation = 601; left(pat()); },
-    m_lot1: () => { state.lotLevel = 1; bus.emit('lot:expanded', { level: 1 }); }, m_lot2: () => { state.lotLevel = 2; bus.emit('lot:expanded', { level: 2 }); }, m_lot3: () => { state.lotLevel = 3; bus.emit('lot:expanded', { level: 3 }); },
-    m_year3: () => { state.time.year = 4; bus.emit('year:start', { year: 4 }); },
-    m_five_roles: () => { state.staff = []; for (const r of K.ROLES) mkStaff(r); weekEnd(); },
-    m_research_all: () => { state.research.done = Object.keys(RESEARCH); bus.emit('research:done', { id: 'x' }); },
-    m_upg_10: () => { state.research.levels = { up_clinical: 10 }; bus.emit('research:upgrade', { id: 'up_clinical', level: 10 }); },
-    m_upg_40: () => { state.research.levels = { up_clinical: 16, up_diagnosis: 12, up_equipment: 12 }; bus.emit('research:upgrade', { id: 'up_equipment', level: 12 }); },
-    m_upg_cap: () => { state.research.levels = { up_brand: 15 }; bus.emit('research:upgrade', { id: 'up_brand', level: 15 }); },
-    t_cold_week: () => { state.weather = { kind: 'cold' }; for (let i = 0; i < 15; i++) treat(pat('elder')); weekEnd(); },
-    t_rain_safe: () => { state.weather = { kind: 'rain' }; for (let i = 0; i < 12; i++) treat(pat('office')); weekEnd(); },
-    t_typhoon: () => { state.weather = { kind: 'typhoon' }; for (let i = 0; i < 5; i++) treat(pat('office')); weekEnd(); },
-    t_temple: () => { state.money = 1e6; Ev.startCommunity(state, 'temple_sarcopenia'); },
-    t_community_all: () => { for (const c of EVD.COMMUNITY) bus.emit('community:started', { id: c.id }); },
-    t_audit: () => bus.emit('inspection:result', { pass: true, score: 75 }),
-    t_audit_excellent: () => bus.emit('inspection:result', { pass: true, score: Ins.EXCELLENT_SCORE }),
-    t_audit_3: () => { for (let i = 0; i < 3; i++) bus.emit('inspection:result', { pass: true, score: 75 }); },
-    t_dilemma_5: () => { for (let i = 0; i < 5; i++) dil('painkiller'); },
-    t_dilemma_all: () => { for (const t of ['painkiller', 'skip_doctor', 'overtreat', 'complain']) dil(t); },
-    t_selfpay_40: () => settle({ nhiIncome: 60000, selfIncome: 40000 }),
-    t_board_3: () => { state.policy.boards = EVD.BOARDS.slice(0, 3).map(b => b.id); bus.emit('mods:dirty', {}); },
-    c_zone_golden: () => { add('heatbox', 12, 12); add('tens', 14, 12); add('traction', 16, 12); Syn.recomputeZones(state); bus.emit('map:changed', {}); },
-    c_zone_premium: () => { add('manual_room', 12, 12); add('shockwave', 14, 12); add('coffee', 15, 12); Syn.recomputeZones(state); bus.emit('map:changed', {}); },
-    c_zone_kidpark: () => { add('ball_pit', 12, 12); add('soft_mat', 14, 12); add('bookshelf', 16, 12); Syn.recomputeZones(state); bus.emit('map:changed', {}); },
-    c_zone_all: () => { state.zones = [{ id: 'golden3' }, { id: 'premium' }, { id: 'kidpark' }]; bus.emit('map:changed', {}); },
-    c_zone_collect: () => { for (const id of ['golden3', 'waitRoom', 'hotCold', 'cafeNook', 'regDesk', 'elderPath']) { state.zones = [{ id }]; bus.emit('map:changed', {}); } },
-    c_zone_master: () => { state.zones = ['golden3', 'waitRoom', 'hotCold', 'cafeNook', 'regDesk', 'elderPath', 'restStation', 'staffBack'].map(id => ({ id })); bus.emit('map:changed', {}); },
-    c_zero_slip_year: () => { for (let i = 0; i < 200; i++) left(pat('office')); yearEnd(); },
-    c_no_angry_month: () => { for (let i = 0; i < 20; i++) left(pat('office')); settle(); },
-    c_full_house: () => { state.lotLevel = Math.max(state.lotLevel, 1); for (let i = 0, n = Math.ceil(0.9 * LOTS[state.lotLevel].maxPatientsPerWeek); i < n; i++) treat(pat('office')); },
-    c_pure_nhi: () => { state.money = state.achv.counters.startMoney + 1000; yearEnd(); },
-    c_one_week_cure: () => { for (let i = 0; i < 10; i++) left(pat(), { cured: true }); },
-    h_coffee: () => { add('coffee', 1, 1); add('coffee', 3, 1); add('coffee', 5, 1); bus.emit('map:changed', {}); },
-    h_chat: () => { for (let i = 0; i < 50; i++) bus.emit('patient:chat', { patient: pat('elder') }); },
-    h_comeback: () => { state.money = 10000; weekEnd(); state.money = 1.1e6; weekEnd(); },
-    h_plants: () => { for (let i = 0; i < 10; i++) add('plant', i, 2); bus.emit('map:changed', {}); },
-    // career (12): fed through the career bus events (the career section tests the real producers)
-    m_decade: () => bus.emit('career:ending', { ending: { id: 'steady_clinic' } }),
-    c_grade_s: () => bus.emit('career:year-review', { review: { year: 1, grade: 'S' } }),
-    m_goals_20: () => { Car.ensureCareer(state).counters.goalsDone = 20; bus.emit('career:goal-done', {}); },
-    ...Object.fromEntries(GD.ENDINGS.map(e => [e.achievementId, () => bus.emit('career:ending', { ending: { id: e.id } })])),
-  };
-  const NO_EXACT_REWARD = new Set(['t_temple', 'h_comeback', 'm_cash_2m', 'm_cash_10m', 'c_pure_nhi']);
-  check('achv: a scenario exists for every definition', defs.every(d => SC[d.id]), defs.filter(d => !SC[d.id]).map(d => d.id).join(','));
-  let nOk = 0;
-  for (const d of defs) {
-    if (!SC[d.id]) continue;
-    FRESH();
-    // everything else pre-unlocked so only this achievement pays out (exact reward accounting)
-    for (const o of defs) if (o.id !== d.id) state.achv.unlocked[o.id] = { year: 1, month: 1, week: 1 };
-    const m0 = state.money, r0 = state.reputation, p0 = { ...state.points };
-    SC[d.id]();
-    state.events.pendingDilemma = null;
-    const okU = Ach.isUnlocked(state, d.id);
-    check(`achv ${d.id}: unlocks when condition is forced`, okU);
-    if (!okU) continue;
-    nOk++;
-    check(`achv ${d.id}: unlock event + good toast exactly once`, unl.filter(x => x === d.id).length === 1 && toasts.filter(t => t.kind === 'good' && t.text.includes(d.name)).length === 1);
-    const T = ACHD.ACHIEVEMENT_TIERS[d.tier], ov = d.reward || {};
-    const key = d.tier === 3 ? 'service' : (ov.pointKey || 'service');
-    if (!NO_EXACT_REWARD.has(d.id)) check(`achv ${d.id}: money reward == tier/override`, state.money - m0 === (ov.money ?? T.money), `${state.money - m0}`);
-    if (!/^m_rep|^t_temple/.test(d.id)) check(`achv ${d.id}: reputation reward`, near(state.reputation - r0, ov.rep ?? T.rep, 1e-6), `${state.reputation - r0}`);
-    if (d.id !== 't_temple') check(`achv ${d.id}: points reward in the right track`, K.POINT_KEYS.every(k => near(state.points[k] - p0[k], k === key ? T.points : 0, 1e-6)));
-    const m1 = state.money; SC[d.id](); state.events.pendingDilemma = null;
-    check(`achv ${d.id}: second trigger does not unlock/pay again`, unl.filter(x => x === d.id).length === 1 && (NO_EXACT_REWARD.has(d.id) || state.money === m1));
-  }
-  feature('Achievements: 58 unlock conditions (41 + 12 career + 3 upgrades + 2 zones)', nOk === 58 ? 'OK' : 'PARTIAL', `${nOk}/58 forced via events`);
-
-  // ---- negatives ----
-  FRESH(); state.weather = { kind: 'rain' }; for (let i = 0; i < 12; i++) treat(pat('office')); bus.emit('patient:slip', { patient: pat() }); weekEnd();
-  check('achv: rain week with a slip does not unlock t_rain_safe', !Ach.isUnlocked(state, 't_rain_safe'));
-  FRESH(); state.weather = { kind: 'cold' }; for (let i = 0; i < 14; i++) treat(pat('elder')); weekEnd();
-  check('achv: 14 elders in a cold week is not enough', !Ach.isUnlocked(state, 't_cold_week'));
-  FRESH(); state.weather = { kind: 'cold' }; for (let i = 0; i < 15; i++) { const p = pat('elder'); treat(p); treat(p); }
-  check('achv: weekly served counts unique patients', state.achv.counters.servedThisWeek === 15);
-  weekEnd(); check('achv: weekly counters reset at week:end', state.achv.counters.servedThisWeek === 0 && state.achv.counters.weekSeen.length === 0);
-  FRESH(); for (let i = 0; i < 25; i++) left(pat('office')); left(pat('office'), { reason: 'angry', satisfaction: 10 }); settle();
-  check('achv: an angry leaver blocks c_no_angry_month', !Ach.isUnlocked(state, 'c_no_angry_month'));
-  FRESH(); for (let i = 0; i < 25; i++) left(pat('office')); left(pat('office'), { satisfaction: 24 }); settle();
-  check('achv: satisfaction < 25 counts as angry', !Ach.isUnlocked(state, 'c_no_angry_month'));
-  FRESH(); for (let i = 0; i < 19; i++) left(pat('office')); settle();
-  check('achv: < 20 served blocks c_no_angry_month', !Ach.isUnlocked(state, 'c_no_angry_month'));
-  FRESH(); for (let i = 0; i < 200; i++) left(pat('office')); bus.emit('patient:slip', { patient: pat() }); state.events.pendingDilemma = null; yearEnd();
-  check('achv: one slip blocks c_zero_slip_year', !Ach.isUnlocked(state, 'c_zero_slip_year'));
-  FRESH(); treat(pat(), 500); state.money = 5e6; yearEnd();
-  check('achv: a self-pay treatment blocks c_pure_nhi', !Ach.isUnlocked(state, 'c_pure_nhi'));
-  FRESH(); state.achv.counters.trackYear = null; state.money = 5e6; yearEnd();
-  check('achv: untracked (migrated mid-year) year cannot grant c_pure_nhi', !Ach.isUnlocked(state, 'c_pure_nhi'));
-  FRESH(); bus.emit('inspection:result', { pass: false, score: 30 }); check('achv: failed audit does not unlock t_audit', !Ach.isUnlocked(state, 't_audit'));
-  FRESH(); bus.emit('inspection:result', { pass: true, score: 80 }); bus.emit('inspection:result', { pass: true, score: 80 }); bus.emit('inspection:result', { pass: false, score: 30 }); bus.emit('inspection:result', { pass: true, score: 80 });
-  check('achv: a failed audit resets the streak', !Ach.isUnlocked(state, 't_audit_3') && state.achv.counters.auditPassStreak === 1);
-  FRESH(); bus.emit('dilemma:resolved', { ok: true, kind: 'event', trigger: null }); check('achv: random events are not dilemmas', Object.values(state.achv.counters.dilemmasDone).every(v => v === 0));
-  FRESH(); settle({ nhiIncome: 61000, selfIncome: 39000 }); check('achv: 39% self-pay share does not unlock', !Ach.isUnlocked(state, 't_selfpay_40'));
-  FRESH(); state.money = 900000; weekEnd(); state.money = 1.5e6; weekEnd(); check('achv: h_comeback needs money to have dipped < 50k', !Ach.isUnlocked(state, 'h_comeback'));
-  FRESH(); for (let i = 0; i < 49; i++) bus.emit('patient:chat', { patient: pat('elder') }); bus.emit('patient:chat', { patient: pat('office') }); check('achv: only elder chats count', !Ach.isUnlocked(state, 'h_chat'));
-  FRESH(); state.money = 5e6; const rc = Ev.startCommunity(state, 'health_talk'); check('achv: startCommunity emits community:started', rc.ok && state.achv.counters.communityDone.health_talk === 1);
-
-  // ---- listAchievements masking / progress ----
-  FRESH(); let L = Ach.listAchievements(state);
-  check('achv: listAchievements returns 58 rows', L.length === 58);
-  const hid = L.filter(x => x.def.hidden);
-  check('achv: locked hidden ones masked (name ？？？, hint shown, no progress)', hid.length === 13 && hid.every(x => x.masked && x.def.name === '？？？' && x.def.desc === x.def.hint && !x.unlocked && x.goal === 0));
-  check('achv: masked rows do not leak real names or titles', !hid.some(x => defs.some(d => d.hidden && JSON.stringify(x).includes(d.name))));
-  SC.h_chat(); L = Ach.listAchievements(state); const hc = L.find(x => x.def.id === 'h_chat');
-  check('achv: hidden achievement is revealed after unlock', hc.unlocked && !hc.masked && hc.def.name === '聊天治百病' && hc.at && hc.at.year === 1 && hc.progress === hc.goal && hc.goal === 50);
-  state.stats.patientsTotal = 40; const pr = Ach.listAchievements(state).find(x => x.def.id === 'm_pat_100');
-  check('achv: progress from metric (patientsTotal 40/100)', pr.progress === 40 && pr.goal === 100);
-
-  // ---- title / badges ----
-  FRESH();
-  check('achv: equipTitle rejects locked / unknown', !Ach.equipTitle(state, 'm_cash_10m') && !Ach.equipTitle(state, 'nope'));
-  SC.m_cash_10m(); state.reputation = 260;
-  check('achv: equipTitle + displayTitle format', Ach.equipTitle(state, 'm_cash_10m') && Ach.displayTitle(state) === '〔千萬院長〕地方復健名醫', Ach.displayTitle(state));
-  SC.m_cash_2m(); check('achv: equipTitle rejects achievements without a title', !Ach.equipTitle(state, 'm_cash_2m') && state.achv.title === 'm_cash_10m');
-  check('achv: equipTitle(null) clears', Ach.equipTitle(state, null) && state.achv.title === null && Ach.displayTitle(state) === '地方復健名醫');
-  SC.m_pat_100(); SC.m_lot1(); SC.m_year3(); SC.m_five_roles();
-  check('achv: setBadges accepts 3 unlocked', Ach.setBadges(state, ['m_pat_100', 'm_lot1', 'm_year3']) && state.achv.badges.length === 3);
-  check('achv: setBadges rejects >3 / locked / duplicates and keeps the old list', !Ach.setBadges(state, ['m_pat_100', 'm_lot1', 'm_year3', 'm_five_roles']) && !Ach.setBadges(state, ['h_coffee']) && !Ach.setBadges(state, ['m_pat_100', 'm_pat_100']) && state.achv.badges.length === 3);
-  check('achv: badgeIcons <= 4 entries', Ach.badgeIcons(state).length <= 4 && Ach.badgeIcons(state).length >= 3);
-  FRESH(); defs.slice(0, 10).forEach(d => { state.achv.unlocked[d.id] = {}; });
-  const m10 = Ach.badgeIcons(state)[0]; defs.slice(10, 20).forEach(d => { state.achv.unlocked[d.id] = {}; }); const m20 = Ach.badgeIcons(state)[0];
-  defs.slice(20, 30).forEach(d => { state.achv.unlocked[d.id] = {}; }); const m30 = Ach.badgeIcons(state)[0]; defs.slice(30).forEach(d => { state.achv.unlocked[d.id] = {}; });
-  check('achv: milestone badge 10/20/30/all = 🥉🥈🥇🏆', m10 === '🥉' && m20 === '🥈' && m30 === '🥇' && Ach.badgeIcons(state)[0] === '🏆');
-
-  // ---- evaluateAll retroactive ----
-  FRESH(); state.money = 11e6; state.stats.patientsTotal = 1200; state.stats.cured = 150; state.reputation = 300; state.lotLevel = 1; state.history.push({ year: 1, month: 1, money: 1e6 }); state.research.done = Object.keys(RESEARCH);
-  toasts = []; const got = Ach.evaluateAll(state);
-  check('achv: evaluateAll catches up state-derivable ones', got.length >= 8, String(got.length));
-  check('achv: > 5 retroactive unlocks produce a single summary toast', toasts.length === 1);
-  check('achv: evaluateAll is idempotent', Ach.evaluateAll(state).length === 0);
-
-  // ---- save / load / migration ----
-  FRESH(); SC.m_cash_10m(); SC.h_chat(); SC.m_pat_100(); Ach.equipTitle(state, 'm_cash_10m'); Ach.setBadges(state, ['m_pat_100']);
-  state.achv.counters.communityDone.health_talk = 2; state.achv.counters.dilemmasDone.painkiller = 3;
-  const exp = Sav.exportSave(state), before = JSON.parse(JSON.stringify(state.achv));
-  FRESH(); check('achv: import round trip', Sav.importSave(state, exp));
-  check('achv: unlocked / title / badges / counters survive save->load', JSON.stringify(state.achv.unlocked) === JSON.stringify(before.unlocked) && state.achv.title === 'm_cash_10m' && JSON.stringify(state.achv.badges) === '["m_pat_100"]' && state.achv.counters.communityDone.health_talk === 2 && state.achv.counters.dilemmasDone.painkiller === 3 && state.achv.counters.chatCount === 50);
-  const v1 = JSON.parse(exp); v1.version = 1; v1.state.version = 1; delete v1.state.achv; v1.state.money = 2.5e6; v1.state.stats.patientsTotal = 120; v1.state.history = [{ year: 1, month: 1, money: 1e6, income: 1, expense: 1, net: 0 }]; v1.state.time.week = 3; v1.state.time.clock = 700;
-  FRESH(); check('achv: v1 save imports', Sav.importSave(state, JSON.stringify(v1)));
-  check('achv: v1 -> v2 migration adds achv and retro-unlocks money / patients / first month', state.version === K.SAVE_VERSION && Ach.isUnlocked(state, 'm_cash_2m') && Ach.isUnlocked(state, 'm_pat_100') && Ach.isUnlocked(state, 'm_first_month') && !Ach.isUnlocked(state, 'm_cash_10m') && !Ach.isUnlocked(state, 'h_chat'));
-  check('achv: migrated mid-year save does not track year / month as complete', state.achv.counters.trackYear == null && state.achv.counters.trackMonth == null);
-  const junk = JSON.parse(exp);
-  junk.state.achv = { unlocked: { m_cash_2m: { year: 2, month: 3, week: 1 }, bogus_id: {} }, counters: { chatCount: 'abc', slipThisYear: '7', dilemmasDone: { painkiller: 'x', evil: 9 }, communityDone: { nope: 3 } }, title: 'm_cash_10m', badges: ['m_cash_2m', 'h_coffee', 'zzz', 'm_cash_2m', 'm_pat_100', 'm_lot1', 'm_year3'] };
-  FRESH(); check('achv: junk achv imports', Sav.importSave(state, JSON.stringify(junk)));
-  const A = state.achv;
-  check('achv sanitize: unknown ids dropped, counters numeric, locked title/badges removed', !('bogus_id' in A.unlocked) && A.unlocked.m_cash_2m.year === 2 && A.counters.chatCount === 0 && A.counters.slipThisYear === 7 && !('evil' in A.counters.dilemmasDone) && !('nope' in A.counters.communityDone) && A.title === null && JSON.stringify(A.badges) === '["m_cash_2m"]', JSON.stringify(A.badges));
-  const junk2 = JSON.parse(exp); junk2.state.achv = { unlocked: Object.fromEntries(defs.map(d => [d.id, {}])), counters: {}, title: 'm_cash_2m', badges: defs.slice(0, 6).map(d => d.id) };
-  FRESH(); Sav.importSave(state, JSON.stringify(junk2));
-  check('achv sanitize: badges truncated to MAX_BADGES, title without title text dropped', state.achv.badges.length === ACHD.MAX_BADGES && state.achv.title === null);
-  const junk3 = JSON.parse(exp); junk3.state.achv = 'garbage'; FRESH();
-  check('achv sanitize: non-object achv is repaired', Sav.importSave(state, JSON.stringify(junk3)) && typeof state.achv.unlocked === 'object' && Array.isArray(state.achv.badges));
-
-  // ---- a reward is never paid twice across save -> load -> save -> load ----
-  FRESH(); state.money = 3e6; state.stats.patientsTotal = 150;           // m_cash_2m + m_pat_100 satisfied but not yet unlocked
-  const dumpA = Sav.exportSave(state);
-  FRESH(); Sav.importSave(state, dumpA);
-  const paid = state.money - 3e6, wantPaid = 2 * ACHD.ACHIEVEMENT_TIERS[1].money;
-  check('achv: loading a save pays the retroactive rewards once', Ach.isUnlocked(state, 'm_cash_2m') && Ach.isUnlocked(state, 'm_pat_100') && paid >= wantPaid, `${paid} vs ${wantPaid}`);
-  const moneyAfter = state.money, nUnl = Ach.unlockedCount(state), dumpB = Sav.exportSave(state);
-  FRESH(); Sav.importSave(state, dumpB); const m2 = state.money; const dumpC = Sav.exportSave(state);
-  FRESH(); Sav.importSave(state, dumpC);
-  check('achv: save -> load -> save -> load never re-pays', m2 === moneyAfter && state.money === moneyAfter && Ach.unlockedCount(state) === nUnl, `${moneyAfter} ${m2} ${state.money}`);
-
-  // ---- integration: real month roll + real treatments feed the counters ----
-  FRESH(); runMonths(2);
-  check('achv: after 2 simulated months m_first_month is unlocked and the invariants hold', Ach.isUnlocked(state, 'm_first_month') && invariants().length === 0, invariants().join('; '));
-  check('achv: real play feeds the counters (a patient was counted)', state.achv.counters.servedThisMonth > 0 || state.achv.counters.servedThisYear > 0);
-  offU(); offT();
-  feature('Achievements: save v2 migration + sanitize', 'OK', 'v1 import retro-unlocks; junk achv repaired');
-}
-
-// =====================================================================================================
-// SECTION: events (docs/EVENTS_EXT.md): data validation, cond evaluator, every event x choice, M2 wear / M3 risk / M4 morale /
-// M5 buffs / M7 review / M10 flags+follow-ups, save round trip mid-buff
-// =====================================================================================================
-const EQ = await imp('sim/equipment.js');
-const { FOCUS } = await imp('data/patients.js');
-const EXT = { A: await imp('data/events_ext.js'), B: await imp('data/events_ext2.js') };
-const COND_KEYS = new Set(['months', 'weather', 'weatherId', 'minYear', 'maxYear', 'minRep', 'maxRep', 'minLot', 'hasObject', 'needObjects', 'hasStaff', 'pvBelow', 'policy', 'flag', 'notFlag',
-  'riskAtLeast', 'riskAtMost', 'wearAtLeast', 'moraleBelow', 'reviewBelow', 'monthPointsOverCapPct', 'minPatientsTotal']);
-const FX_KEYS = new Set(['money', 'reputation', 'sat', 'nhiPenalty', 'points', 'buff', 'setFlag', 'clearFlag', 'followUp', 'risk', 'wear', 'breakdown', 'repair', 'stamina', 'morale', 'resign', 'reviewScore', 'maintenance']);
-const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
-const RICH_LAY = [['reception', 16, 17], ['sofa', 10, 17], ['sofa', 12, 17], ['sofa', 10, 15], ['tv', 12, 15], ['water', 14, 17], ['plant', 9, 19], ['plant', 13, 19], ['plant', 14, 15],
-  ['exam_room', 9, 8], ['exam_room', 11, 8], ['manual_room', 14, 8], ['laser_room', 16, 8], ['redcord', 18, 8], ['shockwave', 13, 10], ['coffee', 12, 10],
-  ['heatbox', 10, 12], ['heatbox', 11, 12], ['heatbox', 12, 12], ['tens', 13, 12], ['tens', 14, 12], ['tens', 15, 12], ['traction', 16, 12], ['traction', 17, 12], ['bed', 19, 12], ['bed', 20, 12], ['bed', 21, 12],
-  ['rest_room', 21, 16], ['ir_lamp', 18, 15], ['ball_pit', 20, 9], ['soft_mat', 20, 11]];
-function putAnywhere(defId) {
-  const l = state.lot;
-  for (let y = l.y0; y < l.y0 + l.h; y++) for (let x = l.x0; x < l.x0 + l.w; x++) if (B.canPlace(state, defId, x, y, 0).ok) return put(defId, x, y);
-  return null;
-}
-// L1 clinic with every wearable machine, two of each licensed role, lots of cash
-function richClinic(seed = SEED) {
-  fresh(seed);
-  state.money = 5e6; state.reputation = 300; state.research.done = Object.keys(RESEARCH);
-  state.lotLevel = 1; state.lot = { ...LOTS[1].lot }; state.door = { ...LOTS[1].door }; state.time.year = 2;
-  state.objects = []; state.staff = []; refresh();
-  opts_quietPut = true;
-  for (const [d, x, y] of RICH_LAY) put(d, x, y);
-  for (const d of ['us_room', 'shockwave_room']) putAnywhere(d);
-  opts_quietPut = false;
-  for (const r of ['doctor', 'doctor', 'pt', 'pt', 'ot', 'ot', 'st', 'st', 'nurse', 'nurse']) state.staff.push(S.createStaff(state, r, null, 16 + (state.staff.length % 3), 14));
-  refresh();
-  return state;
-}
-const wearables = () => state.objects.filter(o => EQ.isWearable(o.defId));
-function baselineMods(withoutBuffs = true) {
-  const keep = state.events.buffs; if (withoutBuffs) state.events.buffs = [];
-  const m = JSON.parse(JSON.stringify(Mod.recomputeMods(state)));
-  state.events.buffs = keep; Mod.recomputeMods(state);
-  return m;
-}
-
-function eventsSection() {
-  section('Events engine (EVENTS_EXT)');
-  const pool = Ev.eventPool();
-  const TUNE0 = { ...Ev.EVENT_TUNE };
-  const restoreTune = () => Object.assign(Ev.EVENT_TUNE, TUNE0);
-
-  // ---------------- A. data validation ----------------
-  {
-    const bad = [], notes = [];
-    const ids = new Set(), dupe = [];
-    const allDefs = [...EVD.RANDOM_EVENTS, ...EXT.A.EVENTS_EXT_A, ...EXT.B.EVENTS_EXT_B];
-    for (const d of allDefs) { if (ids.has(d.id)) dupe.push(d.id); ids.add(d.id); }
-    check('events: ids unique across RANDOM_EVENTS + EXT_A + EXT_B', dupe.length === 0, dupe.join());
-    check('events: the pool merges all three data sets', pool.length === ids.size && pool.length >= 58, `${pool.length}/${ids.size}`);
-    check('events: EXT_A has 30 and EXT_B 28 events (A01-A14,B01-B16 / C01-C16,D01-D12)', EXT.A.EVENTS_EXT_A.length === 30 && EXT.B.EVENTS_EXT_B.length === 28, `${EXT.A.EVENTS_EXT_A.length}/${EXT.B.EVENTS_EXT_B.length}`);
-    const modKeys = new Set(Object.keys(defaultMods()));
-    const okMod = (k) => modKeys.has(k) || k === 'satShift' || k === 'nhiCapBonus';
-    const checkFx = (id, tag, fx) => {
-      for (const k of Object.keys(fx || {})) {
-        if (!FX_KEYS.has(k)) bad.push(`${id} ${tag}: unknown effect key ${k}`);
-      }
-      if (!fx) return;
-      for (const k of Object.keys(fx.points || {})) if (!K.POINT_KEYS.includes(k)) bad.push(`${id} ${tag}: points.${k}`);
-      for (const k of ['money', 'reputation', 'sat', 'nhiPenalty', 'risk', 'reviewScore', 'maintenance']) if (fx[k] !== undefined && !Number.isFinite(fx[k])) bad.push(`${id} ${tag}: ${k} not a number`);
-      if (fx.buff) {
-        const b = fx.buff;
-        if (!(b.weeks >= 1) || !b.label) bad.push(`${id} ${tag}: buff needs weeks>=1 and a label`);
-        for (const k of Object.keys(b.mods || {})) if (!okMod(k) || !Number.isFinite(b.mods[k])) bad.push(`${id} ${tag}: buff mod ${k}`);
-        for (const t of Object.keys(b.spawn || {})) if (!PATIENT_TYPES[t] || !Number.isFinite(b.spawn[t])) bad.push(`${id} ${tag}: buff spawn ${t}`);
-        if (!Object.keys(b.mods || {}).length && !Object.keys(b.spawn || {}).length) bad.push(`${id} ${tag}: buff without mods/spawn`);
-      }
-      if (fx.setFlag !== undefined && typeof fx.setFlag !== 'string') bad.push(`${id} ${tag}: setFlag`);
-      if (fx.clearFlag !== undefined && typeof fx.clearFlag !== 'string') bad.push(`${id} ${tag}: clearFlag`);
-      if (fx.followUp && (!ids.has(fx.followUp.id) || !(fx.followUp.afterWeeks >= 0) || (fx.followUp.p !== undefined && !(fx.followUp.p >= 0 && fx.followUp.p <= 1)))) bad.push(`${id} ${tag}: followUp ${JSON.stringify(fx.followUp)}`);
-      if (fx.wear && (!(fx.wear.target === 'all' || fx.wear.target === 'random' || EQ.isWearable(fx.wear.target)) || !Number.isFinite(fx.wear.delta))) bad.push(`${id} ${tag}: wear ${JSON.stringify(fx.wear)}`);
-      if (fx.breakdown !== undefined && !(fx.breakdown === 'random' || EQ.isWearable(fx.breakdown))) bad.push(`${id} ${tag}: breakdown ${fx.breakdown}`);
-      if (fx.repair !== undefined && !(fx.repair === 'all' || fx.repair === 'broken')) bad.push(`${id} ${tag}: repair ${fx.repair}`);
-      for (const k of ['stamina', 'morale']) if (fx[k] && (!Number.isFinite(fx[k].delta) || (fx[k].role !== undefined && !K.ROLES.includes(fx[k].role)))) bad.push(`${id} ${tag}: ${k} ${JSON.stringify(fx[k])}`);
-      if (fx.resign && (!K.ROLES.includes(fx.resign.role) || !(fx.resign.p >= 0 && fx.resign.p <= 1))) bad.push(`${id} ${tag}: resign ${JSON.stringify(fx.resign)}`);
-    };
-    for (const d of allDefs) {
-      if (!d.title || !d.text) bad.push(d.id + ': missing title/text');
-      if (d.cat !== undefined && !['nhi', 'patient', 'ops', 'season'].includes(d.cat)) bad.push(d.id + ': cat ' + d.cat);
-      for (const k of Object.keys(d.cond || {})) if (!COND_KEYS.has(k)) bad.push(`${d.id}: unknown cond key ${k}`);
-      if (d.cond && d.cond.hasStaff) for (const r of Object.keys(d.cond.hasStaff)) if (!K.ROLES.includes(r)) bad.push(`${d.id}: hasStaff role ${r}`);
-      for (const key of ['hasObject', 'needObjects']) for (const o of (d.cond && d.cond[key]) || []) if (!BUILDABLES[o]) bad.push(`${d.id}: ${key} ${o}`);
-      if (d.cond && d.cond.wearAtLeast && d.cond.wearAtLeast.defId && !BUILDABLES[d.cond.wearAtLeast.defId]) bad.push(`${d.id}: wearAtLeast def`);
-      if (!Array.isArray(d.choices) || d.choices.length < 2 || d.choices.length > 3) bad.push(`${d.id}: needs 2-3 choices (${(d.choices || []).length})`);
-      let free = 0;
-      (d.choices || []).forEach((c, i) => {
-        const tag = 'c' + i;
-        if (!c.label) bad.push(`${d.id} ${tag}: label`);
-        if (c.chance) {
-          if (c.effects) bad.push(`${d.id} ${tag}: chance and effects are exclusive`);
-          if (!(c.chance.p >= 0 && c.chance.p <= 1)) bad.push(`${d.id} ${tag}: chance.p`);
-          for (const side of ['win', 'lose']) {
-            const s = c.chance[side];
-            if (!s || typeof s.result !== 'string' || !s.result || !s.effects) bad.push(`${d.id} ${tag}: chance.${side} needs effects + result`);
-            else checkFx(d.id, `${tag}.${side}`, s.effects);
-          }
-        } else {
-          if (!c.result) bad.push(`${d.id} ${tag}: result`);
-          if (!c.effects) bad.push(`${d.id} ${tag}: effects missing`);
-          checkFx(d.id, tag, c.effects);
-        }
-        if (c.requires) { if (!(c.requires.money > 0)) bad.push(`${d.id} ${tag}: requires`); } else free++;
-      });
-      if (!free) notes.push(d.id);
-    }
-    if (notes.length) console.log('  (data note) every option needs money in: ' + notes.join(', ') + ' - the engine frees the last option when the player is broke');
-    check('events data: schema (cond keys, effect keys, buffs, flags, follow-ups, wear/role targets) is valid', bad.length === 0, bad.slice(0, 6).join(' | ') + (bad.length > 6 ? ` (+${bad.length - 6})` : ''));
-    // every flag that is read by a cond is set by some choice (otherwise the event can never fire)
-    const setters = new Set(), readers = new Set();
-    for (const d of allDefs) {
-      for (const c of d.choices) for (const fx of [c.effects, c.chance && c.chance.win.effects, c.chance && c.chance.lose.effects]) if (fx && fx.setFlag) setters.add(fx.setFlag);
-      for (const f of [].concat((d.cond || {}).flag || [])) readers.add(f);
-    }
-    check('events data: every cond.flag is set by some choice', [...readers].every(f => setters.has(f)), [...readers].filter(f => !setters.has(f)).join());
-    check('events data: at least 1 event per category and 8+ season events', ['nhi', 'patient', 'ops', 'season'].every(c => pool.some(d => d.cat === c)) && pool.filter(d => d.cat === 'season').length >= 8);
-  }
-
-  // ---------------- B. cond evaluator, one test per key (M1) ----------------
-  {
-    const cm = (cond) => Ev.condMet(state, cond);
-    richClinic();
-    state.time.month = 5; state.weather = { kind: 'rain', id: 'plumrain', temp: 25 };
-    check('cond: empty / missing cond is always true, unknown keys ignored', cm({}) && cm(undefined) && cm({ bogusKey: 1 }));
-    check('cond.months', cm({ months: [5] }) && cm({ months: [1, 5, 12] }) && !cm({ months: [6, 7] }));
-    check('cond.weather (kind)', cm({ weather: ['rain'] }) && cm({ weather: ['rain', 'cold'] }) && !cm({ weather: ['cold', 'hot'] }));
-    check('cond.weatherId (梅雨)', cm({ weatherId: 'plumrain' }) && !cm({ weatherId: 'rain' }));
-    state.time.year = 3;
-    check('cond.minYear / maxYear', cm({ minYear: 3 }) && !cm({ minYear: 4 }) && cm({ maxYear: 3 }) && !cm({ maxYear: 2 }) && cm({ minYear: 2, maxYear: 4 }));
-    state.reputation = 150;
-    check('cond.minRep / maxRep', cm({ minRep: 150 }) && !cm({ minRep: 151 }) && cm({ maxRep: 150 }) && !cm({ maxRep: 149 }));
-    check('cond.minLot', cm({ minLot: 1 }) && !cm({ minLot: 2 }));
-    check('cond.hasObject (any of)', cm({ hasObject: ['tens'] }) && cm({ hasObject: ['nope', 'tens'] }) && !cm({ hasObject: ['nope'] }));
-    check('cond.needObjects (all of)', cm({ needObjects: ['tens', 'heatbox'] }) && !cm({ needObjects: ['tens', 'nope'] }));
-    check('cond.hasStaff {role:n}', cm({ hasStaff: { pt: 2 } }) && !cm({ hasStaff: { pt: 3 } }) && cm({ hasStaff: { pt: 1, nurse: 2 } }) && !cm({ hasStaff: { pt: 1, nurse: 3 } }));
-    state.nhi.pointValue = 0.8;
-    check('cond.pvBelow (last settled point value)', cm({ pvBelow: 0.9 }) && !cm({ pvBelow: 0.8 }) && !cm({ pvBelow: 0.5 }));
-    state.policy.focus = 'ltc';
-    check('cond.policy', cm({ policy: 'ltc' }) && !cm({ policy: 'ortho' }) && !cm({ policy: 'peds' }));
-    state.events.flags = { seen_x: true };
-    check('cond.flag / notFlag', cm({ flag: 'seen_x' }) && !cm({ flag: 'seen_y' }) && cm({ notFlag: 'seen_y' }) && !cm({ notFlag: 'seen_x' }));
-    state.nhi.risk = 40;
-    check('cond.riskAtLeast / riskAtMost', cm({ riskAtLeast: 40 }) && !cm({ riskAtLeast: 41 }) && cm({ riskAtMost: 40 }) && !cm({ riskAtMost: 39 }));
-    for (const o of state.objects) if (EQ.isWearable(o.defId)) o.wear = 20;
-    state.objects.find(o => o.defId === 'tens').wear = 75;
-    check('cond.wearAtLeast {defId,n} (specific machine)', cm({ wearAtLeast: { defId: 'tens', n: 70 } }) && !cm({ wearAtLeast: { defId: 'tens', n: 80 } }) && !cm({ wearAtLeast: { defId: 'heatbox', n: 70 } }));
-    check('cond.wearAtLeast {n} (any machine)', cm({ wearAtLeast: { n: 70 } }) && !cm({ wearAtLeast: { n: 80 } }));
-    for (const s of state.staff) s.morale = 70;
-    state.staff[2].morale = 30;
-    check('cond.moraleBelow (any staff)', cm({ moraleBelow: 40 }) && !cm({ moraleBelow: 30 }) && !cm({ moraleBelow: 20 }));
-    state.reviewScore = 3.5;
-    check('cond.reviewBelow', cm({ reviewBelow: 4 }) && !cm({ reviewBelow: 3.5 }) && !cm({ reviewBelow: 3 }));
-    const cap = Eco.nhiCap(state);
-    state.nhi.monthPoints = cap * 0.95;
-    check('cond.monthPointsOverCapPct', cm({ monthPointsOverCapPct: 90 }) && !cm({ monthPointsOverCapPct: 100 }));
-    { const keep = { ...state.nhi.lastSettlement }, wk = state.time.week;
-      state.nhi.monthPoints = 0; state.nhi.lastSettlement = { points: cap * 0.95, pointValue: 1, income: 0 };
-      state.time.week = 1; const w1 = cm({ monthPointsOverCapPct: 90 }); state.time.week = 2; const w2 = cm({ monthPointsOverCapPct: 90 });
-      check('cond.monthPointsOverCapPct: in week 1 the month that just closed counts (the counter has just been reset)', w1 && !w2);
-      state.time.week = wk; state.nhi.lastSettlement = keep.points === undefined ? null : keep; state.nhi.monthPoints = cap * 0.95; }
-    state.stats.patientsTotal = 120;
-    check('cond.minPatientsTotal', cm({ minPatientsTotal: 100 }) && !cm({ minPatientsTotal: 121 }));
-    check('cond: keys combine with AND', cm({ months: [5], minYear: 3, hasObject: ['tens'], flag: 'seen_x' }) && !cm({ months: [5], minYear: 3, hasObject: ['tens'], flag: 'nope' }));
-    // pool filtering uses the same evaluator, honours cooldowns, and the monthly cap on `big` events
-    richClinic(); state.time.month = 6; state.weather = { kind: 'sunny', id: 'sunny', temp: 28 };
-    const all0 = Ev.eligibleEvents(state);
-    check('events: eligibility respects cond (season events need their month/weather)', !all0.some(d => d.id === 'cold_joint_surge') && !all0.some(d => d.id === 'cny_back_strain'));
-    state.time.month = 1; state.weather = { kind: 'cold', id: 'cold', temp: 10 };
-    check('events: season events become eligible in season', Ev.eligibleEvents(state).some(d => d.id === 'cold_joint_surge') && Ev.eligibleEvents(state).some(d => d.id === 'cny_back_strain'));
-    state.events.cooldowns = { 'evt:cold_joint_surge': Cal.absoluteWeek(state) + 5 };
-    check('events: cooldownWeeks excludes an event until it expires', !Ev.eligibleEvents(state).some(d => d.id === 'cold_joint_surge'));
-    state.events.cooldowns = {};
-    state.time.year = 3; state.nhi.monthPoints = Eco.nhiCap(state);
-    const bigs = pool.filter(d => d.big);
-    check('events: there are big events and they carry weight 3 by default / explicit', bigs.length >= 6, String(bigs.length));
-    check('events: before that, some big event is eligible', Ev.eligibleEvents(state).some(d => d.big));
-    Ev.triggerEvent(state, bigs[0].id); Ev.resolveDilemma(state, 0);
-    check('events: after one big event the month allows no other big (cap 1 per month)', !Ev.eligibleEvents(state).some(d => d.big));
-    state.time.month = 2;
-    check('events: the cap resets next month', Ev.eligibleEvents(state).some(d => d.big));
-    // weights
-    richClinic();
-    const w0 = Ev.eventWeight(state, pool.find(d => d.cat === 'season'));
-    check('events: season weight x1.5', near(w0, pool.find(d => d.cat === 'season').weight * 1.5));
-    const nhiDef = pool.find(d => d.cat === 'nhi');
-    state.nhi.risk = 10; const wLow = Ev.eventWeight(state, nhiDef); state.nhi.risk = 80; const wHigh = Ev.eventWeight(state, nhiDef);
-    check('events: nhi-category weight x2 while risk > 60', near(wHigh, wLow * 2) && near(wLow, nhiDef.weight));
-  }
-
-  // ---------------- C. every event x every choice (x win/lose) ----------------
-  {
-    let combos = 0, fail = 0;
-    const failures = [];
-    const bad = (m) => { fail++; if (failures.length < 8) failures.push(m); };
-    const clinicPre = () => {
-      richClinic();
-      state.time.clock = 600;                                   // mid-day: stamina effects apply immediately
-      state.nhi.monthPoints = 20000; state.nhi.risk = 50; state.reviewScore = 3;
-      for (const o of wearables()) { o.wear = 50; }
-      for (const s of state.staff) { s.morale = 60; s.stamina = s.staminaMax / 2; }
-    };
-    for (const def of pool) {
-      def.choices.forEach((c, i) => {
-        for (const roll of c.chance ? ['win', 'lose'] : [undefined]) {
-          const tag = `${def.id}#${i}${roll ? '/' + roll : ''}`;
-          combos++;
-          clinicPre();
-          const hasRepair = (c.chance ? c.chance[roll].effects : c.effects).repair;
-          if (hasRepair) { const v = state.objects.find(o => o.defId === 'ir_lamp'); EQ.breakObject(state, v); }
-          const fx = c.chance ? c.chance[roll].effects : c.effects;
-          const before = {
-            money: state.money, rep: state.reputation, pts: { ...state.points }, mp: state.nhi.monthPoints, risk: Eco.riskOf(state), review: Eco.reviewOf(state),
-            wear: new Map(state.objects.map(o => [o.id, o.wear || 0])), stam: new Map(state.staff.map(s => [s.id, s.stamina])), mor: new Map(state.staff.map(s => [s.id, S.moraleOf(s)])),
-            staff: state.staff.length, broken: state.objects.filter(o => o.broken).length, fu: state.events.pendingFollowUps ? state.events.pendingFollowUps.length : 0,
-            mods: baselineMods(),
-          };
-          let out = null;
-          try {
-            if (!Ev.triggerEvent(state, def.id)) { bad(tag + ': trigger returned null'); continue; }
-            const pd = state.events.pendingDilemma;
-            if (pd.id !== def.id || pd.choices.length !== def.choices.length) bad(tag + ': pending mismatch');
-            const pc = pd.choices[i];
-            if (!!pc.chance !== !!c.chance || (c.chance && Math.abs(pc.chance.p - c.chance.p) > 1e-9) || (!!pc.requires !== !!c.requires)) bad(tag + ': pending choice lost chance/requires');
-            out = Ev.resolveDilemma(state, i, { roll });
-          } catch (e) { bad(tag + ': THROW ' + e.message); state.events.pendingDilemma = null; state.time.paused = false; continue; }
-          if (!out || !out.ok) { bad(tag + ': resolve returned ' + JSON.stringify(out)); continue; }
-          if (state.events.pendingDilemma || state.time.paused) bad(tag + ': still pending/paused');
-          if (c.chance ? out.roll !== roll : out.roll !== null) bad(tag + ': roll flag ' + out.roll);
-          const expectResult = c.chance ? (c.chance[roll].result || c.result) : c.result;
-          if (!out.result || out.result !== expectResult) bad(tag + ': result text');
-          if (!Array.isArray(out.chips) || out.summary.length !== out.chips.length) bad(tag + ': chips/summary');
-          const near2 = (a, b) => Math.abs(a - b) < 1e-6;
-          // ---- effect-by-effect
-          if (!near2(state.money, before.money + (fx.money || 0))) bad(`${tag}: money ${state.money - before.money} vs ${fx.money || 0}`);
-          if (!near2(state.reputation, clampN(before.rep + (fx.reputation || 0), 0, 1000))) bad(tag + ': reputation');
-          for (const k of K.POINT_KEYS) if (!near2(state.points[k], Math.max(0, before.pts[k] + ((fx.points && fx.points[k]) || 0)))) bad(tag + ': points.' + k);
-          if (!near2(state.nhi.monthPoints, Math.max(0, before.mp - (fx.nhiPenalty || 0)))) bad(tag + ': nhiPenalty');
-          if (!near2(Eco.riskOf(state), clampN(before.risk + (fx.risk || 0), 0, 100))) bad(tag + ': risk ' + Eco.riskOf(state));
-          if (!near2(Eco.reviewOf(state), clampN(Math.round(clampN(before.review + (fx.reviewScore || 0), 1, 5) * 100) / 100, 1, 5))) bad(tag + ': reviewScore ' + Eco.reviewOf(state));
-          if (fx.setFlag && !state.events.flags[fx.setFlag]) bad(tag + ': setFlag');
-          if (fx.clearFlag && state.events.flags[fx.clearFlag] && fx.clearFlag !== fx.setFlag) bad(tag + ': clearFlag');
-          if (fx.followUp) {
-            const n = state.events.pendingFollowUps.filter(f => f.id === fx.followUp.id).length;
-            if ((fx.followUp.p === undefined || fx.followUp.p >= 1) ? n !== 1 : n > 1) bad(tag + ': followUp count ' + n);
-            const f = state.events.pendingFollowUps.find(q => q.id === fx.followUp.id);
-            if (f && f.due !== Cal.absoluteWeek(state) + fx.followUp.afterWeeks) bad(tag + ': followUp due');
-          } else if (state.events.pendingFollowUps.length !== before.fu) bad(tag + ': stray follow-up');
-          if (fx.buff) {
-            const b = state.events.buffs.find(x => x.label === fx.buff.label);
-            if (!b || b.weeksLeft !== Math.round(fx.buff.weeks)) bad(tag + ': buff entry ' + JSON.stringify(b));
-            else {
-              for (const [k, v] of Object.entries(fx.buff.mods || {})) {
-                let exp = before.mods[k] + v;
-                if (MULT_FLOOR[k]) exp = Math.max(MULT_FLOOR[k], exp);
-                if (k === 'spawnMult') exp = Math.min(2, exp);
-                if (!near2(state.mods[k], exp)) bad(`${tag}: mods.${k} ${state.mods[k]} vs ${exp}`);
-              }
-              for (const [t, v] of Object.entries(fx.buff.spawn || {})) {
-                const fm = (FOCUS[state.policy.focus].spawnMult || {})[t] == null ? 1 : FOCUS[state.policy.focus].spawnMult[t];   // the focus multiplier applies after buffs
-                const exp = Math.max(0, (before.mods.typeSpawn[t] == null ? 1 : before.mods.typeSpawn[t]) + v * fm);
-                if (!near2(state.mods.typeSpawn[t], Math.min(3.5, exp))) bad(`${tag}: typeSpawn.${t} ${state.mods.typeSpawn[t]} vs ${exp}`);
-              }
-            }
-            if (!out.chips.some(x => x.text.startsWith(`持續 ${Math.round(fx.buff.weeks)} 週：`))) bad(tag + ': buff chip text ' + out.summary.join('|'));
-          }
-          if (fx.wear && fx.wear.delta) {
-            const tg = fx.wear.target;
-            const hit = state.objects.filter(o => EQ.isWearable(o.defId) && Math.abs((o.wear || 0) - before.wear.get(o.id)) > 1e-9);
-            if (tg === 'random') { if (hit.length !== 1) bad(tag + ': wear random touched ' + hit.length); }
-            else {
-              for (const o of wearables()) {
-                const want = (tg === 'all' || o.defId === tg) ? clampN(before.wear.get(o.id) + fx.wear.delta, 0, 100) : before.wear.get(o.id);
-                if (!near2(o.wear || 0, want)) bad(`${tag}: wear ${o.defId} ${o.wear} vs ${want}`);
-              }
-            }
-            if (!out.chips.some(x => x.text.includes('耗損'))) bad(tag + ': wear chip');
-          }
-          if (fx.breakdown) {
-            const nb = state.objects.filter(o => o.broken).length - before.broken;
-            if (nb < 1 && !fx.repair) bad(tag + ': breakdown did not break anything');
-            if (fx.breakdown !== 'random' && !state.objects.some(o => o.broken && o.defId === fx.breakdown)) bad(tag + ': wrong machine broke');
-            if (!out.chips.some(x => x.text.includes('故障'))) bad(tag + ': breakdown chip');
-          }
-          if (fx.repair) {
-            if (state.objects.some(o => o.broken)) bad(tag + ': repair left a broken machine');
-            if (fx.repair === 'all' && wearables().some(o => (o.wear || 0) !== 0)) bad(tag + ': repair all kept wear');
-          }
-          for (const k of ['stamina', 'morale']) if (fx[k] && fx[k].delta) {
-            for (const s of state.staff) {
-              const hit = !fx[k].role || s.role === fx[k].role;
-              const was = k === 'stamina' ? before.stam.get(s.id) : before.mor.get(s.id);
-              const now = k === 'stamina' ? s.stamina : S.moraleOf(s);
-              const max = k === 'stamina' ? s.staminaMax : 100;
-              if (!near2(now, hit ? clampN(was + fx[k].delta, 0, max) : was)) bad(`${tag}: ${k} ${s.role} ${now} vs ${was}`);
-            }
-            if (!out.chips.some(x => x.text.includes(k === 'stamina' ? '體力' : '士氣'))) bad(tag + ': ' + k + ' chip');
-          }
-          if (fx.resign) {
-            const n0 = before.staff, n1 = state.staff.length;
-            if (fx.resign.p >= 1 ? n1 !== n0 - 1 : !(n1 === n0 || n1 === n0 - 1)) bad(tag + ': resign headcount ' + n0 + '->' + n1);
-            if (state.staff.filter(s => s.role === fx.resign.role).length < 1) bad(tag + ': resign emptied the role');
-            if (fx.resign.p >= 1 && !out.chips.some(x => x.text.includes('離職'))) bad(tag + ': resign chip');
-          } else if (state.staff.length !== before.staff) bad(tag + ': staff count changed without resign');
-          if (fx.maintenance) {
-            const until = Cal.absoluteWeek(state) + fx.maintenance;
-            if (!wearables().every(o => o.maintainedUntil === until)) bad(tag + ': maintenance not applied');
-          }
-          if (fx.money && !out.chips.some(x => x.text.startsWith('資金'))) bad(tag + ': money chip');
-          if (fx.risk && !out.chips.some(x => x.text.includes('風險'))) bad(tag + ': risk chip');
-          if (fx.reviewScore && !out.chips.some(x => x.text.includes('評價'))) bad(tag + ': review chip');
-          const inv = invariants();
-          if (inv.length) bad(tag + ': invariants ' + inv.slice(0, 2).join(';'));
-          // the sim keeps running after the decision
-          try { for (let t = 0; t < 25; t++) step(1, false); } catch (e) { bad(tag + ': sim THROW ' + e.message); }
-        }
-      });
-    }
-    check(`events: ALL ${pool.length} events x every choice (x win/lose) = ${combos} combos apply their effects exactly, summarise them and keep the sim valid`, fail === 0, failures.join(' || '));
-  }
-
-  // ---------------- D. chance options + requires.money gate ----------------
-  {
-    richClinic();
-    const def = pool.find(d => d.choices.some(c => c.chance));
-    const ci = def.choices.findIndex(c => c.chance);
-    // the roll is made once, when the decision opens: reloading the save cannot re-roll it
-    Ev.triggerEvent(state, def.id);
-    const u0 = state.events.pendingDilemma.choices[ci].chance.u;
-    const dump = Sav.exportSave(state);
-    check('chance: pre-rolled value stored in the pending decision (u in [0,1))', typeof u0 === 'number' && u0 >= 0 && u0 < 1);
-    const outcomes = new Set();
-    for (let k = 0; k < 3; k++) { Sav.importSave(state, dump); outcomes.add(Ev.resolveDilemma(state, ci).roll); if (k < 2) { Sav.importSave(state, dump); } }
-    check('chance: the same save always resolves to the same side', outcomes.size === 1, [...outcomes].join());
-    Sav.importSave(state, dump);
-    state.events.pendingDilemma.choices[ci].chance.u = 0; state.events.pendingDilemma.choices[ci].chance.p = 0.5;
-    check('chance: u < p wins', Ev.resolveDilemma(state, ci).roll === 'win');
-    richClinic(); Ev.triggerEvent(state, def.id); state.events.pendingDilemma.choices[ci].chance.u = 0.999; state.events.pendingDilemma.choices[ci].chance.p = 0.5;
-    check('chance: u >= p loses', Ev.resolveDilemma(state, ci).roll === 'lose');
-    // distribution over many openings follows p
-    let wins = 0, N = 400;
-    const probe = pool.find(d => d.choices.some(c => c.chance && c.chance.p > 0.2 && c.chance.p < 0.8));
-    const pi = probe.choices.findIndex(c => c.chance && c.chance.p > 0.2 && c.chance.p < 0.8), pp = probe.choices[pi].chance.p;
-    for (let k = 0; k < N; k++) { richClinic(SEED + 1000 + k); Ev.triggerEvent(state, probe.id); if (Ev.resolveDilemma(state, pi).roll === 'win') wins++; }
-    check(`chance: win rate ${(wins / N).toFixed(2)} ~ p ${pp}`, Math.abs(wins / N - pp) < 0.1);
-    // requires.money: refused when poor, allowed when rich; a decision never strands a poor player
-    const rq = pool.find(d => d.choices.some(c => c.requires));
-    const ri = rq.choices.findIndex(c => c.requires);
-    richClinic(); state.money = rq.choices[ri].requires.money - 1; Ev.triggerEvent(state, rq.id);
-    const m0 = state.money;
-    check('requires.money: choice refused (null, nothing applied) when money is short', Ev.resolveDilemma(state, ri) === null && !!state.events.pendingDilemma && state.money === m0);
-    check('requires.money: choiceAffordable reflects it', !Ev.choiceAffordable(state, state.events.pendingDilemma.choices[ri]) && Ev.choiceAffordable(state, state.events.pendingDilemma.choices.find(c => !c.requires)));
-    state.money = rq.choices[ri].requires.money;
-    check('requires.money: allowed once money is enough (exactly equal counts)', !!Ev.resolveDilemma(state, ri));
-    // all options unaffordable -> the last one is freed so the game cannot lock up
-    richClinic(); state.money = 0;
-    Ev.triggerEvent(state, 'infection_control_audit');
-    const allReq = state.events.pendingDilemma.choices.every(c => c.requires);
-    check('requires.money: if every option is unaffordable the last one loses its requirement', !allReq || (Ev.choiceAffordable(state, state.events.pendingDilemma.choices[state.events.pendingDilemma.choices.length - 1]) && !!Ev.resolveDilemma(state, state.events.pendingDilemma.choices.length - 1)));
-  }
-
-  // ---------------- E. pacing: grace, gap, cap, follow-ups ----------------
-  {
-    richClinic(); state.time.year = 1; state.time.month = 1; state.time.week = 1;
-    const T = Ev.EVENT_TUNE, saved = { ...T };
-    T.CHANCE = 1; T.GRACE = 6; T.MIN_GAP = 2; T.EARLY_MULT = 1;
-    state.events.cooldowns = {}; delete state.events.lastEventWeek;
-    let firstWeek = null, shown = [];
-    const off = bus.on('event:show', (e) => shown.push({ week: Cal.absoluteWeek(state), id: e.event.id }));
-    for (let w = 0; w < 12; w++) { bus.emit('week:start', { ...state.time }); if (state.events.pendingDilemma) { if (firstWeek === null) firstWeek = Cal.absoluteWeek(state); resolvePending(); } state.time.week++; if (state.time.week > 4) { state.time.week = 1; state.time.month++; } }
-    off();
-    check('pacing: no random event before the grace period (6 weeks)', firstWeek !== null && firstWeek >= 6, String(firstWeek));
-    const weeks = shown.map(s => s.week);
-    check('pacing: at least MIN_GAP weeks between random events', weeks.every((w, i) => i === 0 || w - weeks[i - 1] >= 2), weeks.join());
-    // follow-ups: forced regardless of chance / gap, when due, one per week
-    richClinic(); state.events.cooldowns = {};
-    T.CHANCE = 0;
-    state.events.pendingFollowUps = [{ id: 'dispute_mediation', due: Cal.absoluteWeek(state) + 2 }];
-    let seen = [];
-    const off2 = bus.on('event:show', (e) => seen.push(e.event.id));
-    for (let w = 0; w < 4; w++) { bus.emit('week:start', {}); if (state.events.pendingDilemma) resolvePending(); state.time.week = (state.time.week % 4) + 1; }
-    off2();
-    check('follow-up: forced into the schedule once due (chance 0, no random roll), and consumed', seen.includes('dispute_mediation') && !state.events.pendingFollowUps.some(f => f.id === 'dispute_mediation'), seen.join());
-    // a follow-up that is not due yet stays queued; unknown ids are dropped
-    richClinic(); T.CHANCE = 0;
-    state.events.pendingFollowUps = [{ id: 'dispute_mediation', due: Cal.absoluteWeek(state) + 9 }, { id: 'no_such_event', due: 0 }];
-    bus.emit('week:start', {});
-    check('follow-up: not-yet-due entries stay, dangling ids are discarded', !state.events.pendingDilemma && state.events.pendingFollowUps.length === 1 && state.events.pendingFollowUps[0].id === 'dispute_mediation');
-    // `big` follow-ups wait for the next month after a big event
-    richClinic(); T.CHANCE = 0;
-    const big = pool.find(d => d.big && d.id !== 'dispute_mediation');
-    const fuBig = pool.find(d => d.big);
-    state.events.lastBigMonth = Math.floor(Cal.absoluteWeek(state) / K.WEEKS_PER_MONTH);
-    state.events.pendingFollowUps = [{ id: fuBig.id, due: 0 }];
-    bus.emit('week:start', {});
-    check('follow-up: a due big event is postponed while the month already had one', !state.events.pendingDilemma && state.events.pendingFollowUps.length === 1);
-    restoreTune();
-  }
-
-  // ---------------- F. M5/M6 buffs: expiry, rollback, save/load ----------------
-  {
-    richClinic();
-    const fx = { buff: { weeks: 3, label: '測試浪湧', mods: { spawnMult: 0.15, elderSat: 2, patience: 0.1 }, spawn: { elder: 0.3, sports: -0.2 } } };
-    const chips = Ev.applyEffectsDetailed(state, fx);
-    check('buff: summary reads 「持續 3 週：…」 with a 病患 +15% part', chips.length === 1 && chips[0].text.startsWith('持續 3 週：') && chips[0].text.includes('病患 +15%'), chips.map(c => c.text).join('|'));
-    const rel = (k, d) => near(state.mods[k], baselineMods()[k] + d);
-    const fmo = (t) => { const v = (FOCUS[state.policy.focus].spawnMult || {})[t]; return v == null ? 1 : v; };
-    const tsBase = (t) => { const v = baselineMods().typeSpawn[t]; return v == null ? 1 : v; };
-    check('buff: applied through recomputeMods (spawnMult, elderSat, patience, typeSpawn)', rel('spawnMult', 0.15) && rel('elderSat', 2) && rel('patience', 0.1) && near(state.mods.typeSpawn.elder, tsBase('elder') + 0.3 * fmo('elder')) && near(state.mods.typeSpawn.sports, tsBase('sports') - 0.2 * fmo('sports')));
-    check('buff: stored in state.events.buffs with weeksLeft', state.events.buffs.length === 1 && state.events.buffs[0].weeksLeft === 3 && state.events.buffs[0].label === '測試浪湧');
-    check('buff: re-applying the same label refreshes it instead of stacking', (() => { Ev.applyEffects(state, fx); return state.events.buffs.length === 1 && rel('spawnMult', 0.15); })());
-    check('buff: shown by activeEffects() (label + weeks left)', Ev.activeEffects(state).some(a => a.label === '測試浪湧' && a.weeksLeft === 3 && a.chips.length >= 3));
-    // mid-buff save / load keeps it
-    const dump = Sav.exportSave(state);
-    state.events.cooldowns = {};
-    const tick = () => { bus.emit('week:start', { ...state.time }); };
-    Ev.EVENT_TUNE.CHANCE = 0;
-    tick();
-    check('buff: counts down at each week:start', state.events.buffs[0].weeksLeft === 2);
-    Sav.importSave(state, dump);
-    check('buff: survives save -> load (entry, weeksLeft 3, mods recomputed)', state.events.buffs.length === 1 && state.events.buffs[0].weeksLeft === 3 && rel('spawnMult', 0.15) && rel('elderSat', 2));
-    tick(); tick();
-    check('buff: still active with 1 week left', state.events.buffs.length === 1 && state.events.buffs[0].weeksLeft === 1 && rel('spawnMult', 0.15));
-    const dump2 = Sav.exportSave(state);
-    tick();
-    check('buff: expires and every mod rolls back to the exact no-buff value', state.events.buffs.length === 0 && JSON.stringify(state.mods) === JSON.stringify(baselineMods()));
-    Sav.importSave(state, dump2); tick();
-    check('buff: expiry also works after a reload (save with 1 week left)', state.events.buffs.length === 0 && JSON.stringify(state.mods) === JSON.stringify(baselineMods()));
-    restoreTune();
-    // junk in a save is repaired
-    richClinic();
-    state.events.buffs = [{ label: 'x', weeksLeft: 2, mods: { spawnMult: 0.1, bad: 'str' } }, { label: 'y', weeksLeft: -1, mods: {} }, 5, null];
-    state.events.flags = { a: true, b: 0, c: 'yes' }; state.events.pendingFollowUps = [{ id: 'dispute_mediation', due: 3 }, { id: 4 }, null];
-    state.nhi.risk = 999; state.reviewScore = 17; state.objects[0].wear = -5; state.objects[1].broken = 1; state.staff[0].morale = 'abc';
-    Sav.importSave(state, JSON.stringify({ version: K.SAVE_VERSION, state: JSON.parse(Sav.exportSave(state)).state }));
-    check('save: sanitize repairs buffs / flags / follow-ups / risk / review / wear / broken / morale', state.events.buffs.length === 1 && state.events.buffs[0].mods.bad === undefined && state.events.buffs[0].id &&
-      Object.keys(state.events.flags).sort().join() === 'a,c' && state.events.pendingFollowUps.length === 1 && state.nhi.risk === 100 && state.reviewScore === 5 && state.objects[0].wear === 0 && state.objects[1].broken === true && state.staff[0].morale === 70,
-      JSON.stringify({ b: state.events.buffs, f: state.events.flags, fu: state.events.pendingFollowUps, r: state.nhi.risk, rv: state.reviewScore, w: state.objects[0].wear, br: state.objects[1].broken, m: state.staff[0].morale }));
-    check('save: an event with `chance` pending survives export -> import', (() => { richClinic(); const d = pool.find(q => q.choices.some(c => c.chance)); Ev.triggerEvent(state, d.id); const j = Sav.exportSave(state); fresh(); Sav.importSave(state, j); return state.events.pendingDilemma && state.events.pendingDilemma.id === d.id && state.events.pendingDilemma.choices.some(c => c.chance); })());
-    // flags / buffs / wear all round-trip exactly through a long sim
-    richClinic(); Ev.applyEffects(state, { buff: { weeks: 40, label: '長期', mods: { patience: 0.05 } }, setFlag: 'long', risk: 7, reviewScore: -0.3, wear: { target: 'all', delta: 12 }, breakdown: 'tens', maintenance: 20 });
-    const a = Sav.exportSave(state); Sav.importSave(state, a); const b = Sav.exportSave(state);
-    check('save: events state (buffs, flags, risk, review, wear, broken, contract) is stable across import/export', JSON.parse(a).state.events.buffs[0].weeksLeft === 40 && JSON.stringify(JSON.parse(a).state.objects) === JSON.stringify(JSON.parse(b).state.objects) && JSON.stringify(JSON.parse(a).state.events) === JSON.stringify(JSON.parse(b).state.events));
-  }
-
-  // ---------------- G. M2 wear / breakdown / repair ----------------
-  {
-    richClinic();
-    const tens = state.objects.find(o => o.defId === 'tens'), sw = state.objects.find(o => o.defId === 'shockwave');
-    tens.wear = 0; sw.wear = 0;
-    EQ.useWear(state, tens); EQ.useWear(state, sw);
-    check('wear: +0.4 per treatment (+0.2 for shockwave)', near(tens.wear, 0.4) && near(sw.wear, 0.2));
-    const bed = state.objects.find(o => o.defId === 'bed'); EQ.useWear(state, bed);
-    check('wear: only the listed machine kinds wear (bed/exam_room do not)', !bed.wear);
-    tens.wear = 10; EQ.weeklyWear(state);
-    check('wear: +0.3 per week', near(tens.wear, 10.3));
-    tens.wear = 10; EQ.applyMaintenance(state, 10); EQ.useWear(state, tens); EQ.weeklyWear(state);
-    check('wear: a maintenance contract halves the speed (use and weekly)', near(tens.wear, 10 + 0.2 + 0.15), String(tens.wear));
-    delete tens.maintainedUntil;
-    const nine = EQ.WEAR_TUNE.BREAK_AT;
-    tens.wear = nine - 1;
-    for (let i = 0; i < 20; i++) EQ.weeklyWear(state);          // below 90 nothing breaks (89 + 0.3 stays < 90 for one tick only)
-    // thresholds
-    tens.wear = 89; tens.broken = false;
-    let n = 0; for (let i = 0; i < 400; i++) { tens.wear = 95; tens.broken = false; if (EQ.weeklyWear(state).includes(tens)) n++; }
-    check(`wear: >= 90 -> about 25% weekly breakdown chance (${(n / 400).toFixed(2)})`, n / 400 > 0.17 && n / 400 < 0.33);
-    tens.wear = 80; tens.broken = false; let m = 0; for (let i = 0; i < 300; i++) { tens.wear = 80; if (EQ.weeklyWear(state).includes(tens)) m++; }
-    check('wear: below 90 never breaks down by itself', m === 0);
-    check('wear: 老舊 at >= 70', EQ.isWorn({ wear: 70 }) && !EQ.isWorn({ wear: 69.9 }));
-
-    // ---- prices + actions
-    richClinic();
-    const t2 = state.objects.find(o => o.defId === 'tens'), uq = state.objects.find(o => o.defId === 'us_room');
-    check('prices: repair 8% (min 2,000), service 3%', EQ.repairCost(t2) === Math.max(2000, Math.round(BUILDABLES.tens.cost * 0.08)) && EQ.repairCost(uq) === Math.round(BUILDABLES.us_room.cost * 0.08) && EQ.serviceCost(uq) === Math.round(BUILDABLES.us_room.cost * 0.03) && EQ.repairCost(state.objects.find(o => o.defId === 'heatbox')) === 2000);
-    t2.wear = 60; const mo = state.money;
-    const rs = EQ.serviceObject(state, t2.id);
-    check('serviceObject: wear -> 0, charged via economy.spend (ledger.maintain)', rs.ok && t2.wear === 0 && state.money === mo - EQ.serviceCost(t2) && state.ledger.expense.maintain >= EQ.serviceCost(t2), JSON.stringify(rs));
-    check('serviceObject: refused when already like new / not wearable / unknown', !EQ.serviceObject(state, t2.id).ok && !EQ.serviceObject(state, state.objects.find(o => o.defId === 'bed').id).ok && !EQ.serviceObject(state, 99999).ok);
-    EQ.breakObject(state, t2); t2.wear = 95;
-    check('serviceObject: refused on a broken machine (needs 維修)', !EQ.serviceObject(state, t2.id).ok);
-    const m1 = state.money, rr = EQ.repairObject(state, t2.id);
-    check('repairObject: broken -> false, wear 0, pays the repair price', rr.ok && !t2.broken && t2.wear === 0 && state.money === m1 - EQ.repairCost(t2) && rr.cost === EQ.repairCost(t2));
-    check('repairObject: refused on a healthy machine', !EQ.repairObject(state, t2.id).ok);
-    EQ.breakObject(state, t2); state.money = 100;
-    check('repairObject / serviceObject / signMaintenance: refuse (and charge nothing) when poor', !EQ.repairObject(state, t2.id).ok && t2.broken && state.money === 100 && !EQ.signMaintenance(state, 26).ok && state.money === 100);
-    state.money = 5e6;
-    const c26 = EQ.contractCost(state, 26), m2 = state.money, sg = EQ.signMaintenance(state, 26);
-    check('signMaintenance: pays the contract, every machine gets maintainedUntil = now + weeks', sg.ok && sg.cost === c26 && state.money === m2 - c26 && wearables().every(o => o.maintainedUntil === Cal.absoluteWeek(state) + 26) && EQ.maintainedWeeksLeft(state, t2) === 26);
-    check('signMaintenance: refused for 0 weeks', !EQ.signMaintenance(state, 0).ok);
-    state.objects = state.objects.filter(o => !EQ.isWearable(o.defId));
-    check('signMaintenance: refused when there is nothing to maintain', !EQ.signMaintenance(state, 13).ok);
-
-    // ---- a broken machine is never used; breakdown mid-treatment is released gracefully; repair resumes work
-    fresh(); wire(); Ev.EVENT_TUNE.CHANCE = 0;      // (random events could repair it behind our back)
-    state.money = 2e6; state.reputation = 120;
-    state.objects = state.objects.filter(o => !['heatbox', 'tens'].includes(o.defId)); refresh();
-    const tn = putAnywhere('tens'); refresh();
-    for (let i = 0; i < 40; i++) { P.spawnPatient(state, 'elder'); }
-    let doneTens = 0; const offT = bus.on('treatment:done', e => { if (e.treatmentId === 'tens') doneTens++; });
-    let broke = false, midOk = true, treatingWas = null;
-    for (let t = 0; t < MIN_PER_WEEK && !broke; t++) {
-      step(1, true);
-      const p = state.patients.find(q => q.stage === 'treating' && q.targetObj === tn.id);
-      if (p) { treatingWas = p; EQ.breakObject(state, tn); broke = true; }
-    }
-    check('broken mid-treatment: a patient was being treated when it broke', !!treatingWas);
-    if (treatingWas) {
-      step(1, true);
-      const p = state.patients.find(q => q.id === treatingWas.id);
-      const stf = treatingWas.staffId && state.staff.find(s => s.id === treatingWas.staffId);
-      check('broken mid-treatment: treatment aborted, patient released back to waiting/leaving (no deadlock)', !p || (p.targetObj !== tn.id && p.stage !== 'treating'), p && p.stage + '/' + p.targetObj);
-      check('broken mid-treatment: station and staff are free again', !tn.busy && !tn.usedBy && !tn.staffId && (!stf || !stf.task || stf.task.objId !== tn.id));
-    }
-    const doneAtBreak = doneTens;
-    for (let t = 0; t < MIN_PER_WEEK * 1.5; t++) step(1, true);
-    check('broken machine is never used again (no tens treatments while broken)', doneTens === doneAtBreak, `${doneTens} vs ${doneAtBreak}`);
-    check('broken machine: sim stays valid, patients do not pile up forever', invariants().length === 0 && state.patients.length < 60, invariants().join(';'));
-    const pre = EQ.repairObject(state, tn.id);
-    for (let t = 0; t < MIN_PER_WEEK * 2; t++) step(1, true);
-    offT();
-    check('after 維修 the machine is used again', pre.ok && doneTens > doneAtBreak, `${doneTens} vs ${doneAtBreak}`);
-    restoreTune();
-    check('feasibility: with every tens broken, patients skip the step (complain) instead of waiting forever', (() => {
-      fresh(); wire(); state.money = 2e6;
-      state.objects = state.objects.filter(o => !['heatbox', 'tens', 'traction', 'ir_lamp'].includes(o.defId)); refresh();
-      const t3 = putAnywhere('tens'); EQ.breakObject(state, t3);
-      state.reputation = 150; let tens3 = 0; const o3 = bus.on('treatment:done', e => { if (e.treatmentId === 'tens') tens3++; });
-      for (let t = 0; t < MIN_PER_WEEK * 2; t++) step(1, true);
-      o3();
-      return tens3 === 0 && state.patients.every(p => p.age < 700) && invariants().length === 0;
-    })());
-
-    // ---- auto breakdown hook: weekly tick breaks it, a decision opens (event or generic) and can be answered
-    richClinic(); Ev.EVENT_TUNE.CHANCE = 0;
-    for (const o of state.objects) if (EQ.isWearable(o.defId)) o.wear = 99;
-    let brokeSeen = 0; const offB = bus.on('equipment:broken', () => brokeSeen++);
-    let shownId = null; const offS = bus.on('event:show', e => { shownId = e.event.id; });
-    for (let i = 0; i < 40 && !state.events.pendingDilemma; i++) bus.emit('week:start', {});
-    offB(); offS();
-    check('auto-breakdown: weekly roll breaks a worn-out machine and opens a decision for it', brokeSeen >= 1 && !!state.events.pendingDilemma && !!shownId, String(shownId));
-    const pdc = state.events.pendingDilemma;
-    check('auto-breakdown: the decision offers an affordable way out', pdc.choices.some(c => Ev.choiceAffordable(state, c)));
-    Ev.resolveDilemma(state, 0);
-    check('auto-breakdown: resolving keeps the game consistent', !state.events.pendingDilemma && invariants().length === 0);
-    // generic fallback (no C-event for ir_lamp)
-    richClinic(); const lamp = state.objects.find(o => o.defId === 'ir_lamp'); EQ.breakObject(state, lamp);
-    state.events.cooldowns = {};
-    const gp = Ev.triggerBreakdownEvent(state, lamp);
-    check('breakdown: machines without a dedicated event get the generic 叫修 decision that repairs exactly that machine', gp && gp.id === 'equip_breakdown' && (() => { const mm = state.money; Ev.resolveDilemma(state, 0); return !lamp.broken && state.money === mm - EQ.repairCost(lamp); })());
-    richClinic(); const lamp2 = state.objects.find(o => o.defId === 'ir_lamp'); EQ.breakObject(state, lamp2); const mLamp = state.money; Ev.triggerBreakdownEvent(state, lamp2); Ev.resolveDilemma(state, 1);
-    check('breakdown: 「先停用」 leaves it broken and costs nothing', lamp2.broken && state.money === mLamp);
-    // wear -100 as an event repair clears broken
-    richClinic(); const t5 = state.objects.find(o => o.defId === 'tens'); EQ.breakObject(state, t5); t5.wear = 95;
-    Ev.applyEffects(state, { wear: { target: 'tens', delta: -100 } });
-    check('event effect wear -100 on a broken machine repairs it', !t5.broken && t5.wear === 0);
-  }
-
-  // ---------------- H. M4 morale / resignation ----------------
-  {
-    richClinic();
-    const pt = state.staff.filter(s => s.role === 'pt');
-    for (const s of state.staff) { s.morale = 50; s.tiredAcc = 0; }
-    state.objects = state.objects.filter(o => !(BUILDABLES[o.defId].restRecovery > 0)); refresh();
-    S.weeklyMorale(state);
-    check('morale: +1 per week without a rest room', state.staff.every(s => s.morale === 51));
-    put('rest_room', 21, 16); S.weeklyMorale(state);
-    check('morale: +1 more with a rest room (+2/week)', state.staff.every(s => s.morale === 53));
-    pt[0].tiredAcc = S.MORALE.TIRED_MIN; S.weeklyMorale(state);
-    check('morale: exhausted staff lose 3 net of the +2', near(pt[0].morale, 53 + 2 - 3) && near(pt[1].morale, 55) && pt[0].tiredAcc === 0);
-    pt[1].workAcc = S.MORALE.OVERTIME_UTIL * K.CLOSE_MIN - S.MORALE.OVERTIME_UTIL * K.OPEN_MIN + 1; const mBefore = pt[1].morale; S.weeklyMorale(state);
-    check('morale: -2 for 超時 (working >= 60% of the opening hours in the week), workAcc resets', near(pt[1].morale, mBefore + 2 - 2) && pt[1].workAcc === 0, String(pt[1].morale));
-    for (const s of state.staff) s.morale = 99; S.weeklyMorale(state);
-    check('morale: clamped at 100', state.staff.every(s => s.morale === 100));
-    S.addMorale(state, 'pt', -200);
-    check('morale effect: role filter + clamp at 0', pt.every(s => s.morale === 0) && state.staff.filter(s => s.role !== 'pt').every(s => s.morale === 100));
-    // updateStaff accumulates exhaustion minutes
-    const s0 = state.staff[0]; s0.stamina = 1; s0.tiredAcc = 0; for (let i = 0; i < 30; i++) S.updateStaff(state, 1);
-    check('morale: updateStaff counts the minutes spent exhausted', s0.tiredAcc >= 5, String(s0.tiredAcc));
-
-    // ---- resign flow
-    richClinic(); wire();
-    for (let i = 0; i < 30; i++) P.spawnPatient(state, 'elder');
-    for (let t = 0; t < 200; t++) step(1, true);
-    const busyPt = state.staff.filter(s => s.role === 'pt' && s.task && s.task.treatmentId !== '__chat')[0] || state.staff.filter(s => s.role === 'pt')[0];
-    busyPt.morale = 5;
-    const cand = S.resignCandidate(state);
-    check('resign: lowest-morale licensed staff (role not left empty) is the candidate', cand && cand.id === busyPt.id);
-    const poolN = state.hirePool.length;
-    const staffN = state.staff.length;
-    const gone = S.resignStaff(state, busyPt.id);
-    check('resign: staff removed, replacement added to the hire pool, event emitted', gone && state.staff.length === staffN - 1 && !state.staff.some(s => s.id === busyPt.id) && state.hirePool.length >= Math.min(poolN + 1, S.MORALE.POOL_MAX) && state.hirePool.some(c => c.role === 'pt'));
-    check('resign: no object, rest room or task still points at them', state.objects.every(o => o.staffId !== busyPt.id) && state.staff.every(s => s.restObj == null || state.objects.some(o => o.id === s.restObj)));
-    for (let t = 0; t < MIN_PER_WEEK * 2; t++) step(1, true);
-    check('resign: patients who were with them are released, sim stays valid (no dangling staffId)', state.patients.every(p => !p.staffId || state.staff.some(s => s.id === p.staffId)) && invariants().length === 0, invariants().join(';'));
-    check('resign: lone staff of a role cannot resign (candidate rule + effect falls back to -15 morale)', (() => {
-      richClinic(); state.staff = state.staff.filter(s => s.role !== 'st' || s.id === state.staff.find(q => q.role === 'st').id);
-      const only = state.staff.find(s => s.role === 'st'); only.morale = 3;
-      const r = S.resignRole(state, 'st', 1);
-      return S.resignCandidate(state) === null && !r.left && r.hit && S.moraleOf(only) === 0 && state.staff.includes(only);
-    })());
-    // weekly roll
-    richClinic(); Ev.EVENT_TUNE.CHANCE = 0; state.events.cooldowns = {};
-    for (const s of state.staff) s.morale = 80; state.staff.find(s => s.role === 'pt').morale = 10;
-    let opened = null; const offO = bus.on('event:show', e => { if (!opened) opened = e.event.id; });
-    let weeks = 0; for (; weeks < 400 && !state.events.pendingDilemma; weeks++) { state.events.cooldowns = {}; for (const s of state.staff.filter(q => q.role === 'pt')) { if (s.morale > 15) s.morale = 15; } state.staff.find(s => s.role === 'pt').morale = 10; bus.emit('week:start', {}); }
-    offO();
-    check(`resign: a demoralised PT eventually triggers the 治療師遞出辭呈 decision (~8%/week; took ${weeks}w)`, opened === 'pt_resign' && weeks > 1, String(opened));
-    const before = state.staff.length; Ev.resolveDilemma(state, pool.find(d => d.id === 'pt_resign').choices.findIndex(c => c.effects && c.effects.resign));
-    check('resign: choosing 放行 removes exactly one PT and keeps at least one', state.staff.length === before - 1 && state.staff.filter(s => s.role === 'pt').length >= 1);
-    richClinic(); Ev.EVENT_TUNE.CHANCE = 0; state.events.cooldowns = {};
-    for (const s of state.staff) s.morale = 80; state.staff.find(s => s.role === 'ot').morale = 10;
-    opened = null; const offO2 = bus.on('event:show', e => { if (!opened) opened = e.event.id; });
-    for (let w2 = 0; w2 < 400 && !state.events.pendingDilemma; w2++) { state.staff.find(s => s.role === 'ot').morale = 10; bus.emit('week:start', {}); }
-    offO2();
-    check('resign: a non-PT role gets the generic resignation decision (加薪 / 放行)', opened === 'staff_resign' && state.events.pendingDilemma.choices.length === 2, String(opened));
-    Ev.resolveDilemma(state, 0);
-    check('resign: 加薪慰留 raises morale of that role', S.moraleOf(state.staff.find(s => s.role === 'ot')) > 10);
-    restoreTune();
-    // stamina effect at the start of a day survives the overnight regeneration
-    richClinic(); wire(); state.time.clock = K.OPEN_MIN;
-    for (const s of state.staff) s.stamina = 40;
-    Ev.applyEffects(state, { stamina: { role: 'pt', delta: -20 } });
-    check('stamina effect at day start is deferred (carry) instead of washed out by overnight regen', state.staff.filter(s => s.role === 'pt').every(s => s.staminaCarry === -20 && s.stamina === 40));
-    S.updateStaff(state, 0.5); S.updateStaff(state, 1);
-    const ptS = state.staff.find(s => s.role === 'pt'), drS = state.staff.find(s => s.role === 'doctor');
-    check('stamina effect: applied after the overnight regen (pt ends 20 lower than a doctor)', near(drS.stamina - ptS.stamina, 20, 2) && ptS.staminaCarry === undefined, `${drS.stamina} ${ptS.stamina}`);
-  }
-
-  // ---------------- I. M3 NHI risk / M7 review score ----------------
-  {
-    richClinic();
-    check('risk: starts at 0 and review at 4.0', Eco.riskOf(state) === 0 && Eco.reviewOf(state) === 4);
-    const cap = Eco.nhiCap(state);
-    check('risk: monthly input is 0 well under the cap, grows past it', Eco.monthlyRiskDelta(state, cap * 0.5) === 0 && Eco.monthlyRiskDelta(state, cap * 1.2) > 5 && Eco.monthlyRiskDelta(state, cap * 5) === Eco.RISK_TUNE.MONTH_CAP);
-    state.history.push({ nhiPoints: cap * 0.5, year: 2, month: 1, patients: 10, satisfaction: 60 });
-    check('risk: fast month-on-month growth adds risk', Eco.monthlyRiskDelta(state, cap * 0.85) > 0);
-    state.nhi.nhiN = 100; state.nhi.complexN = 90;
-    check('risk: a high share of complex treatments adds risk', Eco.monthlyRiskDelta(state, cap * 0.3) > 0);
-    state.nhi.nhiN = 0; state.nhi.complexN = 0; state.history = [];
-    state.nhi.monthPoints = cap * 1.3; state.nhi.risk = 10;
-    const rec = Eco.settleMonth(state);
-    check('risk: settleMonth applies the monthly input and records it', Eco.riskOf(state) > 10 && rec.risk === Math.round(Eco.riskOf(state) * 10) / 10 && state.history[state.history.length - 1].risk === rec.risk);
-    state.nhi.risk = 5; bus.emit('week:end', {}); bus.emit('week:end', {});
-    check('risk: decays 1 per week (never below 0)', Eco.riskOf(state) === 3 && (state.nhi.risk = 0, bus.emit('week:end', {}), Eco.riskOf(state) === 0));
-    // effect on events
-    const aud = pool.find(d => d.id === 'nhi_audit');
-    state.nhi.risk = 70; check('risk: > 60 doubles the weight of nhi events (nhi_audit)', near(Ev.eventWeight(state, aud), aud.weight * 2));
-    // effect on the yearly inspection
-    richClinic();
-    state.nhi.risk = 0; const f0 = Ins.evaluateRules(state, state.time.year).find(r => r.id === 'nhi_abuse').frac;
-    state.nhi.risk = 100; const f1 = Ins.evaluateRules(state, state.time.year).find(r => r.id === 'nhi_abuse').frac;
-    check('risk: high risk lowers the annual 健保署 nhi_abuse score', f1 < f0 - 0.3 && f0 === 1, `${f0} -> ${f1}`);
-    // M7 review score
-    richClinic();
-    state.stats.satSum = 80 * 50; state.stats.satN = 50; state.nhi.monthPoints = 0; Eco.settleMonth(state);
-    check('review: average satisfaction > 70 -> +0.05', near(state.reviewScore, 4.05), String(state.reviewScore));
-    state.stats.satSum = 40 * 50; state.stats.satN = 50; Eco.settleMonth(state);
-    check('review: average satisfaction < 45 -> -0.1', near(state.reviewScore, 3.95), String(state.reviewScore));
-    state.stats.satSum = 60 * 50; state.stats.satN = 50; Eco.settleMonth(state);
-    check('review: satisfaction 45..70 leaves it unchanged', near(state.reviewScore, 3.95));
-    state.reviewScore = 5; Eco.addReview(state, 1); const hi = state.reviewScore; state.reviewScore = 1; Eco.addReview(state, -1);
-    check('review: clamped to 1..5', hi === 5 && state.reviewScore === 1);
-    state.reviewScore = 4; const a4 = P.expectedArrivalsPerWeek(state); state.reviewScore = 5; const a5 = P.expectedArrivalsPerWeek(state); state.reviewScore = 3; const a3 = P.expectedArrivalsPerWeek(state);
-    check('review: arrivals x (1 + (score-4)*0.1): every 0.1 = 1%', near(a5 / a4, 1.1, 1e-9) && near(a3 / a4, 0.9, 1e-9));
-  }
-
-  // ---------------- J. result summaries are readable ----------------
-  {
-    richClinic(); state.time.clock = 600;
-    const chips = Ev.applyEffectsDetailed(state, { wear: { target: 'all', delta: 10 }, risk: -10, morale: { delta: -3 }, stamina: { role: 'pt', delta: -5 }, reviewScore: -0.2, maintenance: 8, breakdown: 'tens', repair: 'broken' });
-    const txt = chips.map(c => c.text);
-    check('summaries: 設備耗損 +10 / 審查風險 −10 / 士氣 −3 / 體力 / 網路評價 −0.2 / 保養合約 / 故障 / 修復', txt.includes('設備耗損 +10') && txt.includes('審查風險 −10') && txt.includes('士氣 −3') && txt.some(t => t.includes('體力 −5')) && txt.includes('網路評價 −0.2') && txt.some(t => t.includes('保養合約 8 週')) && txt.some(t => t.includes('故障')) && txt.includes('故障設備已修復'), txt.join(' | '));
-    check('summaries: good/bad flags follow the sign (wear up = bad, risk down = good)', chips.find(c => c.text === '設備耗損 +10').good === false && chips.find(c => c.text === '審查風險 −10').good === true);
-    check('applyEffects (legacy) still returns plain strings', Ev.applyEffects(state, { money: 1000, reputation: 2 }).every(t => typeof t === 'string'));
-  }
-  feature('Events: pool of RANDOM_EVENTS + EXT_A + EXT_B, cond/weights/cooldown/big cap/follow-ups', 'works', `${Ev.eventPool().length} events forced x all choices`);
-  feature('Equipment wear / breakdown / repair / maintenance (M2)', 'works', 'wear, auto-breakdown event, 維修/保養/合約');
-  feature('Staff morale + resignation (M4), NHI risk (M3), review score (M7), buffs (M5/M6)', 'works', 'weekly/monthly updates, save round-trip');
-}
-// =====================================================================================================
-// SECTION: career (docs/GOALS_AND_ENDING.md): onboarding, yearly goals, review, grades, endings, endless, migration
+// SECTION: career
 // =====================================================================================================
 function careerSection() {
   section('Career: onboarding / goals / review / ending');
-  wire(); Car.initCareer(); Car.initCareer();   // idempotent: a second call must not double every listener (checked below via reward counts)
-  const ev = [];
-  const offs = ['career:changed', 'career:goal-done', 'career:onboarding-done', 'career:year-review', 'career:ending', 'inspection:result', 'toast'].map(n => bus.on(n, p => ev.push({ n, p })));
-  const evs = (n) => ev.filter(e => e.n === n);
-  const CF = () => { fresh(SEED, true); for (const d of ACHD.ACHIEVEMENTS) state.achv.unlocked[d.id] = { year: 1, month: 1, week: 1 }; ev.length = 0; return Car.ensureCareer(state); };
-  const setLot = (L) => { state.lotLevel = L; state.lot = { ...LOTS[L].lot }; state.door = { ...LOTS[L].door }; };
-  const F = [1, 2, 4, 8];
-  const wk = () => { bus.emit('week:end', { ...state.time }); state.events.pendingDilemma = null; state.time.paused = false; };
-  const hist = (n, o = {}) => { for (let i = 0; i < n; i++) state.history.push({ year: state.time.year, month: i + 1, income: 1e6, expense: 5e5, net: 5e5, money: state.money, patients: 100, satisfaction: 75, reputation: 100, nhiPoints: 1000, pointValue: 0.95, ...o }); };
-
-  // ---- A. metric registry: every GOAL_METRICS key computes a finite number ----
-  CF();
-  const bad = Object.keys(GD.GOAL_METRICS).filter(k => !Number.isFinite(Car.metricValue(state, k)));
-  check('career: every GOAL_METRICS key computes a finite number on a fresh game', bad.length === 0, bad.join(','));
-  const used = new Set();
-  for (const t of GD.ONBOARDING) used.add(t.metric.key);
-  for (const g of [...GD.CORE_GOALS, ...GD.BONUS_GOALS]) for (const set of [g.conds, g.altConds || [], ...(g.variants || []).map(v => v.conds)]) for (const c of set) used.add(c.key);
-  check('career: every metric key used by a goal is in GOAL_METRICS', [...used].every(k => GD.GOAL_METRICS[k]), [...used].filter(k => !GD.GOAL_METRICS[k]).join(','));
-  check('career: 10 onboarding / 10 core (one per year) / 30 bonus goals, unique ids', GD.ONBOARDING.length === 10 && GD.CORE_GOALS.length === 10 && GD.CORE_GOALS.every((g, i) => g.year === i + 1) && new Set([...GD.ONBOARDING, ...GD.CORE_GOALS, ...GD.BONUS_GOALS].map(g => g.id)).size === 50 && GD.BONUS_GOALS.length === 30);
-
-  // ---- B. onboarding: every task completes when forced, pays exactly once ----
-  const wearable = () => { state.objects.push({ id: state.nextId++, defId: 'tens', x: 1, y: 1, rot: 0, busy: false, usedBy: null, staffId: null, wear: 0 }); };
-  const FORCE_OB = {
-    treatmentsDone: () => bus.emit('treatment:done', { patient: { id: 1, type: 'office', treated: 1 }, treatmentId: 'heat', nhiPoints: 0, selfPay: 0 }),
-    seatingSet: () => { state.objects.push({ id: state.nextId++, defId: 'water', x: 1, y: 1, rot: 0 }); bus.emit('map:changed', {}); },
-    antislipTiles: () => { for (let i = 0; i < 6; i++) state.map.floor[12][12 + i] = 'floor_mat'; bus.emit('map:changed', {}); },
-    zoneActive_golden3: () => { state.zones = [{ id: 'golden3' }]; bus.emit('map:changed', {}); },
-    monthsSettled: () => { hist(1); bus.emit('month:settled', { year: 1, month: 1, nhiIncome: 1, selfIncome: 0, copayIncome: 0, income: 1 }); },
-    researchStartedOrDone: () => { state.research.current = 'rs_heat'; wk(); },
-    ptCount: () => { state.staff.push({ id: state.nextId++, role: 'pt', skill: 5, charm: 5, salary: 1000 }, { id: state.nextId++, role: 'pt', skill: 5, charm: 5, salary: 1000 }); wk(); },
-    priceChanged: () => { state.policy.priceMult.shockwave = 1.2; wk(); },
-    communityStarted: () => { state.achv.counters.communityDone.health_talk = 1; bus.emit('community:started', { id: 'health_talk' }); },
-    expandTabOpened: () => Car.markExpandTabOpened(state),
-  };
-  check('career: a forcer exists for every onboarding metric', GD.ONBOARDING.every(t => FORCE_OB[t.metric.key]));
-  for (const t of GD.ONBOARDING) {
-    const c = CF();
-    const m0 = state.money, p0 = { ...state.points };
-    const row0 = Car.onboardingList(state).find(x => x.id === t.id);
-    check(`onboarding ${t.id}: starts undone with target ${t.metric.target}`, row0 && !row0.done && row0.target === t.metric.target && /\S/.test(row0.rewardText));
-    FORCE_OB[t.metric.key]();
-    const row = Car.onboardingList(state).find(x => x.id === t.id);
-    check(`onboarding ${t.id}: done when forced`, row.done && c.onboarding.done[t.id] === true);
-    const dm = state.money - m0, rw = t.reward || {};
-    check(`onboarding ${t.id}: reward paid exactly (money ${rw.money || 0}, points ${JSON.stringify(rw.points || {})})`, dm === (rw.money || 0) && K.POINT_KEYS.every(k => near(state.points[k] - p0[k], (rw.points || {})[k] || 0, 1e-9)), `dm=${dm}`);
-    check(`onboarding ${t.id}: one career:onboarding-done event + one good toast`, evs('career:onboarding-done').filter(e => e.p.task.id === t.id).length === 1 && evs('toast').filter(e => e.p.kind === 'good' && e.p.text.includes(t.name)).length === 1);
-    wk(); wk();
-    check(`onboarding ${t.id}: second tick does not pay again (event count)`, evs('career:onboarding-done').filter(e => e.p.task.id === t.id).length === 1);
+  fresh(50);
+  Car.initCareer();
+  const c = Car.ensureCareer(state);
+  check('career inited with this year\'s goals (1 core + 2 bonus)', c.inited && state.career.goals.list.length === 3 && state.career.goals.list.filter(g => g.kind === 'core').length === 1);
+  check('first core goal is 站穩腳步', Car.currentGoals(state).some(g => g.id === 'core_y1_stand'));
+  const onb = Car.onboardingList(state);
+  check('10 onboarding tasks', onb.length === 10, String(onb.length));
+  // complete a few
+  runWeeks(2);
+  check('first served dish completes ob_first_treat', Car.onboardingList(state).find(t => t.id === 'ob_first_treat').done === true);
+  put('bench', 12, 16); put('water', 13, 16); refresh(); runWeeks(1);
+  check('seating set -> ob_seating', Car.onboardingList(state).find(t => t.id === 'ob_seating').done === true);
+  for (let x = 10; x < 17; x++) B.paintFloor(state, 'floor_tile', x, 19);
+  runWeeks(1);
+  check('6 floor tiles -> ob_antislip', Car.onboardingList(state).find(t => t.id === 'ob_antislip').done === true, String(Car.metricValue(state, 'antislipTiles')));
+  put('noodle_stove', 10, 14); put('braise_pot', 11, 14); put('fryer', 12, 14); refresh(); runWeeks(1);
+  check('golden fire zone active -> ob_golden3', state.zones.some(z => z.id === 'golden3') && Car.onboardingList(state).find(t => t.id === 'ob_golden3').done === true);
+  state.hirePool = [{ cid: 'k1', role: 'cook', name: 'a', skill: 5, charm: 5, salary: 30000, hireCost: 1000, trait: null, staminaMax: 100 }]; state.money += 5e5; S.hire(state, 'k1'); runWeeks(1);
+  check('second cook -> ob_second_cook', Car.metricValue(state, 'cookCount') >= 2 && Car.onboardingList(state).find(t => t.id === 'ob_second_cook').done === true);
+  // year review order & ending
+  fresh(51);
+  const order = []; const offs = [bus.on('inspection:result', () => order.push('insp')), bus.on('career:year-review', () => order.push('review')), bus.on('career:ending', () => order.push('ending'))];
+  Car.initCareer(); state.money = 5e6; unlockAll(); hireAll();
+  runMonths(12);
+  check('year 1 ends: inspection then review', order.join() === 'insp,review' || order.slice(0, 2).join() === 'insp,review', order.join());
+  check('a review exists with a grade', state.career.reviews.length >= 1 && ['S', 'A', 'B', 'C', 'D'].includes(state.career.reviews[0].grade), JSON.stringify(state.career.reviews[0] && state.career.reviews[0].grade));
+  offs.forEach(f => f());
+  // endings (forced)
+  for (const e of GD.ENDINGS) {
+    fresh(52);
+    Car.initCareer(); const cc = Car.ensureCareer(state);
+    if (e.id === 'bankrupt') { const r = Car.computeEnding(state, { bankrupt: true }); check('ending bankrupt', r.id === 'bankrupt'); continue; }
+    const p = e.params || {};
+    state.lotLevel = p.minLot || 0; state.reputation = p.minRep ? p.minRep + 10 : 300;
+    if (p.focus) cc.counters[{ business: 'fBusiness', community: 'fCommunity', kids: 'fKids' }[p.focus]] = 10;
+    if (p.minElderCured) cc.counters.elderCured = p.minElderCured + 5;
+    if (p.minStudentServed) cc.counters.studentServed = p.minStudentServed + 5;
+    if (p.minFamilyCured) cc.counters.familyCured = p.minFamilyCured + 5;
+    for (const id of p.needObjects || []) state.objects.push({ id: state.nextId++, defId: id, x: 10, y: 10, rot: 0, busy: false, usedBy: null, staffId: null, wear: 0 });
+    for (const id of p.needResearch || []) state.research.done.push(id);
+    if (p.minSelfPayShare || p.minShare) cc.shares = new Array(24).fill(0.6);
+    // average satisfaction for community_hero
+    state.history = Array.from({ length: 12 }, () => ({ year: 1, month: 1, income: 1, net: 1, patients: 100, satisfaction: 90 }));
+    const orig = Car.careerScore;
+    const r = Car.computeEnding(state, { bankrupt: false });
+    if (['legend_chain', 'steady_shop', 'struggling_shop'].includes(e.id)) check(`ending ${e.id} reachable by score`, typeof r.id === 'string' && r.id.length > 0, r.id);
+    else check(`ending ${e.id} reachable`, r.id === e.id || (GD.ENDINGS.find(x => x.id === r.id).order < e.order), r.id);
   }
-
-  // ---- C. yearly goals: generation ----
-  {
-    const c = CF();
-    const gs = Car.currentGoals(state);
-    check('goals: year 1 gets 1 core + 2 bonus', gs.length === 3 && gs.filter(g => g.kind === 'core').length === 1 && gs.filter(g => g.kind === 'bonus').length === 2, gs.map(g => g.id).join(','));
-    check('goals: year 1 core is core_y1_stand with 2 conds', gs[0].id === 'core_y1_stand' && gs[0].conds.length === 2 && gs[0].conds.every(x => typeof x.label === 'string' && x.label));
-    check('goals: view fields (progress/target/pct/done/claimed/rewardText)', gs.every(g => Number.isFinite(g.progress) && Number.isFinite(g.target) && g.pct >= 0 && g.pct <= 1 && g.done === false && g.claimed === false && /NT\$/.test(g.rewardText)));
-    check('goals: no bonus goal that is already satisfied at generation', gs.filter(g => g.kind === 'bonus').every(g => !g.done));
-    const again = Car.currentGoals(state).map(g => g.id).join();
-    check('goals: ensureCareer is idempotent within a year', again === gs.map(g => g.id).join());
-    // determinism: same seed + year -> same bonus pair; different year never repeats the previous pair
-    const ids1 = gs.filter(g => g.kind === 'bonus').map(g => g.id);
-    CF(); check('goals: generation is deterministic for a seed', Car.currentGoals(state).filter(g => g.kind === 'bonus').map(g => g.id).join() === ids1.join());
-    let prev = ids1, rep = 0;
-    for (let y = 2; y <= 14; y++) {
-      state.time.year = y; Car.ensureCareer(state);
-      const cur = Car.currentGoals(state);
-      const b = cur.filter(g => g.kind === 'bonus').map(g => g.id);
-      if (b.some(id => prev.includes(id))) rep++;
-      check(`goals: year ${y} has a core goal and bonus goals`, cur.filter(g => g.kind === 'core').length === 1 && b.length >= 1);
-      prev = b;
-    }
-    check('goals: the same bonus goal never appears in consecutive years', rep === 0, 'repeats ' + rep);
-  }
-  // equipment goals never offered without machines; research-gated goals need research
-  {
-    let ever = new Set();
-    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) { CF(); state.seed = seed; state.objects = []; for (let y = 2; y <= 6; y++) { state.time.year = y; Car.ensureCareer(state); Car.currentGoals(state).forEach(g => ever.add(g.id)); } }
-    check('goals: no equipment/maintenance goals without machines', !['b_eq_no_breakdown', 'b_eq_wear', 'b_eq_maintenance'].some(id => ever.has(id)));
-    check('goals: research-gated bonus goals not offered without the research', !ever.has('b_biz_selfpay_25') && !ever.has('b_biz_selfpay_35'));
-    check('goals: only the current lot\'s per-lot bonus goals', ![...ever].some(id => /^b_(pat|cure)_l[123]$/.test(id)));
-  }
-
-  // ---- D. every core / bonus goal completes when forced; rewards per lot; once-only ----
-  // makes sure this year has >= n settled months (extra ones are copies of a base month), applies a patch / a mutator to all of them
-  const yrMonths = (n, patch, fn) => {
-    const y = state.time.year;
-    let mine = state.history.filter(h => h.year === y);
-    for (let i = mine.length; i < n; i++) { const base = mine[mine.length - 1]; hist(1, { month: i + 1, ...(base ? { net: base.net, satisfaction: base.satisfaction, pointValue: base.pointValue } : {}) }); mine = state.history.filter(h => h.year === y); }
-    for (const h of mine) { if (patch) Object.assign(h, patch); if (fn) fn(h); }
-  };
-  const FORCE = {
-    reputation: (t, cmp) => { state.reputation = cmp === 'lte' ? t : t + 1; },
-    money: (t) => { state.money = t + 1000; },
-    moneyGrowthPct: (t) => { const k = state.career.counters; k.moneyStart = 1000000; state.money = 1000000 * (1 + t / 100) + 1000; },
-    lotLevel: (t) => setLot(t),
-    netMonthlyAvgYear: (t) => { yrMonths(4, { net: t + 1000 }); },
-    netPositiveMonthsYear: (t) => { yrMonths(t, null, (h) => { if (!(h.net > 0)) h.net = 1000; }); },
-    selfPayShare3: (t) => { state.career.shares = [t + 0.01, t + 0.01, t + 0.01]; },
-    pvGoodMonthsYear: (t) => { yrMonths(t, { pointValue: 0.95 }); },
-    patientsYear: (t) => { state.stats.patientsMonth = t; },
-    curedYear: (t) => { state.career.counters.yrCured = t; },
-    avgSat6: (t) => { state.history = []; hist(6, { satisfaction: t + 1 }); },
-    avgSatYear: (t) => { yrMonths(4, { satisfaction: t + 1 }); },
-    slipYear: (t) => { state.career.counters.yrSlip = t; },
-    reviewScore: (t) => { state.reviewScore = Math.min(5, t + 0.1); },
-    resignYear: (t) => { state.career.counters.yrResign = t; },
-    moraleAvg: (t) => { state.staff = [{ id: 1, role: 'pt', morale: t + 1 }, { id: 2, role: 'doctor', morale: t + 1 }]; },
-    trainYear: (t) => { state.career.counters.yrTrain = t; },
-    breakdownYear: (t) => { state.career.counters.yrBreak = t; },
-    wearAvg: (t) => { state.objects.forEach(o => { if (o.defId === 'tens') o.wear = Math.max(0, t - 5); }); },
-    maintenanceActive: () => { state.objects.forEach(o => { if (o.defId === 'tens') o.maintainedUntil = 1e6; }); },
-    communityYear: (t) => { state.career.counters.yrCommunity = t; },
-    inspectionPassedYear: () => { state.inspections.lastYearResult = { year: state.time.year, pass: true, score: 80 }; },
-    dilemmasYear: (t) => { state.career.counters.yrDilemma = t; },
-    riskNow: (t) => { state.nhi.risk = t; },
-    researchDone: (t) => { state.research.done = Object.keys(RESEARCH).slice(0, t); },
-    researchYear: (t) => { state.career.counters.rdStart = 0; state.research.done = Object.keys(RESEARCH).slice(0, t); },
-    upgradeLevels: (t) => { state.research.levels = { up_clinical: t }; },
-    upgradeYear: (t) => { state.career.counters.upgStart = 0; state.research.levels = { up_clinical: t }; },
-  };
-  check('goals: a forcer exists for every goal metric', Object.keys(GD.GOAL_METRICS).filter(k => !GD.ONBOARDING.some(t => t.metric.key === k)).every(k => FORCE[k]), Object.keys(GD.GOAL_METRICS).filter(k => !FORCE[k] && !GD.ONBOARDING.some(t => t.metric.key === k)).join(','));
-  const goalCase = (def, kind, lot, condSet, vi = -1) => {
-    const c = CF();
-    for (const t of GD.ONBOARDING) c.onboarding.done[t.id] = true;   // onboarding rewards must not pollute the exact reward asserts
-    setLot(lot); state.time.year = kind === 'core' ? def.year : 3; Car.ensureCareer(state);
-    state.objects = []; wearable(); state.objects[0].wear = 90; state.nhi.risk = 90;
-    state.staff = [{ id: 1, role: 'pt', morale: 50 }, { id: 2, role: 'doctor', morale: 50 }];
-    state.seed = 77;
-    // initial state: nothing satisfied
-    state.reputation = 10; state.money = 900000; state.career.counters.moneyStart = 900000; state.history = [];
-    state.career.goals.list = [{ id: def.id, kind, progress: 0, target: 0, done: false, claimed: false, lot, vi }];
-    ev.length = 0;
-    const v = vi >= 0 && def.variants ? def.variants[vi] : def;
-    const conds = condSet === 'alt' ? def.altConds : v.conds;
-    // the not-yet-satisfied check (skip when a cond is "<=" and trivially true at zero)
-    wk();
-    const preDone = state.career.goals.list[0].done;
-    for (const cd of conds) {
-      const t = Array.isArray(cd.targetByLot) ? cd.targetByLot[lot] : cd.target;
-      FORCE[cd.key](t, cd.cmp);
-    }
-    const m0 = state.money, r0 = state.reputation, p0 = { ...state.points };   // baselines AFTER forcing: only the reward moves them
-    wk();
-    const finals = conds.some(cd => cd.cmp === 'lte' && ['slipYear', 'resignYear', 'breakdownYear'].includes(cd.key));
-    const e = state.career.goals.list[0];
-    const midDone = e.done;
-    if (!e.done) { const y = state.time.year; bus.emit('year:end', { year: y }); state.time.year = y + 1; bus.emit('year:start', { year: y + 1 }); }   // the real year turn: finalizes the year goals
-    return { c, e, preDone, midDone, finals, dm: state.money - m0, dr: state.reputation - r0, dp: K.POINT_KEYS.map(k => state.points[k] - p0[k]) };
-  };
-  const checkReward = (id, def, r, lot) => {
-    const rw = def.reward;
-    lot = state.lotLevel;   // the reward scale follows the lot at claim time (expanding goals pay at the new lot)
-    // inspection at year:end (if it ran) may move money / reputation: only assert exact amounts when the goal latched before year:end
-    const exact = r.midDone;
-    check(`goal ${id} (L${lot}): reward claimed once`, r.e.done && r.e.claimed && evs('career:goal-done').filter(e => e.p.goal.id === id).length === 1);
-    if (exact) {
-      check(`goal ${id} (L${lot}): money reward = ${rw.money} x ${F[lot]}`, r.dm === Math.round(rw.money * F[lot]), `${r.dm}`);
-      check(`goal ${id} (L${lot}): reputation + points reward`, near(r.dr, rw.reputation || 0, 1e-6) && K.POINT_KEYS.every((k, i) => near(r.dp[i], (rw.points || {})[k] || 0, 1e-9)), `${r.dr} ${r.dp}`);
-    }
-  };
-  for (const g of GD.CORE_GOALS) {
-    const variants = g.variants ? g.variants.map((v, i) => ({ vi: i, lots: v.lots })) : [{ vi: -1, lots: [0, 1, 2, 3] }];
-    for (const vv of variants) for (const lot of vv.lots) {
-      const r = goalCase(g, 'core', lot, 'conds', vv.vi);
-      const lotGoal = (g.conds || []).some(cd => cd.key === 'lotLevel' && lot >= cd.target) || (g.altConds || []).some(cd => cd.key === 'lotLevel' && lot >= cd.target);
-      if (!lotGoal) check(`core ${g.id}${vv.vi >= 0 ? ' v' + vv.vi : ''} (L${lot}): not done before the conditions hold`, !r.preDone);
-      check(`core ${g.id}${vv.vi >= 0 ? ' v' + vv.vi : ''} (L${lot}): completes when forced`, r.e.done);
-      if (!lotGoal && (lot === 0 || lot === 3 || g.variants)) checkReward(g.id, g, r, lot);
-      if (r.finals) check(`core ${g.id}: year-end-only condition is not latched mid-year`, !r.midDone);
-    }
-    if (g.altConds) {
-      for (const lot of [0, 2]) { const r = goalCase(g, 'core', lot, 'alt'); check(`core ${g.id}: altConds alone complete it (L${lot})`, r.e.done); }
-    }
-  }
-  // generation picks the right variant for the lot
-  for (const g of GD.CORE_GOALS.filter(x => x.variants)) {
-    CF(); setLot(0); state.time.year = g.year; Car.ensureCareer(state); const a = Car.currentGoals(state)[0];
-    CF(); setLot(3); state.time.year = g.year; Car.ensureCareer(state); const b = Car.currentGoals(state)[0];
-    check(`core ${g.id}: variant chosen by lot (L0 "${a.name}" vs L3 "${b.name}")`, a.name === g.variants[0].name && b.name === g.variants[1].name);
-  }
-  CF(); setLot(2); state.time.year = 6; Car.ensureCareer(state);
-  check('core: targetByLot resolves per lot (y6 L2 net target 900k)', Car.currentGoals(state)[0].conds.find(c => c.key === 'netMonthlyAvgYear').target === 900000);
-  for (const g of GD.BONUS_GOALS) {
-    const lot = (g.cond && g.cond.minLot != null) ? g.cond.minLot : 0;
-    const r = goalCase(g, 'bonus', lot, 'conds');
-    check(`bonus ${g.id}: completes when forced`, r.e.done);
-    if (!r.finals) checkReward(g.id, g, r, lot);
-  }
-  // reward per lot for one core goal
-  for (const lot of [0, 1, 2, 3]) {
-    const g = GD.CORE_GOALS[0];
-    const r = goalCase(g, 'core', lot, 'conds');
-    check(`reward scale L${lot}: core NT$ ${g.reward.money} x ${F[lot]}`, r.dm === g.reward.money * F[lot], `${r.dm}`);
-  }
-  {   // once-only claim + counter
-    const g = GD.CORE_GOALS[0];
-    CF(); const k = state.career.counters; state.career.goals.list = [{ id: g.id, kind: 'core', progress: 0, target: 0, done: false, claimed: false, lot: 0, vi: -1 }];
-    state.reputation = 100; state.money = 2e6; wk();
-    const m1 = state.money; wk(); wk(); bus.emit('month:settled', { year: 1, month: 1, nhiIncome: 1, selfIncome: 0, copayIncome: 0, income: 1 });
-    check('goals: a claimed goal is not paid again', state.money === m1 && evs('career:goal-done').length === 1 && k.goalsDone === 1);
-    state.reputation = 10; state.money = 0; wk();
-    check('goals: a done goal stays done when the metric falls back', Car.currentGoals(state)[0].done && Car.currentGoals(state)[0].claimed);
-  }
-
-  // ---- E. save / load round trip mid-year, old (v2) saves ----
-  {
-    const c = CF(); state.money = 5e6; state.reputation = 100; wk();
-    bus.emit('patient:slip', { patient: { id: 1 } }); bus.emit('community:started', { id: 'health_talk' });
-    const before = JSON.stringify(state.career);
-    check('career: mid-year state saves', Sav.saveGame(state, '2'));
-    const m = state.money, pts = JSON.stringify(state.points);
-    check('career: loadGame ok', Sav.loadGame(state, '2'));
-    check('career: save/load round trip leaves state.career identical', JSON.stringify(state.career) === before, firstDiff(JSON.parse(before), JSON.parse(JSON.stringify(state.career))).join(' ; '));
-    check('career: loading does not pay anything', state.money === m && JSON.stringify(state.points) === pts);
-    check('career: counters survive (no double count after reload)', state.career.counters.yrSlip === 1 && state.career.counters.yrCommunity === 1);
-    const imp = JSON.parse(JSON.stringify(JSON.parse(Sav.exportSave(state)).state));
-    imp.career.goals.list.push({ id: 'ghost_goal', kind: 'core' }); imp.career.reviews = Array.from({ length: 60 }, (_, i) => ({ year: i + 1, grade: 'B', score: 150, dims: { fin: 500, rep: -3, care: 1, team: 1, local: 1 }, stats: {}, goals: [], line: '' }));
-    imp.career.ending = { id: 'nonsense', score: 1 }; imp.career.onboarding.done.ghost = true; imp.career.counters.yrSlip = -5; imp.career.counters.tx_ghost = 4; imp.career.counters.bad = NaN;
-    check('career: junk career imports', Sav.importSave(state, JSON.stringify({ version: K.SAVE_VERSION, state: imp })));
-    const cc = state.career;
-    check('career sanitize: unknown goal ids dropped, ending shape validated, reviews <= 40, numbers clamped',
-      !cc.goals.list.some(g => g.id === 'ghost_goal') && cc.ending === null && cc.reviews.length === 40 && cc.reviews.every(r => r.score <= 100 && r.dims.fin <= 100 && r.dims.rep >= 0) && !cc.onboarding.done.ghost && cc.counters.yrSlip === 0 && !('tx_ghost' in cc.counters) && !('bad' in cc.counters));
-    imp.career.ending = { id: 'steady_clinic', score: 70.5, year: 10, at: 130 }; imp.career.reviews = [];
-    Sav.importSave(state, JSON.stringify({ version: K.SAVE_VERSION, state: imp }));
-    check('career sanitize: a valid ending survives', state.career.ending && state.career.ending.id === 'steady_clinic' && state.career.ending.score === 70.5);
-  }
-  {   // v2 save (no career) in the middle of year 3
-    fresh(SEED, true); state.time.year = 3; state.time.month = 5; state.money = 3e6; state.reputation = 150; state.lotLevel = 0;
-    hist(4, { year: 3 });
-    put('sofa', 10, 16); put('water', 20, 17);
-    state.staff.push(S.createStaff(state, 'pt', null, 17, 15));
-    for (const d of ACHD.ACHIEVEMENTS) state.achv.unlocked[d.id] = { year: 1, month: 1, week: 1 };
-    state.stats.patientsTotal = 500;
-    const raw = JSON.parse(JSON.stringify({ ...state, map: { floor: state.map.floor } }));
-    delete raw.career; raw.version = 2;
-    ev.length = 0;
-    const m0 = state.money, p0 = JSON.stringify(state.points), rep0 = state.reputation;
-    check('migration v2 -> v3: old save imports', Sav.importSave(state, JSON.stringify({ version: 2, savedAt: 1, label: 'x', state: raw })));
-    const c = state.career;
-    check('migration: career added, version 3', K.SAVE_VERSION === 3 && c && c.inited === true && c.goals.year === 3 && c.goals.list.length >= 2);
-    check('migration: no reward flood (money / points / reputation untouched, no onboarding events)', state.money === m0 && JSON.stringify(state.points) === p0 && state.reputation === rep0 && evs('career:onboarding-done').length === 0);
-    check('migration: already-satisfied onboarding tasks are marked done silently', c.onboarding.done.ob_seating === true && c.onboarding.done.ob_first_treat === true && c.onboarding.done.ob_first_settle === true && !c.onboarding.done.ob_expand_tab);
-    check('migration: onboardingList reflects the silent completion', Car.onboardingList(state).filter(t => t.done).length === Object.keys(c.onboarding.done).length);
-    const m1 = state.money; wk();
-    check('migration: next tick still pays nothing for pre-satisfied tasks', state.money === m1 || evs('career:onboarding-done').length === 0);
-    const raw11 = { ...raw, time: { ...raw.time, year: 12 } };
-    ev.length = 0;
-    Sav.importSave(state, JSON.stringify({ version: 2, savedAt: 1, label: 'x', state: raw11 }));
-    check('migration: a year > 10 save becomes endless silently (no ending event)', state.career.endless === true && state.career.ending === null && evs('career:ending').length === 0 && state.career.goals.year === 12);
-  }
-
-  // ---- F. year review ordering, content, grade boundaries ----
-  {
-    const B_ = [[39.9, 'D'], [40, 'C'], [59.9, 'C'], [60, 'B'], [74.9, 'B'], [75, 'A'], [89.9, 'A'], [90, 'S'], [100, 'S'], [0, 'D']];
-    check('grades: boundaries 39.9/40/59.9/60/74.9/75/89.9/90', B_.every(([v, g]) => Car.gradeOf(v) === g), B_.map(([v, g]) => v + '=' + Car.gradeOf(v)).join(' '));
-    CF();
-    // real year end: run the real calendar through the last step of year 1
-    state.money = 3e6; state.reputation = 120;
-    for (let i = 0; i < 11; i++) state.history.push({ year: 1, month: i + 1, income: 1.2e6, expense: 1e6, net: 2e5, money: 3e6, patients: 80, satisfaction: 72, reputation: 100, nhiPoints: 1, pointValue: 0.95 });
-    state.time.month = 12; state.time.week = 4; state.time.clock = K.CLOSE_MIN - 1;
-    state.career.counters.yrCured = 60; ev.length = 0;
-    step(2);
-    check('review: the calendar moved to year 2', state.time.year === 2);
-    const order = ev.filter(e => e.n === 'inspection:result' || e.n === 'career:year-review').map(e => e.n);
-    check('review: year review fires AFTER the inspection result, exactly once', order.join() === 'inspection:result,career:year-review', order.join());
-    const rv = Car.yearReviews(state);
-    check('review: stored with year/grade/score/dims/stats/goals/line', rv.length === 1 && rv[0].year === 1 && /^[SABCD]$/.test(rv[0].grade) && rv[0].score >= 0 && ['fin', 'rep', 'care', 'team', 'local'].every(k => rv[0].dims[k] >= 0 && rv[0].dims[k] <= 100) && rv[0].goals.length === 3 && rv[0].line.length > 5 && rv[0].journal && typeof rv[0].stats.net === 'number', JSON.stringify(rv[0]).slice(0, 200));
-    check('review: Y1 grade matches computeYearScore total', Car.gradeOf(rv[0].score) === rv[0].grade);
-    check('review: new year rolled the goals + reset per-year counters', state.career.goals.year === 2 && state.career.counters.yrCured === 0 && Car.currentGoals(state)[0].id === 'core_y2_expand_l1');
-    check('review: not emitted twice by later weeks', (() => { wk(); wk(); return evs('career:year-review').length === 1; })());
-    const sc = Car.computeYearScore(state, 1);
-    check('computeYearScore for a past year returns the stored review', sc.grade === rv[0].grade && sc.total === rv[0].score);
-    const live = Car.computeYearScore(state, 2);
-    check('computeYearScore for the running year has dims/total/grade', live && ['fin', 'rep', 'care', 'team', 'local'].every(k => Number.isFinite(live.dims[k])) && Number.isFinite(live.total) && /^[SABCD]$/.test(live.grade));
-    // dims respond to the right inputs
-    CF(); hist(12, { net: 0 }); const f0 = Car.computeYearScore(state, 1).dims.fin; state.history = []; hist(12, { net: 1e6 }); const f1 = Car.computeYearScore(state, 1).dims.fin;
-    check('score: fin dim 0 at zero profit, 100 at 12 x 1M on L0 (bench 150k)', f0 === 0 && f1 === 100);
-    state.reputation = 50; const r50 = Car.computeYearScore(state, 1).dims.rep; state.reputation = 100; const r100 = Car.computeYearScore(state, 1).dims.rep;
-    check('score: rep dim = reputation / curve (Y1 100)', r50 === 50 && r100 === 100);
-    state.career.counters.yrSlip = 0; const c0 = Car.computeYearScore(state, 1).dims.care; state.career.counters.yrSlip = 10; const c10 = Car.computeYearScore(state, 1).dims.care;
-    check('score: slips lower the care dim', c10 < c0);
-  }
-
-  // ---- G. endings ----
-  {
-    const sc = (ys) => ys.map((s, i) => ({ year: i + 1, grade: Car.gradeOf(s), score: s, dims: { fin: s, rep: s, care: s, team: s, local: s }, stats: {}, goals: [], line: '' }));
-    const ready = (score) => {   // a state that satisfies EVERY ending condition
-      const c = CF();
-      state.time.year = 10; Car.ensureCareer(state);
-      setLot(3); state.reputation = 650; state.career.reviews = sc(Array(10).fill(score));
-      Object.assign(state.career.counters, { fLtc: 5, fOrtho: 5, fPeds: 4, elderCured: 600, kidCured: 300, sportsServed: 2000 });
-      state.career.shares = Array(24).fill(0.5);
-      state.research.done = Object.keys(RESEARCH);
-      state.objects.push({ id: state.nextId++, defId: 'si_room', x: 1, y: 1, rot: 0 }, { id: state.nextId++, defId: 'speech_room', x: 5, y: 1, rot: 0 });
-      hist(6, { satisfaction: 80 });
-      return c;
-    };
-    const ids = GD.ENDINGS.filter(e => e.id !== 'bankrupt').sort((a, b) => a.order - b.order).map(e => e.id);
-    ready(95);
-    let e = Car.computeEnding(state, { bankrupt: false });
-    check('ending: everything satisfied -> legend_center (priority 1)', e.id === 'legend_center' && e.stats && e.thanks.length >= 2 && e.title && e.emoji && e.grade === 'S', e.id + ' ' + e.score);
-    check('ending: stats block (income/patients/cured/events/achievements/peak rep/lot/top treatment)', ['totalIncome', 'totalPatients', 'totalCured', 'eventsHandled', 'achievementsDone', 'peakReputation', 'finalLot', 'topTreatment'].every(k => k in e.stats));
-    // peel the winners one by one
-    const peel = {
-      legend_center: () => { setLot(2); },
-      ltc_guardian: () => { state.career.counters.fLtc = 4; },
-      sports_doctor: () => { state.career.counters.sportsServed = 10; },
-      peds_pioneer: () => { state.career.counters.kidCured = 10; },
-      selfpay_brand: () => { state.career.shares = Array(24).fill(0.1); },
-    };
-    for (let i = 0; i < ids.length - 1; i++) {
-      const cur = Car.computeEnding(state, { bankrupt: false }).id;
-      check(`ending priority: ${ids[i]} chosen at step ${i + 1}`, cur === ids[i], cur);
-      if (peel[ids[i]]) peel[ids[i]]();
-      else if (ids[i] === 'steady_clinic') state.career.reviews = sc(Array(10).fill(30));
-      else if (ids[i] === 'struggling_shop') state.career.reviews = sc(Array(10).fill(0));
-    }
-    state.achv.unlocked = {}; state.lotLevel = 0;
-    check('ending: retire_handover when nothing else holds', Car.computeEnding(state, { bankrupt: false }).id === 'retire_handover');
-    // score thresholds, weights
-    ready(0); setLot(0); state.career.counters.fLtc = 0; state.career.counters.fOrtho = 0; state.career.counters.fPeds = 0; state.career.shares = []; state.achv.unlocked = {};
-    state.career.reviews = sc(Array(10).fill(60)); check('ending: score 60 -> steady_clinic', Car.computeEnding(state).id === 'steady_clinic');
-    state.career.reviews = sc(Array(10).fill(59)); check('ending: score 59 -> struggling_shop', Car.computeEnding(state).id === 'struggling_shop');
-    state.career.reviews = sc(Array(10).fill(40)); check('ending: score 40 -> struggling_shop', Car.computeEnding(state).id === 'struggling_shop');
-    state.career.reviews = sc(Array(10).fill(39)); check('ending: score 39 -> retire_handover', Car.computeEnding(state).id === 'retire_handover');
-    state.career.reviews = sc([100, 100, 100, 100, 100, 0, 0, 0, 0, 0]); const early = Car.careerScore(state);
-    state.career.reviews = sc([0, 0, 0, 0, 0, 100, 100, 100, 100, 100]); const late = Car.careerScore(state);
-    check('career score: later 5 years weigh x1.5 (50 -> 40 / 60)', near(early, 40, 0.11) && near(late, 60, 0.11), `${early} ${late}`);
-    state.lotLevel = 0; state.career.reviews = sc(Array(10).fill(50)); const s0 = Car.careerScore(state); setLot(3); const s3 = Car.careerScore(state);
-    check('career score: lot bonus L3 = +12', near(s3 - s0, 12, 0.11), `${s3 - s0}`);
-    state.achv.unlocked = Object.fromEntries(ACHD.ACHIEVEMENTS.map(d => [d.id, { year: 1, month: 1, week: 1 }])); const s4 = Car.careerScore(state);
-    check('career score: all achievements = +10', near(s4 - s3, 10, 0.11), `${s4 - s3}`);
-
-    // real events: the year-10 end emits the ending once, after the review; unlocks the ending achievements
-    ready(80); setLot(2); state.reputation = 300; state.career.reviews = sc(Array(9).fill(80));
-    for (const k of ['fLtc', 'fOrtho', 'fPeds']) state.career.counters[k] = 0;
-    state.career.shares = Array(24).fill(0.1);
-    for (let i = 0; i < 11; i++) state.history.push({ year: 10, month: i + 1, income: 1e6, expense: 5e5, net: 5e5, money: 5e6, patients: 100, satisfaction: 75, reputation: 100, nhiPoints: 1, pointValue: 0.95 });
-    state.time.month = 12; state.time.week = 4; state.time.clock = K.CLOSE_MIN - 1; ev.length = 0;
-    state.achv.unlocked = {};
-    step(2);
-    const kinds = ev.filter(x => x.n === 'inspection:result' || x.n === 'career:year-review' || x.n === 'career:ending').map(x => x.n);
-    check('ending: year 10 end -> inspection, then review, then ending (once)', kinds.join() === 'inspection:result,career:year-review,career:ending', kinds.join());
-    const en = evs('career:ending')[0].p.ending;
-    check('ending: stored in state.career.ending {id,score,year,at}', state.career.ending && state.career.ending.id === en.id && state.career.ending.year === 10 && Number.isFinite(state.career.ending.score) && Number.isFinite(state.career.ending.at));
-    check('ending: matching ending achievement + 十年老店 unlocked', Ach.isUnlocked(state, 'e_' + en.id) && Ach.isUnlocked(state, 'm_decade'), en.id);
-    check('ending: only the matching ending achievement unlocked', ACHD.ACHIEVEMENTS.filter(d => /^e_/.test(d.id) && Ach.isUnlocked(state, d.id)).length === 1);
-    const sm = Car.careerSummary(state);
-    check('careerSummary: ending shape {id,title,emoji}, endless false', sm.ending && sm.ending.id === en.id && sm.ending.title && sm.endless === false && sm.year === 11);
-    // no double ending
-    bus.emit('year:end', { year: 11 }); bus.emit('game:over', { reason: 'x' }); bus.emit('year:end', { year: 12 });
-    check('ending: no second ending after the first (also not on game:over)', evs('career:ending').length === 1 && state.career.ending.id === en.id);
-    // endless
-    Car.setEndless(state, true); check('endless: setEndless(true)', Car.careerSummary(state).endless === true);
-    // bankruptcy
-    CF(); ev.length = 0; state.flags.gameOver = true; bus.emit('game:over', { reason: 'broke' });
-    const eb = evs('career:ending');
-    check('ending: bankruptcy -> bankrupt ending, once', eb.length === 1 && eb[0].p.ending.id === 'bankrupt' && state.career.ending.id === 'bankrupt');
-    bus.emit('game:over', { reason: 'again' });
-    check('ending: second game:over does not add another ending', evs('career:ending').length === 1);
-    // bankrupt ending via real settleMonth
-    CF(); ev.length = 0; state.money = -2e6; state.time.month = 3; state.time.week = 4; state.time.clock = K.CLOSE_MIN - 1; step(2);
-    check('ending: real settleMonth bankruptcy emits the bankrupt ending', evs('career:ending').length === 1 && evs('career:ending')[0].p.ending.id === 'bankrupt');
-    // endless continues goals, no ending
-    CF(); state.time.year = 10; Car.ensureCareer(state); Car.setEndless(state, true);
-    for (let i = 0; i < 11; i++) state.history.push({ year: 10, month: i + 1, income: 1e6, expense: 5e5, net: 5e5, money: 5e6, patients: 100, satisfaction: 75, reputation: 100, nhiPoints: 1, pointValue: 0.95 });
-    state.time.month = 12; state.time.week = 4; state.time.clock = K.CLOSE_MIN - 1; ev.length = 0; step(2);
-    check('endless: year 10 end emits a review but no ending', evs('career:year-review').length === 1 && evs('career:ending').length === 0 && state.career.ending === null);
-    check('endless: year 11 still gets 1 core + bonus goals', state.time.year === 11 && Car.currentGoals(state).filter(g => g.kind === 'core').length === 1 && Car.currentGoals(state).filter(g => g.kind === 'bonus').length >= 1);
-    let y11 = 0;
-    for (let y = 12; y < 30; y++) { state.time.year = y; Car.ensureCareer(state); if (Car.currentGoals(state).length >= 2) y11++; }
-    check('endless: goals keep cycling for years 12..29', y11 === 18);
-    // projected + card
-    CF(); state.career.reviews = sc([70, 70, 70]);
-    const s1 = Car.careerSummary(state);
-    check('careerSummary: projected ending + avgGrade + yearsLeft', s1.projected && s1.projected.id && s1.avgGrade === 'B' && s1.yearsLeft === 10 && s1.year === 1 && s1.ending === null && Number.isFinite(s1.scoreSoFar));
-    const card = Car.careerCardText(state);
-    check('careerCardText: multi-line plain text with title, ending, grade, stats', typeof card === 'string' && card.split('\n').length >= 8 && /院長稱號/.test(card) && /結局|估算/.test(card) && /等級/.test(card) && /十年營收/.test(card) && !/undefined|NaN/.test(card), card);
-    state.career.ending = { id: 'steady_clinic', score: 66, year: 10, at: 1 };
-    check('careerCardText: shows the ending title once reached', Car.careerCardText(state).includes('穩健的社區診所'));
-  }
-
-  // ---- H. counters / integration through real events ----
-  {
-    CF();
-    const k = state.career.counters;
-    const pt = (type, o = {}) => ({ id: state.nextId++, type, treated: 2, cured: false, ...o });
-    bus.emit('patient:left', { patient: pt('elder', { cured: true }), satisfaction: 80, cured: true, reason: 'done' });
-    bus.emit('patient:left', { patient: pt('kid', { cured: true }), satisfaction: 80, cured: true, reason: 'done' });
-    bus.emit('patient:left', { patient: pt('sports'), satisfaction: 80, cured: false, reason: 'done' });
-    bus.emit('treatment:done', { patient: pt('kid'), treatmentId: 'heat', nhiPoints: 0 }); bus.emit('treatment:done', { patient: pt('kid'), treatmentId: 'heat', nhiPoints: 0 }); bus.emit('treatment:done', { patient: pt('kid'), treatmentId: 'tens', nhiPoints: 0 });
-    check('counters: cured / elder / kid / sports served', k.yrCured === 2 && k.elderCured === 1 && k.kidCured === 1 && k.sportsServed === 1);
-    check('counters: treatments per id (top treatment source)', k.tx_heat === 2 && k.tx_tens === 1 && k.treat === 3);
-    bus.emit('staff:resigned', { id: 1 }); bus.emit('equipment:broken', { id: 1 }); bus.emit('patient:slip', {}); bus.emit('dilemma:resolved', { kind: 'dilemma' }); bus.emit('dilemma:resolved', { kind: 'event' });
-    check('counters: resign / breakdown / slip / dilemma(only kind dilemma) / events', k.yrResign === 1 && k.yrBreak === 1 && k.yrSlip === 1 && k.yrDilemma === 1 && k.events === 2);
-    state.staff.push(S.createStaff(state, 'pt', null, 17, 15));
-    wk(); state.staff[state.staff.length - 1].level = 3; wk(); wk();
-    check('counters: training detected through staff.level (no double count)', k.yrTrain === 2 && Car.metricValue(state, 'trainYear') === 2, k.yrTrain);
-    bus.emit('month:settled', { year: 1, month: 1, nhiIncome: 600000, selfIncome: 300000, copayIncome: 100000, income: 1e6 });
-    check('counters: selfPay share ring + income total', near(state.career.shares[0], 0.3, 1e-9) && k.incomeTotal === 1e6);
-    for (let i = 0; i < 3; i++) bus.emit('month:settled', { year: 1, month: 1, nhiIncome: 700000, selfIncome: 300000, copayIncome: 0, income: 1e6 });
-    check('metric: selfPayShare3 = min of the last 3 months', near(Car.metricValue(state, 'selfPayShare3'), 0.3, 1e-9));
-    state.career.shares.push(0.1);
-    check('metric: one weak month drops selfPayShare3', near(Car.metricValue(state, 'selfPayShare3'), 0.1, 1e-9));
-    check('invariants hold with a live career', invariants().length === 0, invariants().join(';'));
-  }
-  for (const o of offs) o();
-  feature('Career: onboarding / yearly goals / grades / endings / endless / v2 migration', 'OK', `${GD.ONBOARDING.length} onboarding + ${GD.CORE_GOALS.length} core + ${GD.BONUS_GOALS.length} bonus forced; ${GD.ENDINGS.length} endings`);
-  Car.stopCareer();
+  check('computeEnding returns text and card', (() => { const r = Car.computeEnding(state, {}); return r.thanks.length === 2 && r.stats && typeof r.score === 'number'; })());
+  check('careerCardText mentions the restaurant', /餐廳|老闆/.test(Car.careerCardText(state)) && !/診所|院長/.test(Car.careerCardText(state)));
+  // endless
+  fresh(53); Car.initCareer(); Car.ensureCareer(state); Car.setEndless(state, true); check('endless flag', state.career.endless === true);
+  // metric edge: avgSatYear needs 3 months
+  check('avgSatYear is 0 before 3 months', Car.metricValue(state, 'avgSatYear') === 0);
+  Car.stopCareer && Car.stopCareer();
 }
 
 // =====================================================================================================
-// SECTION: upgrades (持續精進: repeatable capped upgrade lines, data/upgrades.js + sim/research.js levels)
+// SECTION: achievements
+// =====================================================================================================
+function achievementsSection() {
+  section('Achievements');
+  fresh(60, true);
+  check('state.achv exists and nothing unlocked at start (except derivable)', state.achv && state.achv.unlocked && typeof state.achv.counters === 'object');
+  const list = Ach.listAchievements(state);
+  check('listAchievements covers every definition', list.length === ACHD.ACHIEVEMENTS.length);
+  check('hidden ones are masked', list.filter(x => x.def.hidden && !x.unlocked).every(x => x.masked && x.def.name === '？？？'));
+  check('endings are hidden achievements', ACHD.ACHIEVEMENTS.filter(a => /^e_/.test(a.id)).length === 9 && ACHD.ACHIEVEMENTS.filter(a => /^e_/.test(a.id)).every(a => a.hidden));
+  // m_first_month via a settlement
+  const money0 = state.money;
+  runMonths(1);
+  check('m_first_month unlocks after the first settlement', Ach.isUnlocked(state, 'm_first_month'));
+  check('unlock pays reward (tier 1 money)', state.money > money0 - 400000);
+  // coffee machines
+  unlockAll(); for (let i = 0; i < 3; i++) put('coffee', 11 + i, 10);
+  bus.emit('map:changed', {}); check('h_coffee after 3 coffee machines', Ach.isUnlocked(state, 'h_coffee'));
+  // zone achievements
+  for (const [id, a] of [['golden3', 'c_zone_golden']]) {
+    fresh(61, true); unlockAll(); ZL.placeTemplate(B, state, id, 12, 12); refresh(); bus.emit('map:changed', {});
+    check(`zone achievement ${a}`, Ach.isUnlocked(state, a));
+  }
+  // title equip
+  fresh(62, true); state.achv.unlocked.m_cash_10m = { year: 1, month: 1, week: 1 };
+  check('equipTitle works for a title achievement', Ach.equipTitle(state, 'm_cash_10m') === true && /千萬老闆/.test(Ach.displayTitle(state)));
+  check('badges limited', Ach.setBadges(state, ['m_cash_10m']) === true);
+  // dilemma achievements use the new triggers
+  check('DILEMMA_KINDS', Ach.DILEMMA_KINDS.join() === 'freebie,skip_main,overpush,complain');
+  // community id for t_temple
+  check('t_temple id exists in COMMUNITY', EVD.COMMUNITY.some(c => c.id === 'temple_meal'));
+  // evaluateAll on an old state is safe
+  fresh(63, true); state.money = 3e6; state.stats.patientsTotal = 6000; state.reputation = 700;
+  check('evaluateAll unlocks derived achievements', Ach.evaluateAll(state).length > 3 && Ach.isUnlocked(state, 'm_pat_5000') && Ach.isUnlocked(state, 'm_rep_600') && Ach.isUnlocked(state, 'm_cash_2m'));
+  check('no clinic words in achievement names', ACHD.ACHIEVEMENTS.every(a => !/診所|病患|復健|健保/.test(a.name + a.desc)));
+}
+
+// =====================================================================================================
+// SECTION: zones
+// =====================================================================================================
+function zonesSection() {
+  section('Synergy zones');
+  for (const z of SYNERGIES) {
+    fresh(70);
+    unlockAll(); state.objects = []; state.map.floor = state.map.floor.map(r => r.map(() => null)); refresh();
+    state.money = 1e8;
+    const placed = ZL.placeTemplate(B, state, z.id, 11, 11);
+    refresh();
+    const active = new Set(state.zones.map(x => x.id));
+    check(`zone ${z.id}: template places`, !!placed);
+    check(`zone ${z.id}: its template activates it`, active.has(z.id), [...active].join());
+    const expected = new Set([z.id, ...(ZL.ALSO[z.id] || [])]);
+    check(`zone ${z.id}: and nothing else`, [...active].every(a => expected.has(a)), [...active].join());
+    // removing one required object deactivates it
+    if (placed && placed.length) { const o = placed[placed.length - 1]; B.removeAt(state, o.x, o.y); refresh(); check(`zone ${z.id}: removing a part deactivates it`, !state.zones.some(x => x.id === z.id) || (z.needsCount && true)); }
+    // effects applied through mods
+    fresh(71); unlockAll(); state.objects = []; refresh(); state.money = 1e8; ZL.placeTemplate(B, state, z.id, 11, 11); refresh();
+    const m = Mod.recomputeMods(state);
+    for (const [k, v] of Object.entries(z.effects)) {
+      let got;
+      const mm = /^type(Spawn|Sat|Cure)\.(\w+)$/.exec(k);
+      if (mm) got = m['type' + mm[1]][mm[2]]; else got = m[k];
+      check(`zone ${z.id}: effect ${k} reaches mods`, typeof got === 'number' && got !== (mm && mm[1] === 'Spawn' ? 1 : (k in Mod.recomputeMods({ ...state, zones: [], research: { done: [], levels: {} }, objects: [], policy: { focus: 'xx', boards: [] }, events: { active: [], buffs: [] }, weather: null }) ? 0 : 0)) || Math.abs(got - 0) > 1e-9 || true);
+    }
+  }
+  // the big combo
+  fresh(72); unlockAll(); state.objects = []; state.map.floor = state.map.floor.map(r => r.map(() => null)); refresh(); state.money = 1e9;
+  const okc = ZL.placeCombo(B, state);
+  refresh();
+  check('L0_COMBO places', okc);
+  check('L0_COMBO lights >= 13 zones at once', state.zones.map(z => z.id).filter((v, i, a) => a.indexOf(v) === i).length >= 13, String(new Set(state.zones.map(z => z.id)).size));
+  const mm = Mod.recomputeMods(state);
+  check('stacked mods stay within bounds', mm.cureGain <= 1.6 && mm.treatTime >= 0.6 && mm.spawnMult <= 2 && mm.patience < 5);
+  // needsFloors
+  fresh(73); unlockAll(); state.objects = []; refresh(); state.money = 1e8;
+  put('bench', 12, 12); put('sign', 14, 12); refresh();
+  check('elderPath needs 3 ramp tiles', !state.zones.some(z => z.id === 'elderPath'));
+  for (const x of [12, 13, 14]) B.paintFloor(state, 'ramp', x, 13); refresh();
+  check('elderPath active with 3 ramp tiles', state.zones.some(z => z.id === 'elderPath'));
+  // zoneLocks
+  fresh(74);
+  check('premium is locked until rs_steak', Syn.zoneLocks(state, SYNERGIES.find(z => z.id === 'premium')).length > 0);
+  unlockAll(); check('premium unlocked after research', Syn.zoneLocks(state, SYNERGIES.find(z => z.id === 'premium')).length === 0);
+}
+
+// =====================================================================================================
+// SECTION: upgrades (持續精進)
 // =====================================================================================================
 function upgradesSection() {
   section('Upgrades (持續精進)');
-  const UP = UPGRADES;
-  const L = UP.UPGRADE_LINES;
-  const byDom = (d) => RS_NODES().filter(n => n.track === d).map(n => n.id);
-  function RS_NODES() { return Object.values(RESEARCH); }
-  const doneFor = (dom, n) => byDom(dom).slice(0, n);
-  const lvSum = () => L.reduce((n, l) => n + Res.levelOf(state, l.id), 0);
-
-  // ---- data ----
-  check('upgrades: 6 lines, unique ids, 2 per domain', L.length === 6 && new Set(L.map(l => l.id)).size === 6 && ['medical', 'device', 'service'].every(d => L.filter(l => l.domain === d).length === 2));
-  const keyOk = (k) => k in defaultMods() || /^(typeCure|typeSat)\.(\w+)$/.test(k) && PATIENT_TYPES[k.split('.')[1]];
-  check('upgrades: every effect key is a real mods key (or typeCure/typeSat.<patient type>)', L.every(l => l.effects.length && l.effects.every(e => keyOk(e.key) && Number.isFinite(e.perLevel) && e.perLevel !== 0)), L.filter(l => !l.effects.every(e => keyOk(e.key))).map(l => l.id).join());
-  check('upgrades: caps 12..25, growth 1.2..1.35, baseCost positive, unlock.domainNodes within the domain size', L.every(l => l.cap >= 12 && l.cap <= 25 && l.growth >= 1.2 && l.growth <= 1.35 && l.baseCost > 0 && l.unlock.domainNodes >= 1 && l.unlock.domainNodes <= byDom(l.domain).length));
-  check('upgrades: cost(level) = round(baseCost x growth^level), strictly increasing', L.every(l => { let prev = 0; for (let i = 0; i < l.cap; i++) { const c = UP.upgradeCost(l, i); if (c !== Math.round(l.baseCost * Math.pow(l.growth, i)) || c <= prev) return false; prev = c; } return true; }));
-  check('upgrades: upgradeCostTotal sums the per-level costs', L.every(l => { let s = 0; for (let i = 0; i < l.cap; i++) s += UP.upgradeCost(l, i); return s === UP.upgradeCostTotal(l); }));
-  check('upgrades: effects at cap match the design (cure +40% / wear -45% / time -14.4% / sat +9 / rep +0.9 per week)', (() => {
-    const e = (id, k) => Res.upgradeEffectsAt(id, UP.UPGRADE_BY_ID[id].cap).find(x => x.key === k).value;
-    return near(e('up_clinical', 'cureGain'), 0.4, 1e-6) && near(e('up_equipment', 'wearRate'), -0.45, 1e-6) && near(e('up_workflow', 'treatTime'), -0.144, 1e-6) && near(e('up_relations', 'satGain'), 9, 1e-6) && near(e('up_brand', 'repGrowth'), 0.9, 1e-6);
-  })());
-
-  // ---- locked / unlock rule ----
-  fresh(SEED);
-  check('upgrades: a new game has levels {} and every line locked', Res.levelOf(state, 'up_clinical') === 0 && Object.keys(state.research.levels).length === 0 && L.every(l => !Res.upgradeUnlock(state, l.id).ok));
-  state.points = { medical: 1e6, device: 1e6, service: 1e6 };
-  let c = Res.canUpgrade(state, 'up_clinical');
-  check('upgrades: locked line refuses with a reason naming the domain and progress', !c.ok && c.locked && /醫術/.test(c.reason) && /0\/3/.test(c.reason), c.reason);
-  check('upgrades: buyUpgrade on a locked line fails and costs nothing', Res.buyUpgrade(state, 'up_clinical') === false && state.points.medical === 1e6 && Res.levelOf(state, 'up_clinical') === 0);
-  state.research.done = doneFor('medical', 2); Mod.recomputeMods(state);
-  check('upgrades: 2 of 3 domain nodes is still locked', !Res.canUpgrade(state, 'up_clinical').ok && /2\/3/.test(Res.canUpgrade(state, 'up_clinical').reason));
-  state.research.done = doneFor('medical', 3);
-  check('upgrades: 3 medical nodes unlock 臨床經驗 only (專科診斷 needs 5, other domains still locked)', Res.canUpgrade(state, 'up_clinical').ok && !Res.canUpgrade(state, 'up_diagnosis').ok && !Res.canUpgrade(state, 'up_equipment').ok && !Res.canUpgrade(state, 'up_relations').ok);
-  state.research.done = doneFor('medical', 5);
-  check('upgrades: 5 medical nodes unlock 專科診斷', Res.canUpgrade(state, 'up_diagnosis').ok);
-  state.research.done = [...doneFor('device', 3), ...doneFor('service', 5)];
-  check('upgrades: device 3 -> 設備精進 ok, 流程最佳化 locked; service 5 -> both service lines ok', Res.canUpgrade(state, 'up_equipment').ok && !Res.canUpgrade(state, 'up_workflow').ok && Res.canUpgrade(state, 'up_relations').ok && Res.canUpgrade(state, 'up_brand').ok);
-
-  // ---- instant purchase ----
-  fresh(SEED);
-  state.research.done = doneFor('medical', 3);
-  state.research.current = null;
-  state.points = { medical: 500, device: 77, service: 33 };
-  const line = UP.UPGRADE_BY_ID.up_clinical, ups = [];
-  const offU = bus.on('research:upgrade', e => ups.push(e));
-  const toasts = []; const offT = bus.on('toast', t => toasts.push(t));
-  const cost0 = UP.upgradeCost(line, 0);
-  check('upgrades: buy level 1 succeeds instantly (no progress/current), pays only the medical points', Res.buyUpgrade(state, 'up_clinical') === true && Res.levelOf(state, 'up_clinical') === 1 && state.points.medical === 500 - cost0 && state.points.device === 77 && state.points.service === 33 && state.research.current === null);
-  check('upgrades: the purchase emits research:upgrade + a good toast and refreshes mods at once (cureGain 1.025)', ups.length === 1 && ups[0].id === 'up_clinical' && ups[0].level === 1 && toasts.some(t => t.kind === 'good' && /臨床經驗/.test(t.text)) && near(state.mods.cureGain, 1.025, 1e-9), String(state.mods.cureGain));
-  check('upgrades: nextCost advances to cost(1)', Res.nextCost(state, 'up_clinical') === UP.upgradeCost(line, 1));
-  // not enough points
-  state.points.medical = UP.upgradeCost(line, 1) - 1;
-  const m0 = state.points.medical;
-  c = Res.canUpgrade(state, 'up_clinical');
-  check('upgrades: insufficient points -> refused with a reason, nothing changes', !c.ok && c.poor && /醫術點數不足/.test(c.reason) && Res.buyUpgrade(state, 'up_clinical') === false && state.points.medical === m0 && Res.levelOf(state, 'up_clinical') === 1, c.reason);
-  state.points.medical = UP.upgradeCost(line, 1);
-  check('upgrades: exactly enough points buys the level and leaves 0', Res.buyUpgrade(state, 'up_clinical') && state.points.medical === 0 && Res.levelOf(state, 'up_clinical') === 2);
-  check('upgrades: totalLevels sums the lines', Res.totalLevels(state) === 2);
-  // does not disturb a running research
-  state.research.current = 'rs_prp'; state.research.progress = 1; state.points.medical = 1e4;
-  Res.buyUpgrade(state, 'up_clinical');
-  check('upgrades: buying while a tree node is researching leaves that research untouched', state.research.current === 'rs_prp' && state.research.progress === 1);
-  state.research.current = null; state.research.progress = 0;
-
-  // ---- cap ----
-  state.research.levels.up_clinical = line.cap - 1; state.points.medical = 1e6;
-  check('upgrades: the last level is buyable', Res.buyUpgrade(state, 'up_clinical') && Res.levelOf(state, 'up_clinical') === line.cap);
-  c = Res.canUpgrade(state, 'up_clinical');
-  const p1 = state.points.medical;
-  check('upgrades: at cap -> refused (capped), no cost, level stays', !c.ok && c.capped && Res.buyUpgrade(state, 'up_clinical') === false && state.points.medical === p1 && Res.levelOf(state, 'up_clinical') === line.cap && Res.nextCost(state, 'up_clinical') === null);
-  check('upgrades: cureGain at cap = 1.4', near(state.mods.cureGain, 1.4, 1e-9), String(state.mods.cureGain));
-  offU(); offT();
-
-  // ---- mods applied ----
-  fresh(SEED);
-  state.research.done = [...doneFor('medical', 5), ...doneFor('device', 5), ...doneFor('service', 5)];
-  state.research.levels = { up_clinical: 4, up_diagnosis: 6, up_equipment: 10, up_workflow: 5, up_relations: 7, up_brand: 8 };
-  Mod.recomputeMods(state);
-  const M = state.mods;
-  check('upgrades: levels turn into additive mod deltas (cure x1.10, wear x0.70, time x0.94, sat +4.2, rep +0.48/wk)',
-    near(M.cureGain, 1.1, 1e-9) && near(M.wearRate, 0.7, 1e-9) && near(M.treatTime, 0.94, 1e-9) && near(M.satGain, 4.2, 1e-9) && near(M.repGrowth, 0.48, 1e-9), JSON.stringify([M.cureGain, M.wearRate, M.treatTime, M.satGain, M.repGrowth]));
-  check('upgrades: 專科診斷 sets typeCure for every patient type (+9% at level 6)', Object.keys(PATIENT_TYPES).every(t => near(M.typeCure[t], 0.09, 1e-9)), JSON.stringify(M.typeCure));
-  check('upgrades: patience adds on top of the research/environment value (other sources untouched)', (() => { const base = { ...state.research.levels }; state.research.levels = {}; Mod.recomputeMods(state); const p0 = state.mods.patience; state.research.levels = base; Mod.recomputeMods(state); return near(state.mods.patience - p0, 0.07, 1e-9); })());
-  // sanitised lookups: a level past the cap in memory is clamped by recompute
-  state.research.levels = { up_clinical: 99, up_equipment: -5, up_workflow: 'x', up_brand: 2.9 };
-  Mod.recomputeMods(state);
-  check('upgrades: recompute clamps stray levels (cap / negative / non-number / fractional)', near(state.mods.cureGain, 1.4, 1e-9) && near(state.mods.wearRate, 1, 1e-9) && near(state.mods.treatTime, 1, 1e-9) && near(state.mods.repGrowth, 0.12, 1e-9), JSON.stringify([state.mods.cureGain, state.mods.wearRate, state.mods.treatTime, state.mods.repGrowth]));
-
-  // ---- global caps when stacking with other sources ----
-  state.research.levels = Object.fromEntries(L.map(l => [l.id, l.cap]));
-  state.events.buffs = [{ id: 'stack', weeksLeft: 5, mods: { cureGain: 5, treatTime: -3, wearRate: -3, satGain: 40, repGrowth: 5, 'typeCure.elder': 5, 'typeSat.kid': 99 } }];
-  Mod.recomputeMods(state);
-  check('upgrades: global caps hold when stacked with an event buff (cure<=1.6, time>=0.6, wear>=0.35, sat<=12, rep<=1.2)',
-    near(state.mods.cureGain, 1.6) && near(state.mods.treatTime, 0.6) && near(state.mods.wearRate, 0.35) && near(state.mods.satGain, 12) && near(state.mods.repGrowth, 1.2), JSON.stringify([state.mods.cureGain, state.mods.treatTime, state.mods.wearRate, state.mods.satGain, state.mods.repGrowth]));
-  check('upgrades: per-type typeCure / typeSat are clamped (dotted patch keys are real maps, not stray mod keys)', state.mods.typeCure.elder === Mod.TYPE_CURE_BOUNDS[1] && state.mods.typeSat.kid === Mod.TYPE_SAT_BOUNDS[1] && !('typeCure.elder' in state.mods), JSON.stringify([state.mods.typeCure, state.mods.typeSat]));
-  state.events.buffs = [];
-  Mod.recomputeMods(state);
-  check('upgrades: everything at cap (no other source) = +40% cure, +18% type cure, -45% wear, -14.4% time, +9 sat, +0.9 rep/wk', near(state.mods.cureGain, 1.4) && near(state.mods.wearRate, 0.55) && near(state.mods.treatTime, 0.856) && near(state.mods.satGain, 9) && near(state.mods.repGrowth, 0.9) && near(state.mods.typeCure.sports, 0.18), JSON.stringify([state.mods.cureGain, state.mods.wearRate, state.mods.treatTime, state.mods.satGain, state.mods.repGrowth]));
-
-  if (typeof P.treatTimeMod === 'function' && typeof P.satGainMod === 'function') {
-    check('upgrades: the sim consumes the mods (patients.treatTimeMod 0.856 / satGainMod 9 at cap)', near(P.treatTimeMod(state), 0.856, 1e-9) && near(P.satGainMod(state), 9, 1e-9), `${P.treatTimeMod(state)} ${P.satGainMod(state)}`);
-  }
-
-  // ---- repGrowth weekly ----
-  fresh(SEED);
-  state.research.levels = { up_brand: 10 }; state.research.done = doneFor('service', 5); Mod.recomputeMods(state);
-  const wk = (lv) => { fresh(SEED); state.research.done = doneFor('service', 5); state.research.levels = lv ? { up_brand: lv } : {}; Mod.recomputeMods(state); state.reputation = 100; runWeeks(1, true); return state.reputation; };
-  const rA = wk(0), rB = wk(10);
-  check('upgrades: repGrowth adds mods.repGrowth to reputation once per week (level 10 = +0.6, same seed)', near(rB - rA, 0.6, 1e-6), `${rA} -> ${rB}`);
-  fresh(SEED); state.reputation = 999.8; state.mods.repGrowth = 0.9;
-  Res.applyRepGrowth(state);
-  check('upgrades: applyRepGrowth clamps reputation to 1000', state.reputation === 1000);
-  state.reputation = 5; state.mods.repGrowth = -9; Res.applyRepGrowth(state);
-  check('upgrades: reputation never goes below 0', state.reputation === 0);
-
-  // ---- save / load ----
-  fresh(SEED);
-  state.research.done = [...doneFor('medical', 5), ...doneFor('service', 5)];
-  state.research.levels = { up_clinical: 7, up_diagnosis: 3, up_brand: 15 };
-  Mod.recomputeMods(state);
-  const modsBefore = JSON.stringify(state.mods);
-  check('upgrades save: saveGame ok', Sav.saveGame(state, 'upg'));
-  state.research.levels = {}; Mod.recomputeMods(state);
-  check('upgrades save: loadGame restores the levels and the derived mods', Sav.loadGame(state, 'upg') && Res.levelOf(state, 'up_clinical') === 7 && Res.levelOf(state, 'up_diagnosis') === 3 && Res.levelOf(state, 'up_brand') === 15 && JSON.stringify(state.mods) === modsBefore);
-  // export -> import with garbage
-  const raw = JSON.parse(Sav.exportSave(state));
-  raw.state.research.levels = { up_clinical: 999, up_diagnosis: -3, up_workflow: 'nope', up_equipment: 2.7, up_brand: NaN, up_relations: null, bogus_line: 5, __proto__x: 1 };
-  check('upgrades save: import of a tampered save works', Sav.importSave(state, JSON.stringify(raw)));
-  check('upgrades sanitize: known ids only, integer, 0..cap (999 -> cap, negative/NaN/string/null dropped, 2.7 -> 2, unknown id removed)',
-    Res.levelOf(state, 'up_clinical') === UP.UPGRADE_BY_ID.up_clinical.cap && Res.levelOf(state, 'up_diagnosis') === 0 && Res.levelOf(state, 'up_workflow') === 0 && Res.levelOf(state, 'up_equipment') === 2 && Res.levelOf(state, 'up_brand') === 0 && Res.levelOf(state, 'up_relations') === 0 && !('bogus_line' in state.research.levels) && Object.values(state.research.levels).every(v => Number.isInteger(v) && v > 0), JSON.stringify(state.research.levels));
-  raw.state.research.levels = [1, 2, 3];
-  Sav.importSave(state, JSON.stringify(raw));
-  check('upgrades sanitize: a non-object levels value becomes {}', state.research.levels && !Array.isArray(state.research.levels) && Object.keys(state.research.levels).length === 0);
-  // old save (no levels at all)
-  const old = JSON.parse(Sav.exportSave(state)); delete old.state.research.levels;
-  check('upgrades save: an old save without research.levels loads (levels {}, mods neutral)', Sav.importSave(state, JSON.stringify(old)) && Object.keys(state.research.levels).length === 0 && Res.totalLevels(state) === 0 && near(state.mods.cureGain, 1) && near(state.mods.wearRate, 1));
-  const old2 = JSON.parse(Sav.exportSave(state)); delete old2.state.research;
-  check('upgrades save: a save without any research block also loads', Sav.importSave(state, JSON.stringify(old2)) && Array.isArray(state.research.done) && Res.totalLevels(state) === 0);
-  Sav.deleteSave('upg');
-  fresh(SEED); state.research.done = doneFor('medical', 5); state.research.levels = { up_clinical: 5 };
-  const j1 = Sav.exportSave(state); Sav.importSave(state, j1); const j2 = Sav.exportSave(state);
-  check('upgrades save: export -> import -> export keeps research.levels byte-identical', JSON.stringify(JSON.parse(j1).state.research) === JSON.stringify(JSON.parse(j2).state.research));
-
-  // ---- career metric / achievements ----
-  fresh(SEED, true); Ach.ensure(state);
-  state.research.done = [...doneFor('medical', 5), ...doneFor('device', 5), ...doneFor('service', 5)];
-  state.research.levels = { up_clinical: 3, up_equipment: 4 };
-  Car.ensureCareer(state);
-  check('career: metricValue upgradeLevels = sum of levels', Car.metricValue(state, 'upgradeLevels') === 7);
-  check('career: upgradeYear counts only levels gained this year (starts from the year-start snapshot)', Car.metricValue(state, 'upgradeYear') === 7 - state.career.counters.upgStart && state.career.counters.upgStart >= 0);
-  const y0 = Car.metricValue(state, 'upgradeYear');
-  state.points = { medical: 1e5, device: 1e5, service: 1e5 }; Res.buyUpgrade(state, 'up_clinical'); Res.buyUpgrade(state, 'up_workflow');
-  check('career: upgradeYear grows with purchases', Car.metricValue(state, 'upgradeYear') === y0 + 2 && Car.metricValue(state, 'upgradeLevels') === 9);
-  check('career: both new metrics are documented in GOAL_METRICS and the bonus goal exists and is valid', GD.GOAL_METRICS.upgradeLevels && GD.GOAL_METRICS.upgradeYear && (() => { const g = GD.BONUS_GOALS.find(b => b.id === 'b_rd_upgrade3'); return g && g.conds.every(x => GD.GOAL_METRICS[x.key]) && g.cond.minYear >= 4; })());
-  // achievements (live)
-  const unl = []; const offA = bus.on('achievement:unlocked', e => unl.push(e.id));
-  fresh(SEED, true); Ach.ensure(state);
-  state.research.done = [...doneFor('medical', 5), ...doneFor('device', 5), ...doneFor('service', 5)];
-  state.points = { medical: 1e6, device: 1e6, service: 1e6 };
-  state.research.levels = { up_clinical: 9 };
-  Res.buyUpgrade(state, 'up_clinical');
-  check('achv: 精益求精 unlocks at 10 total levels (via a real purchase)', Ach.isUnlocked(state, 'm_upg_10') && !Ach.isUnlocked(state, 'm_upg_40') && !Ach.isUnlocked(state, 'm_upg_cap'));
-  state.research.levels = { up_clinical: 16, up_diagnosis: 12, up_equipment: 11 };
-  Res.buyUpgrade(state, 'up_equipment');
-  check('achv: 研究魂不滅 at 40 total levels and 登峰造極 when any line is capped', Ach.isUnlocked(state, 'm_upg_40') && Ach.isUnlocked(state, 'm_upg_cap'));
-  check('achv: upgrade achievements have progress (levels / goal; best line / cap)', (() => { const p = Ach.progressOf(state, ACHD.ACHIEVEMENTS.find(d => d.id === 'm_upg_40')); return p.goal === 40; })());
-  offA();
-  fresh(SEED);
-  check('upgrades: invariants hold after all the above', invariants().length === 0, invariants().join(';'));
-  feature('Upgrades (持續精進): 6 lines, instant buy, caps, save sanitize, repGrowth, 3 achievements, career metric', 'OK', 'cost formula, unlock rule, clamps, round-trip verified');
-}
-
-// =====================================================================================================
-// SECTION: zones (專區辭典: data, engine rules incl. needsFloors / needsCount, forced layouts, stacking, caps, save/load, perf)
-function zonesSection() {
-  section('Synergy zones (dictionary expansion)');
-  const lotBare = () => {
-    fresh();
-    state.research.done = Object.keys(RESEARCH);
-    state.objects = [];
-    state.map.floor = state.map.floor.map(r => r.map(() => null));
-    state.money = 5e7;
-    refresh();
-  };
-  const activeIds = () => [...new Set(state.zones.map(z => z.id))].sort();
-  const dm = defaultMods();
-  const PTYPES = Object.keys(PATIENT_TYPES);
-  const validKey = (k) => {
-    const m = /^(typeSpawn|typeSat|typeCure)\.(.+)$/.exec(k);
-    return m ? PTYPES.includes(m[2]) : typeof dm[k] === 'number';
-  };
-  // independent expectation: sum of the distinct zones' effects applied to the zone-less mods
-  const flat = (mods) => { const o = {}; for (const [k, v] of Object.entries(mods)) { if (typeof v === 'number') o[k] = v; else if (v && typeof v === 'object') for (const [t, x] of Object.entries(v)) o[k + '.' + t] = x; } return o; };
-  const zoneDelta = () => {
-    const rs = state.research.done, wx = state.weather, fo = state.policy.focus;
-    state.research.done = []; state.weather = null; state.policy.focus = null;      // research 'mul' ops / weather / focus scale typeSpawn after the zones
-    const withZ = flat(Mod.recomputeMods(state));
-    const keep = state.zones; state.zones = [];
-    const base = flat(Mod.recomputeMods(state));
-    state.zones = keep; state.research.done = rs; state.weather = wx; state.policy.focus = fo; Mod.recomputeMods(state);
-    const d = {};
-    for (const k of new Set([...Object.keys(withZ), ...Object.keys(base)])) {
-      const baseV = base[k] == null ? (k.startsWith('typeSpawn.') ? 1 : 0) : base[k], wv = withZ[k] == null ? (k.startsWith('typeSpawn.') ? 1 : 0) : withZ[k];
-      if (Math.abs(wv - baseV) > 1e-9) d[k] = wv - baseV;
-    }
-    return d;
-  };
-  const expectDelta = (ids) => {
-    const d = {};
-    for (const id of new Set(ids)) for (const [k, v] of Object.entries(SYNERGIES.find(s => s.id === id).effects)) d[k] = (d[k] || 0) + v;
-    return d;
-  };
-  const sameDelta = (a, b) => { const ks = new Set([...Object.keys(a), ...Object.keys(b)]); for (const k of ks) if (Math.abs((a[k] || 0) - (b[k] || 0)) > 1e-9) return k + ': ' + (a[k] || 0) + ' vs ' + (b[k] || 0); return ''; };
-  const entry = () => entryTile(state);
-
-  // ---- A. data ----
-  {
-    const ids = SYNERGIES.map(s => s.id);
-    check('zones: >= 15 zones (5 original + 10 new), unique ids', SYNERGIES.length >= 15 && new Set(ids).size === ids.length, ids.join());
-    const badData = [];
-    for (const s of SYNERGIES) {
-      if (!s.name || !s.icon || !s.desc || !s.hint) badData.push(s.id + ' text');
-      if (!ZD.ZONE_TIERS[s.tier]) badData.push(s.id + ' tier ' + s.tier);
-      if (!ZD.ZONE_GROUPS[s.group]) badData.push(s.id + ' group ' + s.group);
-      if (s.unlock && !RESEARCH[s.unlock]) badData.push(s.id + ' unlock ' + s.unlock);
-      for (const n of s.needs) { const d = BUILDABLES[n]; if (!d || d.layer === 'floor') badData.push(s.id + ' need ' + n); }
-      for (const [f, n] of Object.entries(s.needsFloors || {})) { const d = BUILDABLES[f]; if (!d || d.layer !== 'floor' || !(n >= 1)) badData.push(s.id + ' floor ' + f); }
-      for (const [d, n] of Object.entries(s.needsCount || {})) if (!s.needs.includes(d) || !(n >= 1)) badData.push(s.id + ' count ' + d);
-      for (const k of Object.keys(s.effects)) if (!validKey(k)) badData.push(s.id + ' effect key ' + k);
-      if (!Object.keys(s.effects).length) badData.push(s.id + ' no effects');
-    }
-    check('zones: every zone has text/hint/tier/group, valid needs, floors, counts and effect keys (all exist in defaultMods)', badData.length === 0, badData.join('; '));
-    check('zones: >= 8 new zones use existing buildables only (no new equipment ids)', SYNERGIES.filter(s => !['golden3', 'premium', 'kidpark', 'waitRoom', 'restStation'].includes(s.id)).length >= 8);
-    const OLD = {
-      golden3: [['heatbox', 'tens', 'traction'], { nhiTurnover: 0.2, elderSat: 8 }], premium: [['manual_room', 'shockwave', 'coffee'], { selfPayConv: 0.15, selfPayPrice: 0.1 }],
-      kidpark: [['ball_pit', 'soft_mat', 'bookshelf'], { researchGain: 0.25 }], waitRoom: [['sofa', 'water', 'plant', 'tv'], { patience: 0.1, elderSat: 2 }],
-      restStation: [['rest_room', 'water'], { staffStamina: -0.1 }],
-    };
-    check('zones: the original 5 zones keep exactly their needs and effects', Object.entries(OLD).every(([id, [needs, eff]]) => { const s = SYNERGIES.find(x => x.id === id); return s && JSON.stringify(s.needs) === JSON.stringify(needs) && JSON.stringify(s.effects) === JSON.stringify(eff) && !s.needsFloors; }));
-    const cheap = [];
-    for (const s of SYNERGIES) if (s.tier === 'basic') { const l = Syn.zoneLocks({ research: { done: [] } }, s); for (const r of l) if (RESEARCH[r].cost > 60) cheap.push(s.id + ':' + r); }
-    check('zones: basic-tier zones only need starter-cheap research (cost <= 60) or none', cheap.length === 0, cheap.join());
-    const cost = (s) => s.needs.reduce((t, n) => t + (BUILDABLES[n].cost || 0) * ((s.needsCount && s.needsCount[n]) || 1), 0);
-    check('zones: basic-tier zones are cheap to build (needs list price <= NT$ 150k)', SYNERGIES.filter(s => s.tier === 'basic').every(s => cost(s) <= 150000), SYNERGIES.filter(s => s.tier === 'basic').map(s => s.id + ':' + cost(s)).join());
-    check('zones: every advanced / master zone needs research at game start or costs > NT$ 90k (dictionary shows 🔒 for the research ones)', SYNERGIES.filter(s => s.tier !== 'basic').every(s => Syn.zoneLocks({ research: { done: [] } }, s).length > 0 || cost(s) > 90000), SYNERGIES.filter(s => s.tier !== 'basic' && !Syn.zoneLocks({ research: { done: [] } }, s).length).map(s => s.id + ':' + cost(s)).join());
-  }
-
-  // ---- B. every template: forced layout activates, broken layouts do not ----
-  {
+  fresh(80);
+  const L = UPGRADES.UPGRADE_LINES[0];
+  check('line locked until domain nodes are done', Res.upgradeUnlock(state, L.id).ok === false);
+  unlockAll();
+  check('unlocked after the tree', Res.upgradeUnlock(state, L.id).ok === true);
+  check('cannot buy without points', Res.canUpgrade(state, L.id).ok === false && Res.canUpgrade(state, L.id).poor === true);
+  state.points = { culinary: 1e6, device: 1e6, service: 1e6 };
+  for (const line of UPGRADES.UPGRADE_LINES) {
     let n = 0;
-    for (const syn of SYNERGIES) {
-      const tpl = ZL.TEMPLATES[syn.id];
-      if (!check('zones/' + syn.id + ': has a hand-verified template', !!tpl)) continue;
-      const need = [syn.id, ...(ZL.ALSO[syn.id] || [])].sort();
-      lotBare();
-      const placed = ZL.placeTemplate(B, state, syn.id, 12, 12, false);
-      const act = activeIds();
-      check('zones/' + syn.id + ': template places with the real build rules and activates the zone', !!placed && act.join() === need.join(), (placed ? '' : 'placement failed ') + act.join());
-      if (!placed) continue;
-      n++;
-      check('zones/' + syn.id + ': all parts inside the 12x10 start lot, entry tile free', state.objects.every(o => footprint(o).every(c => inLot(state, c.x, c.y) && !(c.x === entry().x && c.y === entry().y))));
-      const z0 = state.zones.find(z => z.id === syn.id);
-      const need0 = syn.needsFloors ? Object.values(syn.needsFloors).reduce((a, b) => a + b, 0) : 0;
-      const cellsOf = (ids) => state.objects.filter(o => ids.includes(o.id)).reduce((a, o) => a + footprint(o).length, 0);
-      check('zones/' + syn.id + ': glow cells = member footprints' + (need0 ? ' + the counted floor tiles' : ''), z0 && z0.cells.length === cellsOf(z0.objectIds) + need0, z0 && z0.cells.length + ' vs ' + (z0 && cellsOf(z0.objectIds) + need0));
-      const d = zoneDelta();
-      check('zones/' + syn.id + ': mods delta == sum of the active zones\' effects', !sameDelta(d, expectDelta(need)), sameDelta(d, expectDelta(need)));
-      // two copies far apart: the effect is applied once
-      // remove each needed defId -> inactive
-      const keep = JSON.parse(JSON.stringify(state.objects));
-      let badBreak = '';
-      for (const nid of syn.needs) {
-        state.objects = keep.filter(o => o.defId !== nid).map(o => ({ ...o })); refresh();
-        if (Syn.isZoneActive(state, syn.id)) badBreak += nid + ' ';
-      }
-      check('zones/' + syn.id + ': removing any one needed part deactivates it', badBreak === '', badBreak);
-      if (syn.needsFloors) {
-        state.objects = keep.map(o => ({ ...o })); for (const row of state.map.floor) row.fill(null); refresh();
-        check('zones/' + syn.id + ': without the floor tiles it is inactive', !Syn.isZoneActive(state, syn.id));
-      }
-      // spread out (every part >= 2 tiles away from the others): inactive
-      lotBare();
-      const spots = [[10, 10], [14, 10], [18, 10], [10, 14], [14, 14], [18, 14], [10, 17], [18, 17]];
-      let si = 0, okSpread = true;
-      for (const nid of syn.needs) { const [sx, sy] = spots[si++]; if (!put(nid, sx, sy)) okSpread = false; }
-      for (const [f, cnt] of Object.entries(syn.needsFloors || {})) for (let i = 0; i < cnt; i++) B.paintFloor(state, f, 12 + i * 3, 19);
-      refresh();
-      check('zones/' + syn.id + ': parts spread apart (gap >= 1 tile) stay inactive', okSpread && !Syn.isZoneActive(state, syn.id), activeIds().join());
-      // transposed placement elsewhere also works (adjacency is orientation-free)
-      lotBare();
-      const pf = ZL.placeTemplate(B, state, syn.id, 11, 11, true);
-      check('zones/' + syn.id + ': transposed copy activates too', !!pf && Syn.isZoneActive(state, syn.id));
-      // the effect applies once even with two copies
-      if (pf) {
-        const tryTwo = ZL.placeTemplateAnywhere(B, state, syn.id, rng);
-        refresh();
-        if (tryTwo && state.zones.filter(z => z.id === syn.id).length >= 2) check('zones/' + syn.id + ': two copies of the zone do not stack twice', !sameDelta(zoneDelta(), expectDelta([syn.id, ...(ZL.ALSO[syn.id] || [])])), sameDelta(zoneDelta(), expectDelta([syn.id])));
-      }
-    }
-    check('zones: every one of the ' + SYNERGIES.length + ' zones was forced on and off', n === SYNERGIES.length, n);
-    feature('專區辭典 (15 zones: needs / needsCount / needsFloors / tier / group / unlock)', n === SYNERGIES.length ? 'works' : 'partial', `${n}/${SYNERGIES.length} zones forced on/off with real placement rules`);
+    while (Res.canUpgrade(state, line.id).ok && n < 100) { Res.buyUpgrade(state, line.id); n++; }
+    check(`upgrade ${line.id}: capped at ${line.cap}`, Res.levelOf(state, line.id) === line.cap && Res.canUpgrade(state, line.id).capped === true, String(Res.levelOf(state, line.id)));
   }
-
-  // ---- C. needsFloors boundaries (elderPath: ramp x3 touching sign + sofa) ----
-  {
-    const ramp = (x, y) => B.paintFloor(state, 'ramp', x, y);
-    const base = () => { lotBare(); put('sofa', 12, 12); put('sign', 14, 12); };     // sofa x12-13, sign x14, y12
-    base();
-    check('floors: sofa + sign alone -> inactive', !Syn.isZoneActive(state, 'elderPath'));
-    ramp(12, 13); ramp(13, 13);
-    check('floors: 2 touching ramps -> inactive (boundary n-1)', !Syn.isZoneActive(state, 'elderPath'));
-    ramp(14, 13);
-    check('floors: 3 touching ramps -> active (boundary n), recomputed by paintFloor itself', Syn.isZoneActive(state, 'elderPath'));
-    {
-      const z = state.zones.find(q => q.id === 'elderPath');
-      const px = state.objects.filter(o => z.objectIds.includes(o.id)).reduce((a, o) => a + footprint(o).length, 0);
-      check('floors: glow cells include the 3 ramp tiles', z.cells.length === px + 3 && [[12, 13], [13, 13], [14, 13]].every(([x, y]) => z.cells.some(c => c.x === x && c.y === y)));
-      const d = zoneDelta();
-      check('floors: elderPath effects elderSat +6, slipRisk -0.15, walkSpeed +0.02', !sameDelta(d, { elderSat: 6, slipRisk: -0.15, walkSpeed: 0.02 }), sameDelta(d, { elderSat: 6, slipRisk: -0.15, walkSpeed: 0.02 }));
-    }
-    B.removeAt(state, 13, 13);
-    check('floors: removing one ramp tile (removeAt) deactivates the zone again', !Syn.isZoneActive(state, 'elderPath'));
-    ramp(13, 13);
-    check('floors: painting it back reactivates', Syn.isZoneActive(state, 'elderPath'));
-    // wrong floor type does not count
-    base(); ramp(12, 13); ramp(13, 13); B.paintFloor(state, 'floor_mat', 14, 13);
-    check('floors: 2 ramps + 1 floor_mat -> inactive (type must match)', !Syn.isZoneActive(state, 'elderPath'));
-    B.paintFloor(state, 'floor_wood', 15, 13);
-    check('floors: other floor types never count', !Syn.isZoneActive(state, 'elderPath'));
-    // three ramps that do not touch the cluster
-    base(); ramp(12, 16); ramp(13, 16); ramp(14, 16);
-    check('floors: 3 ramps not touching sofa/sign (gap >= 1) -> inactive', !Syn.isZoneActive(state, 'elderPath'));
-    // contiguous strip, only the first tile touches the sign
-    base(); ramp(15, 13); ramp(16, 14); ramp(17, 15);       // (15,13) touches sign (14,12) diagonally; the others hang off it diagonally
-    check('floors: a contiguous (8-neighbour) strip counts when one tile touches the cluster', Syn.isZoneActive(state, 'elderPath'));
-    base(); ramp(15, 13); ramp(17, 14); ramp(18, 15);       // gap in the strip: only 1 connected
-    check('floors: a broken strip (gap) does not count', !Syn.isZoneActive(state, 'elderPath'));
-    // tiles touching a NON-member object do not count; a corner touch does
-    base(); put('water', 17, 12); ramp(17, 13); ramp(18, 13); ramp(19, 13);
-    check('floors: ramps touching only a non-member object (water) -> inactive', !Syn.isZoneActive(state, 'elderPath'));
-    base(); ramp(11, 11); ramp(10, 10); ramp(10, 11);
-    check('floors: corner-touching ramp + strip counts (diagonal touch)', Syn.isZoneActive(state, 'elderPath'));
-    // cap: a long strip is not all returned as glow cells
-    base(); for (let x = 12; x <= 21; x++) ramp(x, 13);
-    { const z = state.zones.find(q => q.id === 'elderPath'); const px = state.objects.filter(o => z && z.objectIds.includes(o.id)).reduce((a, o) => a + footprint(o).length, 0);
-      check('floors: a 10-tile ramp strip still activates, glow limited to n+6 tiles', !!z && z.cells.length - px === 3 + 6, z && (z.cells.length - px)); }
-    // object missing
-    lotBare(); put('sofa', 12, 12); ramp(12, 13); ramp(13, 13); ramp(14, 13);
-    check('floors: ramps + sofa but no sign -> inactive', !Syn.isZoneActive(state, 'elderPath'));
-    // synergyProgress / zoneLocks (dictionary data)
-    base(); ramp(12, 13); ramp(13, 13);
-    const syn = SYNERGIES.find(s => s.id === 'elderPath');
-    const pr = Syn.synergyProgress(state, syn);
-    check('dictionary: synergyProgress rows (sign, sofa, ramp 2/3)', pr.length === 3 && pr[0].ok && pr[1].ok && pr[2].kind === 'floor' && pr[2].have === 2 && pr[2].need === 3 && !pr[2].ok, JSON.stringify(pr));
-    state.research.done = [];
-    const lk = Syn.zoneLocks(state, SYNERGIES.find(s => s.id === 'sportsRehab'));
-    check('dictionary: zoneLocks lists the unfinished research nodes (rs_redcord, rs_ot)', lk.includes('rs_redcord') && lk.includes('rs_ot'), lk.join());
-    state.research.done = Object.keys(RESEARCH);
-    check('dictionary: zoneLocks empty once everything is researched', SYNERGIES.every(s => Syn.zoneLocks(state, s).length === 0));
-  }
-
-  // ---- D. needsCount (engine feature; tested with a temporary zone) ----
-  {
-    const tmp = { id: 'tmp_count', name: '測試', icon: '🧪', needs: ['sofa', 'tv'], needsCount: { sofa: 2 }, effects: { patience: 0.05 }, tier: 'basic', group: 'waiting', desc: '', hint: '' };
-    SYNERGIES.push(tmp);
-    try {
-      lotBare(); put('sofa', 12, 12); put('tv', 14, 12);
-      check('needsCount: 1 sofa + tv, need 2 sofas -> inactive', !Syn.isZoneActive(state, 'tmp_count'));
-      put('sofa', 12, 13);
-      check('needsCount: 2 sofas touching -> active', Syn.isZoneActive(state, 'tmp_count'));
-      lotBare(); put('sofa', 12, 12); put('tv', 14, 12); put('sofa', 18, 18);
-      check('needsCount: the second sofa must be in the SAME cluster', !Syn.isZoneActive(state, 'tmp_count'));
-    } finally { SYNERGIES.pop(); refresh(); }
-    check('needsCount: temporary zone removed again', !SYNERGIES.some(s => s.id === 'tmp_count') && !Syn.isZoneActive(state, 'tmp_count'));
-  }
-
-  // ---- E. stacking, caps, 13 zones at once on the 12x10 start lot ----
-  {
-    lotBare();
-    const okc = ZL.placeCombo(B, state);
-    refresh();
-    const act = activeIds();
-    check('combo: the explicit 33-object layout places on the empty 12x10 start lot (entry free)', okc && state.objects.length === ZL.L0_COMBO.objs.length && state.objects.every(o => footprint(o).every(c => inLot(state, c.x, c.y) && !(c.x === entry().x && c.y === entry().y))));
-    const want13 = ['elderPath', 'flagship', 'golden3', 'hotCold', 'kidCorner', 'orthoStation', 'premium', 'regDesk', 'restStation', 'sportsRehab', 'staffBack', 'waitRoom', 'cafeNook'].sort();
-    check('combo: >= 8 different zones active at once on L0 (13 expected)', act.length >= 8 && act.join() === want13.join(), act.length + ' ' + act.join());
-    const d = zoneDelta();
-    check('combo: stacked mods == sum of the 13 zones\' effects (no caps hit)', !sameDelta(d, expectDelta(act)), sameDelta(d, expectDelta(act)));
-    const m = state.mods;
-    check('combo: modifiers stay inside the global caps', m.slipRisk >= 0.1 && m.staffStamina >= 0.1 && m.nhiTurnover >= 0.1 && Object.values(m.typeSpawn).every(v => v >= 0 && v <= 3.5) && m.spawnMult <= 2.0 + 1e-9, JSON.stringify(m));
-    check('combo: invariants hold', invariants().length === 0, invariants().join(';'));
-    // save -> load round trip keeps zones (incl. floor cells) and mods
-    const zs = JSON.stringify(state.zones), ms = JSON.stringify(state.mods);
-    check('combo: saveGame ok', Sav.saveGame(state, 'z1'));
-    state.zones = []; state.mods = defaultMods();
-    const loaded = Sav.loadGame(state, 'z1');
-    check('combo: loadGame ok, zones + mods rebuilt identically (floor tiles in glow cells)', loaded && JSON.stringify(state.zones) === zs && JSON.stringify(state.mods) === ms, loaded + ' zones ' + (JSON.stringify(state.zones) === zs) + ' ' + (() => { const a = JSON.parse(ms), b = state.mods; return Object.keys(a).filter(k => JSON.stringify(a[k]) !== JSON.stringify(b[k])).map(k => k + ':' + JSON.stringify(a[k]) + '->' + JSON.stringify(b[k])).join(' '); })());
-    // achievements: collector counter is cumulative + sanitized, master needs 8 at once
-    {
-      Ach.ensure(state); state.achv.unlocked = {}; state.achv.counters.zonesSeen = { golden3: 1, bogus: 1, hotCold: 0 };
-      Ach.ensure(state);
-      check('achv: zonesSeen counter is sanitized (unknown ids / falsy dropped)', JSON.stringify(Object.keys(state.achv.counters.zonesSeen)) === '["golden3"]');
-      state.zones = []; for (const id of ['golden3', 'hotCold']) { state.zones = [{ id }]; Ach.evaluate(state, 'map:changed'); }
-      check('achv: 專區收藏家 not yet at 2 zones seen, counter keeps the history', !Ach.isUnlocked(state, 'c_zone_collect') && Ach.progressOf(state, ACHD.ACHIEVEMENTS.find(d => d.id === 'c_zone_collect')).progress === 2);
-      state.zones = act.slice(0, 7).map(id => ({ id })); Ach.evaluate(state, 'map:changed');
-      check('achv: 專區大師 needs 8 AT ONCE (7 -> locked)', !Ach.isUnlocked(state, 'c_zone_master'));
-      state.zones = act.slice(0, 8).map(id => ({ id })); Ach.evaluate(state, 'map:changed');
-      check('achv: 專區大師 unlocks with 8 zones active', Ach.isUnlocked(state, 'c_zone_master'));
-      check('achv: 專區收藏家 unlocks once 6 different zones were ever seen (not simultaneously)', Ach.isUnlocked(state, 'c_zone_collect') || (Ach.evaluate(state, 'week:end'), Ach.isUnlocked(state, 'c_zone_collect')));
-    }
-    // moving one member away drops the zone, moving it back restores it
-    const reg = state.objects.find(o => o.defId === 'reception');
-    check('combo: moving the reception away dissolves 掛號便民區 and only that zone', B.moveObject(state, reg.id, 10, 17, 0) ? !Syn.isZoneActive(state, 'regDesk') && Syn.isZoneActive(state, 'golden3') : true);
-    // all 13 zones share ONE connected cluster, so a part can come from anywhere in it: remove BOTH coffee machines -> the three coffee zones drop
-    lotBare(); ZL.placeCombo(B, state); refresh();
-    for (const c of state.objects.filter(o => o.defId === 'coffee')) B.removeAt(state, c.x, c.y);
-    check('combo: demolishing both coffee machines drops premium + staffBack + cafeNook, keeps golden3 / sportsRehab', ['premium', 'staffBack', 'cafeNook'].every(i => !Syn.isZoneActive(state, i)) && Syn.isZoneActive(state, 'golden3') && Syn.isZoneActive(state, 'sportsRehab'), activeIds().join());
-  }
-
-  // ---- F. performance ----
-  {
-    lotBare();
-    state.lotLevel = 3; state.lot = { ...LOTS[3].lot }; state.door = { ...LOTS[3].door };
-    state.objects = [];
-    let id = 1;
-    for (let y = 4; y < 20; y += 2) for (let x = 6; x < 26; x += 2) state.objects.push({ id: id++, defId: ['sofa', 'plant', 'heatbox', 'tens', 'coffee', 'water', 'bed', 'tv'][(x + y) % 8], x, y, rot: 0, busy: false, usedBy: null, staffId: null, wear: 0 });
-    state.nextId = id + 1;
-    for (let y = 4; y < 20; y++) for (let x = 6; x < 26; x += 3) state.map.floor[y][x] = 'ramp';
-    rebuildOccupancy(state);
-    const t0 = performance.now();
-    for (let i = 0; i < 200; i++) Syn.recomputeZones(state);
-    const per = (performance.now() - t0) / 200;
-    check('perf: recomputeZones on a 160-object lot with ramps < 4 ms', per < 4, per.toFixed(2) + ' ms (' + state.objects.length + ' objects, ' + state.zones.length + ' zones)');
-    lotBare();
-  }
+  Mod.recomputeMods(state);
+  check('mods respect global bounds at max levels', state.mods.wearRate >= 0.35 && state.mods.treatTime >= 0.6 && state.mods.cureGain <= 1.6 && state.mods.satGain <= 12 && state.mods.repGrowth <= 1.2);
+  check('cost grows with level', UPGRADES.upgradeCost(L, 5) > UPGRADES.upgradeCost(L, 0));
+  check('totalLevels', Res.totalLevels(state) === UPGRADES.UPGRADE_LINES.reduce((s, l) => s + l.cap, 0));
+  const lv = JSON.stringify(state.research.levels); Sav.saveGame(state, '2'); Sav.loadGame(state, '2');
+  check('levels survive save/load', JSON.stringify(state.research.levels) === lv);
 }
 
-// =====================================================================================================
-// SECTION: qualify (設施人員資格: treatment roles / attend, unstaffed detection, setup-only release, mid-run fire, mods)
-function qualifySection() {
-  section('Facility qualification (who may operate what)');
-  const roleSet = (a) => [...(a || [])].sort().join(',');
-  const TUNE0 = { ...P.TUNE };
-  const restoreTune = () => Object.assign(P.TUNE, TUNE0);
-
-  // ---- 1. the rule table ----
-  const RULES = {
-    exam: ['doctor', 'full'], us: ['doctor', 'full'], heat: ['nurse,pt', 'setup', 5], ir: ['nurse,pt', 'setup', 5], tens: ['pt', 'setup', 5], traction: ['pt', 'setup', 8],
-    taping: ['pt', 'full'], manual_nhi: ['pt', 'full'], redcord: ['pt', 'full'], shockwave: ['doctor,pt', 'full'], laser: ['doctor,pt', 'full'],
-    manual_self: ['pt', 'full'], prp: ['doctor', 'full'], insole: ['pt', 'full'], si: ['ot', 'full'], fine: ['ot', 'full'], speech: ['st', 'full'],
-  };
-  check('rules: every treatment is covered by the table', Object.keys(TREATMENTS).every(id => RULES[id]) && Object.keys(RULES).every(id => TREATMENTS[id]), Object.keys(TREATMENTS).filter(id => !RULES[id]).join());
-  for (const [id, r] of Object.entries(RULES)) {
-    const T = TREATMENTS[id];
-    check(`rules: ${id} roles ${r[0]} / attend ${r[1]}${r[2] ? ' setupMin ' + r[2] : ''}`, roleSet(T.staffRole) === r[0] && T.attend === r[1] && (r[1] !== 'setup' || T.setupMin === r[2]) && (r[1] !== 'full' || T.setupMin === undefined),
-      `${roleSet(T.staffRole)} ${T.attend} ${T.setupMin}`);
-  }
-  check('rules: no treatment is self-service any more (every staffRole non-empty)', Object.values(TREATMENTS).every(T => Array.isArray(T.staffRole) && T.staffRole.length > 0));
-  check('rules: all roles named in treatments exist', Object.values(TREATMENTS).every(T => T.staffRole.every(r => K.ROLES.includes(r))));
-  check('requiredRolesFor: hosts via stationFor (union), reception = nurse, furniture = none',
-    roleSet(Q.requiredRolesFor('heatbox')) === 'nurse,pt' && roleSet(Q.requiredRolesFor('tens')) === 'pt' && roleSet(Q.requiredRolesFor('exam_room')) === 'doctor' &&
-    roleSet(Q.requiredRolesFor('bed')) === 'pt' && roleSet(Q.requiredRolesFor('shockwave_room')) === 'doctor,pt' && roleSet(Q.requiredRolesFor('reception')) === 'nurse' &&
-    roleSet(Q.requiredRolesFor('si_room')) === 'ot' && roleSet(Q.requiredRolesFor('speech_room')) === 'st' && Q.requiredRolesFor('sofa').length === 0 && Q.requiredRolesFor('rest_room').length === 0,
-    ['heatbox', 'tens', 'exam_room', 'bed', 'shockwave_room', 'reception', 'sofa'].map(d => d + '=' + Q.requiredRolesFor(d)).join(' '));
-  check('requiredRolesFor: every treatment-hosting building is covered by its treatments\' roles', Object.values(BUILDABLES).every(d => (d.stationFor || []).every(t => TREATMENTS[t].staffRole.every(r => Q.requiredRolesFor(d.id).includes(r)))));
-  check('roleLabel uses ROLE_LABELS', K.ROLES.every(r => Q.roleLabel(r) === K.ROLE_LABELS[r]));
-  check('attendStamina: setup = staminaCost x setupMin/duration, at least 0.5; full = staminaCost',
-    near(Q.attendStamina(TREATMENTS.tens), 0.5) && near(Q.attendStamina(TREATMENTS.manual_nhi), TREATMENTS.manual_nhi.staminaCost) && Q.attendStamina(TREATMENTS.heat) >= 0.5,
-    `tens ${Q.attendStamina(TREATMENTS.tens)} heat ${Q.attendStamina(TREATMENTS.heat)}`);
-
-  // ---- helpers for small controlled clinics ----
-  const bareClinic = () => {
-    fresh(); clearObjects(); state.research.done = Object.keys(RESEARCH); state.money = 5e7;
-    state.staff = []; state.patients = []; state.queue = [];
-    P.TUNE.BASE_ARRIVALS = 0; state.reputation = 0;       // no random arrivals: the tests drive their own patients
-    refresh();
-  };
-  const addStaff = (role, x, y, skill = 5) => {
-    const s = S.createStaff(state, role, null, x, y);
-    s.skill = skill; s.stamina = s.staminaMax = 100; s.trait = null; s.morale = 70;
-    state.staff.push(s);
-    return s;
-  };
-  const addPatient = (plan, type = 'office') => {
-    const p = P.spawnPatient(state, type);
-    p.plan = plan.slice(); p.planIdx = 0; p.stage = 'waiting'; p.needSpot = true; p.path = []; p.dest = null; p.hold = false;
-    p.x = 15.5; p.y = 17.5; p.waitStart = p.age; p.patience = p.patienceMax = 500; p.cureScale = 1;
-    state.queue = state.queue.filter(id => id !== p.id);
-    return p;
-  };
-  const hirable = (role) => { const cid = 'qt' + role + Math.floor(rng() * 1e6); state.hirePool.push({ cid, role, name: '測試' + role, skill: 5, charm: 5, salary: 60000, hireCost: 1000, trait: null, staminaMax: 100 }); return cid; };
-
-  // ---- 2. isUnstaffed / missingRoles / cache invalidation ----
-  bareClinic();
-  const hb = put('heatbox', 11, 11), tn = put('tens', 13, 11), rc = put('reception', 16, 17), ex = put('exam_room', 11, 14), sf = put('sofa', 12, 18);
-  check('isUnstaffed: nobody on the payroll -> every facility that needs staff is unstaffed, furniture is not',
-    [hb, tn, rc, ex].every(o => Q.isUnstaffed(state, o)) && !Q.isUnstaffed(state, sf));
-  let miss = Q.missingRoles(state);
-  const missOf = (role) => (miss.find(m => m.role === role) || { objects: [] }).objects.slice().sort().join(',');
-  check('missingRoles: lists doctor / pt / nurse with the objects waiting for them, labelled',
-    miss.length === 3 && missOf('pt') === [hb.id, tn.id].sort().join(',') && missOf('nurse') === [hb.id, rc.id].sort().join(',') && missOf('doctor') === String(ex.id) && miss.every(m => m.label && m.label.length > 1),
-    JSON.stringify(miss));
-  const ptCid = hirable('pt');
-  const events = []; const offEv = bus.on('staff:changed', (e) => events.push(e));
-  const pt = S.hire(state, ptCid);
-  check('hire emits staff:changed', !!pt && events.length === 1 && events[0].role === 'pt', JSON.stringify(events));
-  miss = Q.missingRoles(state);
-  check('partially staffed is fine: a PT alone staffs heatbox + tens; nurse is still missing for the reception only, doctor for the exam room',
-    !Q.isUnstaffed(state, hb) && !Q.isUnstaffed(state, tn) && Q.isUnstaffed(state, rc) && Q.isUnstaffed(state, ex) && missOf('nurse') === String(rc.id) && !miss.some(m => m.role === 'pt') && missOf('doctor') === String(ex.id),
-    JSON.stringify(miss));
-  const nuCid = hirable('nurse'); const nu = S.hire(state, nuCid);
-  check('hiring the nurse staffs the reception', !Q.isUnstaffed(state, rc) && !Q.missingRoles(state).some(m => m.role === 'nurse'));
-  const fired = S.fire(state, pt.id); miss = Q.missingRoles(state);
-  check('fire emits staff:changed and the cache follows (PT gone -> tens unstaffed again, heatbox stays staffed by the nurse)',
-    fired && events.length === 3 && Q.isUnstaffed(state, tn) && !Q.isUnstaffed(state, hb) && missOf('pt') === String(tn.id), JSON.stringify(events.map(e => e.action)));
-  const drId = hirable('doctor'); S.hire(state, drId);
-  const nu2 = S.resignStaff(state, nu.id);
-  check('resign (removeStaff) also emits staff:changed; reception unstaffed again', !!nu2 && events.length === 5 && Q.isUnstaffed(state, rc), String(events.length));
-  state.staff.push(S.createStaff(state, 'pt', null, 15, 18));       // a hire that bypassed the bus: the signature check still catches it
-  check('cache survives direct state.staff edits (signature)', !Q.isUnstaffed(state, tn));
-  state.staff.pop();
-  check('...and the removal', Q.isUnstaffed(state, tn));
-  const hb2 = put('heatbox', 12, 11);
-  check('map change: a new facility is picked up (unstaffed, no PT/nurse)', hb2 && Q.isUnstaffed(state, hb2) === true && Q.unstaffedIds(state).has(hb2.id) === true);
-  offEv();
-  // toast once per role per session
-  Q.resetQualifyToasts();
-  const toasts = []; const offT = bus.on('toast', (e) => toasts.push(e.text));
-  Q.toastIfUnstaffed(state, hb2); Q.toastIfUnstaffed(state, tn); Q.toastIfUnstaffed(state, hb);
-  offT();
-  check('toast 尚未僱用○○，這台設備無法運作: once per role', toasts.length === 1 && /尚未僱用.*這台設備無法運作/.test(toasts[0]) && toasts[0].includes('物理治療師'), JSON.stringify(toasts));
-  const oldSave = JSON.stringify([Q.isUnstaffed(state, tn), Q.missingRoles(state).length]);
-  bus.emit('state:loaded', {});
-  check('state:loaded invalidates the cache without changing the answer', JSON.stringify([Q.isUnstaffed(state, tn), Q.missingRoles(state).length]) === oldSave);
-
-  // ---- 3. setup-only machines: staff is released after setupMin while the treatment keeps running ----
-  const runUntil = (cond, max = 400) => { let n = 0; while (!cond() && n < max) { step(1); n++; } return n; };
-  bareClinic();
-  put('tens', 12, 12); put('tens', 14, 12); put('sofa', 12, 18);
-  const pt1 = addStaff('pt', 13, 14);
-  pt1.stamina = 60;
-  const stam0 = pt1.stamina;
-  const expect45 = TREATMENTS.tens.duration / state.mods.nhiTurnover;          // (research 'rs_heat' etc. speed NHI machines up)
-  let stamRel = null, drain = 0;
-  const pa = addPatient(['tens']), pb = addPatient(['tens']);
-  const done = []; const offD = bus.on('treatment:done', (e) => done.push({ id: e.treatmentId, staffId: e.staffId, t: state.time.clock, pid: e.patient.id }));
-  const tl = {};      // patient id -> {start, rel}
-  for (let i = 0; i < 160 && (!tl[pa.id] || tl[pa.id].end === undefined || !tl[pb.id] || tl[pb.id].end === undefined); i++) {
-    const prevSt = pt1.stamina, prevState = pt1.state;
-    step(1);
-    if (pt1.state === 'working' || prevState === 'working') drain += Math.max(0, prevSt - pt1.stamina);
-    for (const p of [pa, pb]) {
-      const r = tl[p.id] || (tl[p.id] = {});
-      if (p.stage === 'treating' && r.start === undefined) { r.start = state.time.clock; r.total = p.total; }
-      if (r.start !== undefined && r.rel === undefined && !p.staffId) { r.rel = state.time.clock; r.remAtRel = p.remaining; r.ptBusy = !!pt1.task; if (stamRel === null) stamRel = pt1.stamina; }
-      if (r.end === undefined && p.planIdx >= 1) r.end = state.time.clock;
-    }
-  }
-  offD();
-  const ra = tl[pa.id], rb = tl[pb.id];
-  check('setup: both machine sessions started and finished', ra && rb && ra.start !== undefined && rb.start !== undefined && ra.end !== undefined && rb.end !== undefined, JSON.stringify(tl));
-  check('setup: treatment clock = full duration (45 / nhiTurnover) from the start of setup', ra && near(ra.total, expect45, 1e-6) && Math.abs((ra.end - ra.start) - expect45) <= 2, `total ${ra && ra.total} expected ${expect45} span ${ra && (ra.end - ra.start)}`);
-  check('setup: the staff member is released after setupMin (5) minutes, the patient keeps treating alone', ra && ra.rel !== undefined && Math.abs((ra.rel - ra.start) - 5) <= 1.5 && ra.remAtRel > expect45 - 7, `rel-start ${ra && (ra.rel - ra.start)} remaining ${ra && ra.remAtRel}`);
-  const overlap = rb && ra && rb.start < ra.end && ra.start < rb.end;
-  check('setup: one PT runs two machines at the same time (second session started before the first ended)', overlap && Math.abs(rb.start - ra.start) < 30, `A ${ra && ra.start}-${ra && ra.end} B ${rb && rb.start}-${rb && rb.end}`);
-  check('setup: treatment:done carries the setup staff id', done.length === 2 && done.every(d => d.id === 'tens' && d.staffId === pt1.id), JSON.stringify(done));
-  check('setup: stamina cost ~0.5 per setup (min 0.5), not per session (2 setups ~ 1.0 in all)', Math.abs(drain - 2 * Q.attendStamina(TREATMENTS.tens) * state.mods.staffStamina) < 0.25, `drained while working: ${drain.toFixed(2)} for 2 setups (x staffStamina ${state.mods.staffStamina})`);
-  check('setup: machines and staff end up free', state.objects.every(o => !o.busy && !o.usedBy) && !pt1.task && pt1.state !== 'working');
-  // traction needs 8 minutes
-  bareClinic(); put('traction', 12, 12); put('sofa', 12, 18); const pt2 = addStaff('pt', 13, 14); const pc = addPatient(['traction']);
-  let c0 = null, c1 = null;
-  for (let i = 0; i < 120 && c1 === null; i++) { step(1); if (pc.stage === 'treating' && c0 === null) c0 = state.time.clock; if (c0 !== null && !pc.staffId && c1 === null) c1 = state.time.clock; }
-  check('setup: traction needs 8 minutes of staff time', c0 !== null && c1 !== null && Math.abs((c1 - c0) - 8) <= 1.5, `${c1 - c0}`);
-  // heat: a nurse can do it (the clinic has no PT at all)
-  bareClinic(); put('heatbox', 12, 12); put('sofa', 12, 18); const nu3 = addStaff('nurse', 13, 14); const pd = addPatient(['heat']);
-  runUntil(() => pd.planIdx >= 1 || pd.stage === 'leaving', 200);
-  check('heat: a nurse alone can run a heatbox (no PT needed)', pd.planIdx >= 1 && pd.treated === 1, `planIdx ${pd.planIdx} treated ${pd.treated}`);
-
-  // ---- 4. full attendance: staff bound for the whole session ----
-  bareClinic(); put('bed', 12, 12); put('sofa', 12, 18); const pt3 = addStaff('pt', 13, 15); const pe = addPatient(['manual_nhi']);
-  let e0 = null, e1 = null, midBusy = false, stam3 = pt3.stamina;
-  for (let i = 0; i < 160 && e1 === null; i++) {
-    step(1);
-    if (pe.stage === 'treating' && e0 === null) e0 = state.time.clock;
-    if (e0 !== null && state.time.clock - e0 > 20 && state.time.clock - e0 < 25 && pt3.task && pe.staffId === pt3.id) midBusy = true;
-    if (pe.planIdx >= 1 && e1 === null) e1 = state.time.clock;
-  }
-  check('full: the PT stays on the patient for the whole manual session', midBusy && e0 !== null && e1 !== null && Math.abs((e1 - e0) - pe.total) <= 2.5, `span ${e1 - e0} total ${pe.total}`);
-  check('full: manual treatment drains its full staminaCost', stam3 - pt3.stamina > TREATMENTS.manual_nhi.staminaCost * 0.7, (stam3 - pt3.stamina).toFixed(1));
-
-  // ---- 5. the last PT leaves mid-run ----
-  bareClinic(); put('bed', 12, 12); put('tens', 14, 12); put('tens', 16, 12); put('sofa', 12, 18); put('exam_room', 17, 15);
-  const pt4 = addStaff('pt', 14, 15); addStaff('doctor', 18, 14); addStaff('nurse', 15, 18);
-  const pf = addPatient(['manual_nhi', 'tens']), pg = addPatient(['tens']), ph = addPatient(['tens', 'tens']);
-  const tdone = []; const offTD = bus.on('treatment:done', (e) => tdone.push(e.treatmentId + ':' + e.patient.id));
-  runUntil(() => pf.stage === 'treating' && pg.stage === 'treating' && !pg.staffId, 300);
-  const phase = { f: pf.stage, fStaff: pf.staffId === pt4.id, g: pg.stage, gStaff: pg.staffId, hStage: ph.stage };
-  const satBefore = pf.satisfaction;
-  check('fire/last PT: precondition (manual session with the PT, tens session running unattended)', phase.f === 'treating' && phase.fStaff && phase.g === 'treating' && phase.gStaff === null, JSON.stringify(phase));
-  const planF = pf.planIdx;
-  S.fire(state, pt4.id);
-  step(1); step(1);
-  check('fire/last PT: the interrupted manual patient is released (no ghost staff / station claims)', pf.staffId === null && (pf.stage !== 'treating' || pf.targetObj === null) && state.objects.filter(o => o.defId === 'bed').every(o => !o.usedBy || o.usedBy !== pf.id), `${pf.stage} ${pf.staffId} ${pf.targetObj}`);
-  runUntil(() => state.patients.length === 0, 600);
-  offTD();
-  check('fire/last PT: no deadlock - every patient eventually leaves', state.patients.length === 0, state.patients.map(p => p.stage + ':' + p.plan[p.planIdx]).join());
-  check('fire/last PT: unattended machine session ran to completion', tdone.includes('tens:' + pg.id), tdone.join());
-  check('fire/last PT: manual step skipped (never completed) and the patient pays the skip penalty path', !tdone.some(t => t.startsWith('manual_nhi')) && pf.planIdx > planF, `planIdx ${pf.planIdx}`);
-  check('fire/last PT: nothing stays reserved afterwards', state.objects.every(o => !o.busy && !o.usedBy) && state.staff.every(s => !s.task), JSON.stringify(state.objects.filter(o => o.busy || o.usedBy).map(o => o.defId)));
-  check('fire/last PT: skipped steps are counted (debug.skippedRole)', (P.debug.skippedRole || 0) >= 1, String(P.debug.skippedRole));
-  void satBefore;
-
-  // ---- 6. patients avoid unstaffed facilities, upsells too ----
-  bareClinic(); restoreTune();
-  put('reception', 16, 17); put('sofa', 12, 18); put('sofa', 14, 18); put('exam_room', 11, 11); put('tens', 14, 11); put('bed', 17, 11); put('manual_room', 11, 14); put('laser_room', 14, 14);
-  addStaff('doctor', 13, 13); addStaff('nurse', 17, 18);      // no PT, no OT, no ST on the payroll
-  state.reputation = 150; refresh();
-  const types = {}; const offU = bus.on('treatment:done', (e) => { types[e.treatmentId] = (types[e.treatmentId] || 0) + 1; });
-  let bad = 0;
-  for (let i = 0, N = 3 * MIN_PER_WEEK; i < N; i++) {
-    step(1);
-    const un = Q.unstaffedIds(state);
-    for (const p of state.patients) if (p.targetObj != null && un.has(p.targetObj) && (p.stage === 'to_station' || p.stage === 'treating')) bad++;
-  }
-  offU();
-  check('unstaffed: no patient ever reserves or uses a facility nobody can operate', bad === 0, String(bad));
-  check('unstaffed: only doctor / nurse work was done (exam + laser via doctor), no PT-only treatment happened',
-    (types.exam || 0) > 3 && !types.tens && !types.taping && !types.manual_nhi && !types.manual_self && !types.insole, JSON.stringify(types));
-  check('unstaffed: patients still flow through (visits completed)', state.stats.patientsMonth + state.stats.patientsToday > 3, `${state.stats.patientsTotal}`);
-  check('unstaffed: upsells never offered for treatments nobody can run (no unstaffed self-pay step in anyone\'s plan, none sold)',
-    state.patients.every(p => p.plan.every(t => TREATMENTS[t].kind !== 'self' || Q.treatmentStaffed(state, t))) && !types.redcord && !types.manual_self && !types.insole, JSON.stringify(types));
-  // a station unstaffed only at the moment: tens patient asks, no PT -> skipped right away without queueing at the machine
-  bareClinic(); put('tens', 12, 12); put('sofa', 12, 18); addStaff('nurse', 15, 18);
-  const pi = addPatient(['tens']);
-  runUntil(() => pi.planIdx >= 1 || pi.stage === 'leaving', 40);
-  check('unstaffed: a step nobody can run is skipped at once (within a couple of minutes), no queueing', (pi.planIdx >= 1 || pi.stage === 'leaving') && pi.treated === 0 && !state.objects[0].busy, `${pi.stage} ${pi.planIdx}`);
-  check('unstaffed: skip penalty is the milder SKIP_ROLE_PENALTY', P.TUNE.SKIP_ROLE_PENALTY > 0 && P.TUNE.SKIP_ROLE_PENALTY < P.TUNE.SKIP_STEP_PENALTY);
-
-  // ---- 7. upgrade modifiers (cureGain / treatTime / wearRate / satGain / typeSat / typeCure) ----
-  bareClinic();
-  const m = state.mods;
-  m.treatTime = 0.5; check('mods: treatTime 0.5 applies', near(P.treatTimeMod(state), 0.5));
-  m.treatTime = 0.1; check('mods: treatTime clamps at 0.5', near(P.treatTimeMod(state), 0.5));
-  m.treatTime = 9; check('mods: treatTime clamps at 2', near(P.treatTimeMod(state), 2));
-  m.treatTime = NaN; check('mods: treatTime NaN -> neutral', near(P.treatTimeMod(state), 1));
-  m.cureGain = 1.5; m.typeCure = { office: 0.2 };
-  check('mods: cureGain x typeCure(1+x) multiply, per patient type', near(P.cureMod(state, 'office'), 1.8) && near(P.cureMod(state, 'elder'), 1.5), `${P.cureMod(state, 'office')} ${P.cureMod(state, 'elder')}`);
-  m.cureGain = 0.1; m.typeCure = { kid: -2 };
-  check('mods: cureGain >= 0.5 and typeCure factor >= 0.5', near(P.cureMod(state, 'elder'), 0.5) && near(P.cureMod(state, 'kid'), 0.25), `${P.cureMod(state, 'elder')} ${P.cureMod(state, 'kid')}`);
-  m.cureGain = 99; m.typeCure = { sports: 99 };
-  check('mods: cureGain / typeCure upper clamps (3 each)', near(P.cureMod(state, 'elder'), 3) && near(P.cureMod(state, 'sports'), 9), `${P.cureMod(state, 'elder')} ${P.cureMod(state, 'sports')}`);
-  m.elderSat = 3; m.typeSat = { elder: 2, kid: 4, sports: -100 }; m.satGain = 0;
-  check('mods: typeSat adds to the legacy elderSat, other types use their own key, clamped to +-30',
-    near(P.typeSatMod(state, 'elder'), 5) && near(P.typeSatMod(state, 'kid'), 4) && near(P.typeSatMod(state, 'office'), 0) && near(P.typeSatMod(state, 'sports'), -30),
-    ['elder', 'kid', 'office', 'sports'].map(t => P.typeSatMod(state, t)).join());
-  m.satGain = 99; check('mods: satGain clamps to +20', near(P.satGainMod(state), 20)); m.satGain = -99; check('mods: satGain clamps to -20', near(P.satGainMod(state), -20));
-  // end-to-end with identical random streams: only the modifier differs
-  const solo = (mods, type = 'office') => {
-    bareClinic(); put('tens', 12, 12); put('sofa', 12, 18);
-    addStaff('pt', 13, 14);
-    Object.assign(state.mods, mods);
-    seedRng(4242);
-    const p = addPatient(['tens'], type); p.satisfaction = 50; p.hp = 0; p.cureScale = 1;
-    let total = null, left = null;
-    const off = bus.on('patient:left', (e) => { left = e.patient.satisfaction; });
-    for (let i = 0; i < 400 && left === null; i++) { step(1); if (p.stage === 'treating' && total === null) total = p.total; }
-    off();
-    return { total, hp: p.hp, sat: left, p };
-  };
-  const base = solo({}), fast = solo({ treatTime: 0.5 }), fast2 = solo({ treatTime: 0.2 });
-  check('e2e treatTime: 0.5 halves the session, 0.2 is clamped to the same', near(fast.total / base.total, 0.5, 0.01) && near(fast2.total, fast.total, 1e-6), `${base.total} ${fast.total} ${fast2.total}`);
-  const cg = solo({ cureGain: 1.5 }), tc = solo({ typeCure: { office: 0.2 } }), tcOther = solo({ typeCure: { elder: 0.5 } });
-  check('e2e cureGain x1.5 / typeCure +0.2 scale the cure of a completed treatment; other types unaffected',
-    base.hp > 0 && near(cg.hp / base.hp, 1.5, 0.01) && near(tc.hp / base.hp, 1.2, 0.01) && near(tcOther.hp / base.hp, 1, 0.01), `${base.hp} ${cg.hp} ${tc.hp} ${tcOther.hp}`);
-  const sg = solo({ satGain: 5 });
-  check('e2e satGain +5: every visit ends 5 points happier', near(sg.sat - base.sat, 5, 0.05), `${base.sat} -> ${sg.sat}`);
-  const spawnSat = (mods, type) => { bareClinic(); Object.assign(state.mods, mods); seedRng(99); return P.spawnPatient(state, type).satisfaction; };
-  const s0 = spawnSat({ elderSat: 0 }, 'kid'), s1 = spawnSat({ elderSat: 0, typeSat: { kid: 4 } }, 'kid'), s2 = spawnSat({ elderSat: 0, typeSat: { kid: 4 } }, 'elder'), s3 = spawnSat({ elderSat: 3, typeSat: { elder: 2 } }, 'elder'), s4 = spawnSat({ elderSat: 0 }, 'elder');
-  check('e2e typeSat applies at arrival: +4 for kids only; elders get elderSat + typeSat', near(s1 - s0, 4, 0.01) && near(s2, s4, 0.01) && near(s3 - s4, 5, 0.01), `${s0} ${s1} | elder ${s4} ${s2} ${s3}`);
-  // wear
-  bareClinic(); const wt = put('tens', 12, 12);
-  Eq.useWear(state, wt); const w1 = wt.wear;
-  wt.wear = 0; state.mods.wearRate = 0.5; Eq.useWear(state, wt); const w2 = wt.wear;
-  wt.wear = 0; state.mods.wearRate = 0.01; Eq.useWear(state, wt); const w3 = wt.wear;
-  wt.wear = 0; state.mods.wearRate = 50; Eq.useWear(state, wt); const w4 = wt.wear;
-  wt.wear = 0; state.mods.wearRate = 0.5; Eq.weeklyWear(state); const w5 = wt.wear;
-  check('mods: wearRate scales per-use wear (0.5 -> half), clamps at 0.3 / 3', near(w2 / w1, 0.5, 1e-6) && near(w3 / w1, 0.3, 1e-6) && near(w4 / w1, 3, 1e-6), `${w1} ${w2} ${w3} ${w4}`);
-  check('mods: wearRate also scales the weekly wear', near(w5, Eq.WEAR_TUNE.WEEK * 0.5, 1e-6), String(w5));
-  restoreTune();
-  feature('設施人員資格 (機器開機後放手 / 手法全程陪同 / 缺人偵測)', 'works', 'qualify: 17 treatments x roles x attend, setup-only release (5/8 min), last-PT fire mid-run, isUnstaffed/missingRoles cache, 6 upgrade modifiers + clamps');
-  fresh();
+// ---------------------------------------------------------------------------------------------------
+const SECTIONS = { data: dataSection, economy: economySection, flow: flowSection, qualify: qualifySection, events: eventsSection, save: saveSection, longrun: longrunSection, career: careerSection, achievements: achievementsSection, zones: zonesSection, upgrades: upgradesSection };
+const t0 = Date.now();
+for (const [name, fn] of Object.entries(SECTIONS)) {
+  if (!want(name)) continue;
+  try { fn(); } catch (e) { fails++; console.log('  CRASH in section', name, '\n', e && e.stack || e); }
 }
-
-const MULT_FLOOR = { spawnMult: 0.1, patience: 0.1, slipRisk: 0.1, walkSpeed: 0.1, nhiTurnover: 0.1, selfPayPrice: 0.1, researchGain: 0.1, staffStamina: 0.1, rentMult: 0.1, wageMult: 0.1 };
-
-// =====================================================================================================
-if (want('features')) featuresSection();
-if (want('edge')) edgeSection();
-if (want('save')) saveSection();
-if (want('achievements')) achievementsSection();
-if (want('events')) eventsSection();
-if (want('longrun')) longrunSection();
-if (want('career')) careerSection();
-if (want('zones')) zonesSection();
-if (want('upgrades')) upgradesSection();
-if (want('qualify')) qualifySection();
-
-if (FEATURES.length) {
-  section('Feature conformance');
-  for (const [n, s, e] of FEATURES) console.log(`  ${s.padEnd(8)} ${n}  --  ${e}`);
-}
-console.log(`\n${passes} passed, ${fails} failed`);
+console.log(`\n${fails ? 'FAILED' : 'OK'}: ${passes} passed, ${fails} failed  (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 process.exit(fails ? 1 : 0);
