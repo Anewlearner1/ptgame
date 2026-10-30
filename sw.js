@@ -3,7 +3,7 @@
 // Bump CACHE when the caching strategy itself changes; content updates need no bump.
 // version.json (written by the Pages workflow) goes through the same network-first path, so the in-app 'update available'
 // check (js/ui/version.js) always sees the live deploy while online and the last known one offline.
-const CACHE = 'restgame-v1';
+const CACHE = 'restgame-v2';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'css/style.css', 'css/ui.css', 'css/mobile.css',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'icons/icon.svg'];
 const NET_TIMEOUT = 5000;   // slow mobile networks: fall back to the cache after this long
@@ -12,6 +12,15 @@ self.addEventListener('install', e => {
   e.waitUntil((async () => {
     const c = await caches.open(CACHE);
     await Promise.all(SHELL.map(u => c.add(new Request(u, { cache: 'reload' })).catch(() => { /* optional */ })));
+    // image sprites (assets/rest/, listed by the manifest that tools/cut_restaurant_sheet.py writes) so the art also works offline
+    try {
+      const res = await fetch(new Request('assets/rest/manifest.json', { cache: 'reload' }));
+      if (res.ok) {
+        await c.put('assets/rest/manifest.json', res.clone());
+        const m = await res.json();
+        await Promise.all(Object.values(m.sprites || {}).map(s => c.add(new Request(s.file, { cache: 'reload' })).catch(() => { /* optional */ })));
+      }
+    } catch (err) { /* optional: the game falls back to procedural art */ }
     await self.skipWaiting();
   })());
 });

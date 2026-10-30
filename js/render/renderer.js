@@ -16,6 +16,7 @@ import {
   getCarSprite, CAR_VARIANTS, warmSprites, spriteHit,
 } from './sprites.js';
 import { loadArt, artReady, artEnabled } from './art.js';
+import { loadRestArt, restFoodIcon, drawSpr } from './rest_sprites.js';
 import * as CS from './concept_scene.js';
 import { setArtScale, setArtQuality, drawArtPerson, personHeight, patientSprite, staffSprite, artFlip, blit, dirFrames, dirSector, tableauFor, hasTableaux, artBox } from './artdraw.js';
 
@@ -39,6 +40,8 @@ export function initRenderer(cv) {
   layerCtx.imageSmoothingEnabled = false;
   warmSprites();
   bus.on('art:changed', () => { objSig = null; layer._built = false; bubbleCache.clear(); });   // atlas loaded / style toggled: rebuild object sprites + static layer
+  bus.on('rest:art', () => { objSig = null; layer._built = false; });   // image sprites loaded: rebuild object sprites
+  loadRestArt();                                                        // non-blocking; procedural art until (and unless) it resolves
   loadArt();                                                            // non-blocking; the procedural art is used until (and unless) it resolves
   ensureSize();
   const dirty = () => { sizeDirty = true; ensureSize(); };
@@ -575,7 +578,7 @@ function drawPatient(g, p, now, ui) {
   if (top !== top) {
     const spr = getPersonSprite(p.type, dir, frame, { pose, variant: p.id & 3 });
     const bob = (!moving && pose === 'stand') ? ((Math.sin(now / 420 + p.id) > 0.7) ? -1 : 0) : 0;
-    g.drawImage(spr, Math.round(wx - spr.ax), Math.round(wy - spr.ay + bob));
+    drawSpr(g, spr, Math.round(wx - spr.ax), Math.round(wy - spr.ay + bob));
     top = wy - spr.ay + bob;
   }
   // overhead: bubble > progress bar > status icon
@@ -585,6 +588,8 @@ function drawPatient(g, p, now, ui) {
     const pr = progressOf(p);
     if (pr >= 0) drawBar(g, wx, top - 8, pr, stage === 'treating' ? '#4cc86a' : '#5aa8e8');
     else drawBar(g, wx, top - 8, ((now / 1500) % 1), '#4cc86a');
+    const dish = stage === 'treating' && p.plan ? restFoodIcon(p.plan[p.planIdx]) : null;      // the dish being served
+    if (dish) drawSpr(g, dish, Math.round(wx - dish.dw / 2), Math.round(top - 11 - dish.dh));
   } else {
     let icon = null;
     const sat = p.satisfaction, pat = p.patience;
@@ -640,7 +645,7 @@ function drawStaff(g, s, now, ui) {
   if (top !== top) {
     const spr = getPersonSprite(s.role, dir, frame, { pose, variant: s.id & 7 });
     const bob = (!moving && pose === 'stand') ? ((Math.sin(now / 500 + s.id * 2) > 0.75) ? -1 : 0) : 0;
-    g.drawImage(spr, Math.round(wx - spr.ax), Math.round(wy - spr.ay + bob));
+    drawSpr(g, spr, Math.round(wx - spr.ax), Math.round(wy - spr.ay + bob));
     top = wy - spr.ay + bob;
   }
   if (s.bubble && s.bubble.text) addOverlay(getBubble(s.bubble.text, 'say'), wx, top - 2, 1);

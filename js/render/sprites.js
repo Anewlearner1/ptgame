@@ -11,6 +11,7 @@ import * as STF from '../data/staffdefs.js';
 import { artObjectSprite } from './artdraw.js';
 import { artEnabled } from './art.js';
 import { conceptObjectSprite, conceptFloorSprite } from './concept_objects.js';
+import { restObjectSprite, restPersonSprite, restIconSprite } from './rest_sprites.js';   // image sprites from the concept sheet (null until loaded)
 
 const PX = 2;
 
@@ -182,6 +183,7 @@ const ICONS = {
 };
 const _icons = new Map();
 export function getIconSprite(name) {
+  const ri = restIconSprite(name); if (ri) return ri;
   let s = _icons.get(name);
   if (!s) {
     const d = ICONS[name] || ICONS.warn;
@@ -402,6 +404,7 @@ function drawPerson(g, s, front, pose, frame, right) {
 
 const _people = new Map();
 export function getPersonSprite(kind, dir, frame, opts) {
+  const rs = restPersonSprite(kind, dir, frame, opts); if (rs) return rs;
   const o = opts || {};
   const poseName = o.pose || 'walk';
   const pose = POSES[poseName] != null ? POSES[poseName] : 0;
@@ -882,6 +885,7 @@ const HMAX = { sofa: 18, water: 26, tv: 24, plant: 28, sign: 18, reception: 24, 
 
 const _objs = new Map();
 export function getObjectSprite(defId, rot) {
+  const rs = restObjectSprite(defId, rot ? 1 : 0); if (rs) return rs;   // image sprite (null unless loaded + mapped)
   const adef = BUILDABLES[defId];
   if (adef) { const as = artObjectSprite(adef, rot ? 1 : 0); if (as) return as; }   // atlas art (null unless loaded + enabled + matched)
   if (artEnabled()) { const cs = conceptObjectSprite(defId, rot ? 1 : 0); if (cs) return cs; }   // concept-style procedural redraw (concept_objects.js)
