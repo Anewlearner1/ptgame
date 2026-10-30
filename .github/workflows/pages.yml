@@ -1,8 +1,11 @@
 name: Deploy to GitHub Pages
 
+# One Pages site, two games: the clinic version (claude/rehab-clinic-game) stays at the site root and the
+# restaurant version (this branch) is published under /restaurant/. Each run rebuilds both, so deploying
+# one never removes the other. Trigger: push to this branch, or run the workflow by hand.
 on:
   push:
-    branches: [main, claude/rehab-clinic-game]
+    branches: [claude/restaurant-game]
   workflow_dispatch:
 
 permissions:
@@ -21,16 +24,35 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout restaurant version
+        uses: actions/checkout@v4
+        with:
+          path: restaurant-src
+      - name: Checkout clinic version
+        uses: actions/checkout@v4
+        with:
+          ref: claude/rehab-clinic-game
+          path: clinic-src
       - name: Stage static site
         run: |
-          mkdir _site
-          cp -r index.html manifest.webmanifest sw.js css js icons _site/
+          mkdir _site _site/restaurant
+          # clinic at the root (same files its own workflow publishes)
+          cd clinic-src
+          cp -r index.html manifest.webmanifest sw.js css js icons ../_site/
+          mkdir -p ../_site/assets/art
+          cp assets/art/atlas.png assets/art/atlas.json ../_site/assets/art/
+          cd ../restaurant-src
+          # restaurant under /restaurant/ (assets/rest holds the image sprites; assets/ref is the uncut reference sheet)
+          cp -r index.html manifest.webmanifest sw.js css js icons ../_site/restaurant/
+          mkdir -p ../_site/restaurant/assets
+          cp -r assets/rest ../_site/restaurant/assets/
+          cd ..
           touch _site/.nojekyll
       - name: Stamp build version
         run: |
-          printf '{"sha":"%s","built":"%s"}\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > _site/version.json
-          cat _site/version.json
+          printf '{"sha":"%s","built":"%s"}\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > _site/restaurant/version.json
+          printf '{"sha":"%s","built":"%s"}\n' "$(git -C clinic-src rev-parse HEAD)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > _site/version.json
+          cat _site/version.json _site/restaurant/version.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
