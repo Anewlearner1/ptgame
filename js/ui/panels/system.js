@@ -45,7 +45,7 @@ function buildSave(body, state, ui) {
   function download() {
     if (!ta.value) doExport();
     const url = URL.createObjectURL(new Blob([ta.value], { type: 'application/json' }));
-    const a = h('a', { href: url, download: `ptgame-${state.time.year}y${state.time.month}m.json` });
+    const a = h('a', { href: url, download: `restgame-${state.time.year}y${state.time.month}m.json` });
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -140,10 +140,10 @@ function perfSection(state, ui) {
 // ---------------------------------------------------------------- settings
 function buildSettings(body, state, ui) {
   const grid = h('input', { type: 'checkbox', checked: ui.showGrid, onchange: () => { ui.showGrid = grid.checked; } });
-  const snd = h('input', { type: 'checkbox', checked: lsGet('ptgame.sound', '1') === '1', onchange: () => lsSet('ptgame.sound', snd.checked ? '1' : '0') });
-  const sp = h('select', { onchange: () => lsSet('ptgame.defaultSpeed', sp.value) },
+  const snd = h('input', { type: 'checkbox', checked: lsGet('restgame.sound', '1') === '1', onchange: () => lsSet('restgame.sound', snd.checked ? '1' : '0') });
+  const sp = h('select', { onchange: () => lsSet('restgame.defaultSpeed', sp.value) },
     [['1', '×1 正常'], ['2', '×2'], ['3', '×3']].map(([v, l]) => h('option', { value: v }, l)));
-  sp.value = lsGet('ptgame.defaultSpeed', '1');
+  sp.value = lsGet('restgame.defaultSpeed', '1');
   const tut = h('button', { class: 'btn small', type: 'button', onclick: () => showTutorial(true) }, '重看新手導覽');
   const help = h('button', { class: 'btn small', type: 'button', onclick: () => showHelp() }, '操作說明');
   const inst = installBox();
@@ -171,13 +171,13 @@ function buildSettings(body, state, ui) {
     section('新遊戲', h('p', { class: 'muted u-p' }, '重新開始會清除目前進度（自動存檔也會被覆蓋）。建議先到「存檔」分頁手動存檔。'),
       h('button', { class: 'btn danger', type: 'button', onclick: () => {
         confirmDialog({
-          title: '重新開始', text: '確定要放棄目前的診所，重新開業嗎？', okLabel: '重新開業', danger: true,
+          title: '重新開始', text: '確定要放棄目前的餐廳，重新開業嗎？', okLabel: '重新開業', danger: true,
           onOk: () => { try { SV.newGame(state); } catch (e) { console.error(e); } },
         });
       } }, '🆕 新遊戲')),
     section('關於',
-      artBanner('scene.clinic', { title: '診所一景', maxVh: 15, cls: 'u-banner-sm' }),
-      h('p', { class: 'muted u-p u-small' }, '復健科診所物語'),
+      artBanner('scene.clinic', { title: '餐廳一景', maxVh: 15, cls: 'u-banner-sm' }),
+      h('p', { class: 'muted u-p u-small' }, '餐廳物語'),
       verLine,
       h('p', { class: 'muted u-p u-small' }, '角色與設備美術：使用者提供的概念圖')));
   return { update() { if (grid.checked !== ui.showGrid) grid.checked = ui.showGrid; } };
@@ -188,7 +188,7 @@ const num = v => (v && typeof v === 'object') ? Object.values(v).reduce((a, b) =
 const METRICS = {
   cash: { label: '收入 / 支出', series: [['income', '收入', '#3a9d4d'], ['expense', '支出', '#d1495b']], bars: true },
   money: { label: '資金', series: [['money', '資金', '#2a9d8f']], fmt: v => money(v) },
-  patients: { label: '病患數', series: [['patients', '病患數', '#3b7fd1']] },
+  patients: { label: '客人數', series: [['patients', '客人數', '#3b7fd1']] },
   satisfaction: { label: '滿意度', series: [['satisfaction', '平均滿意度', '#f4a261']] },
   reputation: { label: '聲譽', series: [['reputation', '聲譽', '#8e5bc4']] },
 };

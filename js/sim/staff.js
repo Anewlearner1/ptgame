@@ -1,5 +1,5 @@
 // Staff: hire pool, hire / fire / train, stamina, rest room usage, idle wandering and task plumbing.
-// Treatment progress itself is driven by patients.js (it owns the patient state machine); this module owns
+// Dish progress itself is driven by patients.js (it owns the patient state machine); this module owns
 // everything about the staff member as a person (movement, stamina, resting, wandering).
 import { bus } from '../core/bus.js';
 import { newId } from '../core/state.js';
@@ -17,11 +17,11 @@ import { attendRate } from './qualify.js';
 // ---- tuning knobs ----
 export const TUNE = {
   POOL_MIN: 3, POOL_MAX: 5,
-  STAFF_SPEED: 1.25,           // walk multiplier (was 1.0 before 設施人員資格: machines now need a staff member to walk over and set them up; a hustling therapist is faster than an elder)
+  STAFF_SPEED: 1.25,           // walk multiplier (was 1.0 before 設施人員資格: machines now need a staff member to walk over and set them up; a hustling cook is faster than an elder)
   WALK_BOOST: 1.7,             // global walking-speed scale (patients + staff) on top of constants.WALK_TILES_PER_MIN
   REST_BELOW: 0.30,            // stamina fraction that sends a staff member to the rest room (after the current patient)
   REST_UNTIL: 0.85,
-  REG_STAMINA: 0.22,           // stamina / min a nurse burns while registering a patient
+  REG_STAMINA: 0.22,           // stamina / min a cashier burns while taking an order
   IDLE_REGEN: 0.0018,          // stamina fraction / min while idle without a rest room
   WALK_REGEN: 0.0007,
   OVERNIGHT_REGEN: 0.65,       // fraction of staminaMax restored when a new day (week) starts
@@ -40,25 +40,25 @@ export const MORALE = {
   WEEK_RECOVER: 1,             // base weekly recovery
   TIRED_PENALTY: 3,            // weeks in which stamina stayed under TIRED_FRAC for at least TIRED_MIN game-minutes
   TIRED_MIN: 120,
-  REST_BONUS: 1,               // a rest room (def.restRecovery) in the clinic
+  REST_BONUS: 1,               // a rest room (def.restRecovery) in the shop
   OVERTIME_UTIL: 0.6,          // 超時: working for this share of the opening hours in a week ...
   OVERTIME_PENALTY: 2,         // ... costs this much morale
   RESIGN_BELOW: 25,            // morale under this: weekly RESIGN_P chance of the resignation event
   RESIGN_P: 0.08,
-  RESIGN_ROLES: ['doctor', 'pt', 'ot', 'st'],
+  RESIGN_ROLES: ['chef', 'cook', 'barista', 'server'],
   RESIGN_FALLBACK_HIT: 15,     // morale loss instead of leaving when the role would be left empty
   POOL_MAX: 6,
 };
 
 // role -> object defs the role likes to hang around
 const HOME = {
-  doctor: ['exam_room'],
-  nurse: ['reception'],
-  pt: ['bed', 'heatbox', 'tens', 'traction'],
-  ot: ['si_room', 'fine_table'],
-  st: ['speech_room'],
+  chef: ['chef_range', 'teppan'],
+  cashier: ['reception'],
+  cook: ['noodle_stove', 'fryer', 'braise_pot', 'griddle'],
+  barista: ['drink_bar', 'ice_shop', 'dessert_bar'],
+  server: ['table2', 'table4', 'cold_case', 'soup_pot'],
 };
-const ROLE_WEIGHT = { pt: 3, nurse: 2, doctor: 1.3, ot: 1.2, st: 0.9 };
+const ROLE_WEIGHT = { cook: 3, cashier: 2, server: 2, chef: 1.3, barista: 1.2 };
 
 const rnd = () => Math.random();   // late-bound so test harnesses can seed Math.random
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -116,7 +116,7 @@ export function refreshPool(state) {
   const roles = Object.keys(STAFF_ROLES);
   const pool = [];
   // guarantee at least 2 different roles
-  const first = pick(['pt', 'nurse', 'doctor']);
+  const first = pick(['cook', 'cashier', 'chef']);
   for (let i = 0; i < n; i++) {
     let role;
     if (i === 0) role = first;
@@ -163,7 +163,7 @@ export function hire(state, cid) {
   return s;
 }
 
-// Take a staff member out of the clinic: frees their task, rest room and station claims (patients.js reconcile() then
+// Take a staff member out of the shop: frees their task, rest room and station claims (patients.js reconcile() then
 // releases any patient still pointing at them). Shared by fire() and resignStaff(). Returns the removed staff or null.
 export function removeStaff(state, staffId) {
   const i = state.staff.findIndex(s => s.id === staffId);
@@ -222,7 +222,7 @@ export function weeklyMorale(state) {
     s.morale = clamp(m, MORALE.MIN, MORALE.MAX);
   }
 }
-// Most unhappy resign candidate: a PT/OT/ST/doctor under RESIGN_BELOW whose role would not be left empty.
+// Most unhappy resign candidate: a chef/cook/barista/server under RESIGN_BELOW whose role would not be left empty.
 export function resignCandidate(state) {
   let best = null;
   for (const s of state.staff) {
@@ -354,9 +354,9 @@ function seekRest(state, s) {
 }
 
 // Nurses each keep to "their" reception counter (round robin by id) and stand on its post instead of roaming
-// between counters: walking across the clinic takes far longer than a registration itself.
-function nurseHome(state, s, homes) {
-  const mates = state.staff.filter(x => x.role === 'nurse').sort((a, b) => a.id - b.id);
+// between counters: walking across the shop takes far longer than a registration itself.
+function cashierHome(state, s, homes) {
+  const mates = state.staff.filter(x => x.role === 'cashier').sort((a, b) => a.id - b.id);
   const sorted = homes.slice().sort((a, b) => a.id - b.id);
   const idx = Math.max(0, mates.indexOf(s));
   return { obj: sorted[idx % sorted.length], owner: idx < sorted.length };
@@ -368,8 +368,8 @@ function wander(state, s) {
   let tx, ty, exact = false;
   if (homes.length) {
     let home = null;
-    if (s.role === 'nurse') {
-      const h = nurseHome(state, s, homes);
+    if (s.role === 'cashier') {
+      const h = cashierHome(state, s, homes);
       home = h.obj;
       const post = h.owner && receptionPost(state, home);
       if (post) { tx = post.x; ty = post.y; exact = true; }

@@ -300,7 +300,7 @@ for (const [w, h, kind] of VIEWPORTS) {
     }
     await closeModals();
   };
-  await showModal('settlement', () => __game.bus.emit('nhi:settled', { points: 31000, pointValue: 0.9, income: 60000, expense: 52000, net: 8000, cap: 28000, nhiIncome: 27900, selfIncome: 32100, salary: 30000, rent: 60000, maintain: 2000, year: 1, month: 1 }));
+  await showModal('settlement', () => __game.bus.emit('month:settled', { points: 31000, pointValue: 0.9, income: 60000, expense: 52000, net: 8000, cap: 28000, nhiIncome: 27900, selfIncome: 32100, salary: 30000, rent: 60000, maintain: 2000, year: 1, month: 1 }));
   await showModal('inspection', () => __game.bus.emit('inspection:result', { pass: false, score: 61, notes: ['走道寬度不足，輪椅進出有困難。', '缺少無障礙廁所。', '病歷保存良好。'], rewardOrFine: -20000 }));
   await showModal('event', () => { const ev = { id: 'test_ev', title: '測試事件：里長來訪', text: '里長帶著一群長輩來參觀你的診所，問你能不能辦一場免費的衛教講座？這件事情很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長。', choices: [{ label: '好啊，歡迎', result: '大家都很開心。', effects: {} }, { label: '先婉拒，最近太忙了', result: '里長有點失望。', effects: {} }] }; __game.state.events.pendingDilemma = ev; __game.bus.emit('event:show', { event: ev }); });   // resolveDilemma refuses a choice when nothing is pending
   await closeModals();

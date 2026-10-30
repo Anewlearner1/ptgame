@@ -4,7 +4,7 @@ import { createInitialState, replaceState, ui } from '../core/state.js';
 import { state as singleton } from '../core/state.js';
 import { SAVE_KEY_PREFIX, SAVE_VERSION } from '../core/constants.js';
 import { rebuildOccupancy, footprint } from '../core/grid.js';
-import { seedStarterClinic } from './build.js';
+import { seedStarterShop } from './build.js';
 import { refreshPool } from './staff.js';
 import { recomputeZones } from './synergy.js';
 import { recomputeMods } from './modifiers.js';
@@ -24,7 +24,7 @@ import { ONBOARDING, CORE_GOALS, BONUS_GOALS, ENDINGS, GRADES } from '../data/go
 import { TREATMENTS } from '../data/treatments.js';
 
 export const SAVE_SLOTS = ['1', '2', '3'];      // manual slots; 'auto' is the autosave slot
-const NESTED_KEYS = ['time', 'points', 'weather', 'lot', 'door', 'policy', 'research', 'nhi', 'ledger', 'stats', 'events', 'inspections', 'flags'];
+const NESTED_KEYS = ['time', 'points', 'weather', 'lot', 'door', 'policy', 'research', 'safety', 'ledger', 'stats', 'events', 'inspections', 'flags'];
 
 function storage() {
   try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch (e) { return null; }
@@ -39,7 +39,7 @@ function buildPayload(state) {
   return {
     version: SAVE_VERSION,
     savedAt: Date.now(),
-    label: `${state.clinicName || '診所'}　${formatDate(state)}　NT$ ${Math.round(state.money).toLocaleString('en-US')}`,
+    label: `${state.shopName || '餐廳'}　${formatDate(state)}　NT$ ${Math.round(state.money).toLocaleString('en-US')}`,
     state: JSON.parse(JSON.stringify(snapshot(state))),
   };
 }
@@ -62,20 +62,6 @@ export function saveGame(state, slot = 'auto') {
 // and add MIGRATIONS[<old version>] here. Missing fields are otherwise filled by hydrate()/sanitize() below.
 export const MIGRATIONS = {
   0: (st) => st,     // pre-versioned dumps: nothing structural to change, hydrate() fills the gaps
-  // v1 -> v2: achievements. Adds state.achv; the state-derivable ones are paid out by achievements.evaluateAll() on 'state:loaded'.
-  1: (st) => {
-    if (!st.achv || typeof st.achv !== 'object') st.achv = { unlocked: {}, counters: {}, title: null, badges: [] };
-    const c = st.achv.counters && typeof st.achv.counters === 'object' ? st.achv.counters : (st.achv.counters = {});
-    // periods already running cannot be tracked retroactively (trackMonth/trackYear stay undefined -> achievements.ensure() sets null)
-    if (c.selfPayEver === undefined) c.selfPayEver = !!(st.ledger && st.ledger.income && st.ledger.income.self > 0);
-    return st;
-  },
-  // v2 -> v3: goals & ending. Adds state.career (not yet initialised); career.ensureCareer() runs on 'state:loaded', silently marks the
-  // already-satisfied onboarding tasks done WITHOUT rewards, builds this year's goals, and turns year > 10 saves into endless mode.
-  2: (st) => {
-    if (!st.career || typeof st.career !== 'object' || Array.isArray(st.career)) st.career = { startedYear: 1, onboarding: { done: {}, hidden: false }, goals: { year: 0, list: [] }, reviews: [], ending: null, endless: false, inited: false, counters: {}, shares: [], doneOnce: [], prevBonus: [], prevCore: '' };
-    return st;
-  },
 };
 function migrate(st, fromVersion) {
   let v = Number.isFinite(fromVersion) ? fromVersion : 0;
@@ -91,7 +77,7 @@ const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : (typeof
 const clampN = (v, a, b, d) => Math.max(a, Math.min(b, num(v, d)));
 // every field patients.js reads without a guard (mirrors spawnPatient); only applied where a field is missing
 const PATIENT_DEFAULTS = {
-  name: '病患', bubble: null, bubbleCd: 0, cured: false, targetObj: null, staffId: null, seat: null, enteredAt: 480, waitedMin: 0,
+  name: '客人', bubble: null, bubbleCd: 0, cured: false, targetObj: null, staffId: null, seat: null, enteredAt: 480, waitedMin: 0,
   upsold: false, course: 4, visit: 0, cureScale: 1, age: 0, stun: 0, hold: false, chat: null, chatCd: 60, cmf: 0, rel: 0, cmfT: 0,
   waitStart: 0, spot: null, stand: null, dest: null, dir: 1, moving: false, treated: 0, qT: 0, needSpot: false, remaining: 0, total: 0,
 };
@@ -133,7 +119,7 @@ function sanitize(m) {
   for (const k of POINT_KEYS) m.points[k] = Math.max(0, num(m.points[k], 0));
   m.nextId = Math.max(1, Math.floor(num(m.nextId, 1)));
   m.seed = num(m.seed, 0);
-  m.clinicName = typeof m.clinicName === 'string' && m.clinicName ? m.clinicName : '幸福復健科診所';
+  m.shopName = typeof m.shopName === 'string' && m.shopName ? m.shopName : '幸福小吃店';
 
   const t = m.time;
   t.year = Math.max(1, Math.floor(num(t.year, 1)));
@@ -153,8 +139,7 @@ function sanitize(m) {
   // economy bookkeeping
   for (const k of Object.keys(m.ledger.income)) m.ledger.income[k] = Math.max(0, num(m.ledger.income[k], 0));
   for (const k of Object.keys(m.ledger.expense)) m.ledger.expense[k] = Math.max(0, num(m.ledger.expense[k], 0));
-  for (const k of ['weekPoints', 'monthPoints']) m.nhi[k] = Math.max(0, num(m.nhi[k], 0));
-  m.nhi.pointValue = clampN(m.nhi.pointValue, 0.1, 1, 1);
+  m.safety.risk = clampN(m.safety.risk, 0, 100, 0);
   for (const k of Object.keys(m.stats)) m.stats[k] = num(m.stats[k], 0);
   m.history = m.history.filter(h => h && typeof h === 'object');
 
@@ -173,7 +158,7 @@ function sanitize(m) {
     const n = Math.floor(Number(v));
     if (line && Number.isFinite(n) && n > 0) m.research.levels[id] = Math.min(line.cap, n);
   }
-  if (!FOCUS[m.policy.focus]) m.policy.focus = 'ortho';
+  if (!FOCUS[m.policy.focus]) m.policy.focus = 'business';
   const boardIds = new Set((BOARDS || []).map(b => b.id));
   m.policy.boards = [...new Set(m.policy.boards.filter(id => boardIds.has(id)))];
   for (const [id, v] of Object.entries(m.policy.priceMult)) m.policy.priceMult[id] = clampN(v, 0.5, 2, 1);
@@ -238,8 +223,8 @@ function sanitize(m) {
   for (const p of m.patients) {
     p.planIdx = clampN(Math.floor(num(p.planIdx, 0)), 0, p.plan.length, 0);
     if (!Array.isArray(p.path)) p.path = [];
-    if (!p.flags || typeof p.flags !== 'object') p.flags = { slipped: false, skipDoc: false };
-    if (!p.paid || typeof p.paid !== 'object') p.paid = { nhi: 0, self: 0 };
+    if (!p.flags || typeof p.flags !== 'object') p.flags = { slipped: false, skipMain: false };
+    if (!p.paid || typeof p.paid !== 'object') p.paid = { menu: 0, special: 0 };
     p.satisfaction = clampN(p.satisfaction, 0, 100, 60);
     const basePat = PATIENT_TYPES[p.type].patience || 50;
     p.patience = num(p.patience, basePat); p.patienceMax = Math.max(1, num(p.patienceMax, basePat));
@@ -358,8 +343,6 @@ function sanitizeCareer(m) {
 function sanitizeEventsExt(m) {
   // only repair fields that exist: the engine creates them lazily, and sanitise() must not alter a state the engine produced
   if (m.reviewScore !== undefined) m.reviewScore = Math.round(clampN(m.reviewScore, 1, 5, 4) * 100) / 100;
-  if (m.nhi.risk !== undefined) m.nhi.risk = clampN(m.nhi.risk, 0, 100, 0);
-  for (const k of ['nhiN', 'complexN']) if (m.nhi[k] !== undefined) m.nhi[k] = Math.max(0, Math.floor(num(m.nhi[k], 0)));
   const e = m.events;
   if (e.flags !== undefined) {
     const flags = {};
@@ -457,7 +440,7 @@ export function importSave(state, str) {
 export function newGame(state) {
   const fresh = createInitialState();
   replaceState(state, fresh);
-  seedStarterClinic(state);
+  seedStarterShop(state);
   refreshPool(state);
   rollWeather(state);
   ui.dirtyOcc = true;

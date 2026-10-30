@@ -1,8 +1,8 @@
-// 一覽 panel: 病患病歷 / 員工清單 + 招聘 / 設備維護表 / 專區組合辭典
+// 一覽 panel: 客人名單 / 員工清單 + 招聘 / 設備維護表 / 專區組合辭典
 import { bus } from '../../core/bus.js';
 import { PATIENT_TYPES } from '../../data/patients.js';
 import { TREATMENTS } from '../../data/treatments.js';
-import { TREATMENT_FEES, SINGLE_CLAIM_NOTE } from '../../data/fees.js';
+import { DISH_FEES } from '../../data/fees.js';
 import { STAFF_ROLES, TRAITS } from '../../data/staffdefs.js';
 import { BUILDABLES } from '../../data/buildables.js';
 import { SYNERGIES, ZONE_GROUPS, ZONE_TIERS } from '../../data/synergies.js';
@@ -40,19 +40,18 @@ function buildPatients(body, state, ui) {
     Object.values(PATIENT_TYPES).map(t => h('option', { value: t.id }, `${TYPE_ICONS[t.id] || ''} ${t.name}`)));
   sel.value = store.filter;
   const list = h('div', { class: 'u-list2' });
-  const empty = h('div', { class: 'muted u-p' }, '目前診所裡沒有病患。');
+  const empty = h('div', { class: 'muted u-p' }, '目前餐廳裡沒有客人。');
   body.append(h('div', { class: 'row u-between' }, sel, count), list, empty);
 
   function applyFilter() {
     if (!list._rows) return;
     for (const r of list._rows.values()) r.hidden = store.filter !== 'all' && r._type !== store.filter;
   }
-  // tooltip of a plan step: the NHI list price, and the single-claim rule for physical-therapy items
+  // tooltip of a plan step: the dish price and its ingredient-cost rate
   function stepTip(t) {
-    const F = TREATMENT_FEES[t];
-    if (!F || F.kind !== 'nhi') return '';
-    if (F.claim === 'pt') return `${SINGLE_CLAIM_NOTE}（此項列價 ${F.nhiPoints} 點${F.estimate ? '，估計' : ''}）`;
-    return t === 'exam' ? '診察費依當日看診人數遞減（364 → 160 點）' : `健保列價 ${F.nhiPoints} 點${F.estimate ? '（估計）' : ''}；職能／語言／超音波各自申報`;
+    const F = DISH_FEES[t];
+    if (!F || !(F.price > 0)) return '';
+    return `${F.kind === 'special' ? '特色料理' : '基本菜單'}　單價 NT$ ${F.price}（食材成本 ${Math.round(F.foodCost * 100)}%）`;
   }
   function create(p) {
     const P = PATIENT_TYPES[p.type] || {};
@@ -99,7 +98,7 @@ function buildPatients(body, state, ui) {
       reconcile(list, state.patients.slice(0, 80), p => p.id, create, upd);
       applyFilter();
       empty.hidden = state.patients.length > 0;
-      setText(count, `診所內 ${state.patients.length} 人`);
+      setText(count, `餐廳內 ${state.patients.length} 人`);
     },
   };
 }
@@ -141,7 +140,7 @@ function buildStaff(body, state, ui) {
         h('span', { class: 'u-bl' }, '技術', bar(s.skill / 10), h('em', { class: 'u-num' }, s.skill)),
         h('span', { class: 'u-bl' }, '魅力', bar(s.charm / 10), h('em', { class: 'u-num' }, s.charm)),
         h('span', { class: 'u-bl' }, '體力', r.stam),
-        h('span', { class: 'u-bl', tip: '士氣過低（< 25）的醫師／治療師可能遞辭呈。休息室、減少過勞、加薪與好事件都能提升士氣。' }, '士氣', r.mor, r.morNum),
+        h('span', { class: 'u-bl', tip: '士氣過低（< 25）的廚房與外場員工可能遞辭呈。休息室、減少過勞、加薪與好事件都能提升士氣。' }, '士氣', r.mor, r.morNum),
         r.hint),
       h('div', { class: 'row u-between' }, h('span', { class: 'muted u-small' }, '月薪 ', r.sal),
         h('span', { class: 'row' },
@@ -199,7 +198,7 @@ function buildStaff(body, state, ui) {
       if (s) bus.emit('toast', { text: `${c.name} 加入團隊！`, kind: 'good' });
       else bus.emit('toast', { text: full ? '員工人數已達上限，請先擴建或研發行政效率' : state.money < c.hireCost ? '資金不足，無法招聘' : '無法招聘', kind: 'bad' });
     } }, '雇用');
-    const need = h('span', { class: 'tag u-tag2 u-need', hidden: true, tip: '診所裡有蓋好的設施，需要這個職類才能運作，但目前沒有人在職。' }, '診所缺這個職類');
+    const need = h('span', { class: 'tag u-tag2 u-need', hidden: true, tip: '餐廳裡有蓋好的設施，需要這個職類才能運作，但目前沒有人在職。' }, '餐廳缺這個職類');
     const el = h('div', { class: 'card u-row2', dataset: { cid: c.cid } },
       staffThumb(c.role),
       h('div', { class: 'u-grow' }, h('b', null, c.name), ' ', h('span', { class: 'muted u-small', tip: operatesTip(c.role) }, R.name || c.role),
@@ -244,7 +243,7 @@ function buildEquip(body, state, ui) {
     h('div', { class: 'u-row2' }, h('span', { class: 'u-sico' }, '🧰'), h('div', { class: 'u-grow' }, h('b', null, '保養合約'), contractInfo)),
     h('div', { class: 'row u-contract-btns' }, contractBtns));
 
-  body.append(sum, contract, table, h('div', { class: 'muted u-small u-p' }, '電療、牽引、熱敷、超音波、震波、雷射、懸吊等儀器會隨使用耗損：≥ 70 顯示老舊，≥ 90 每週有機會故障（故障的儀器無法使用，需「維修」）。「保養」可預防，保養合約期間耗損減半。出售設備會退回約 50% 造價。點選列可在地圖上選取。'));
+  body.append(sum, contract, table, h('div', { class: 'muted u-small u-p' }, '油炸鍋、煮麵台、滷肉鍋、鐵板、爐台、飲料吧、冰品檯等設備會隨使用耗損：≥ 70 顯示老舊，≥ 90 每週有機會故障（故障的設備無法使用，需「維修」）。「保養」可預防，保養合約期間耗損減半。出售設備會退回約 50% 造價。點選列可在地圖上選取。'));
 
   function toast(r, okText) {
     bus.emit('toast', r.ok ? { text: `${okText}（${money(r.cost)}）`, kind: 'good' } : { text: r.reason || '無法執行', kind: 'bad' });
@@ -290,7 +289,7 @@ function buildEquip(body, state, ui) {
       r.badges._k = key;
       r.badges.replaceChildren(...[
         o.broken ? h('span', { class: 'tag u-eqb bad' }, '故障') : null,
-        unst ? h('span', { class: 'tag u-eqb bad u-eqmiss', tip: '診所沒有能操作這台設備的人員：病患不會使用它。到「員工清單」招聘對應職類。' }, '缺人') : null,
+        unst ? h('span', { class: 'tag u-eqb bad u-eqmiss', tip: '餐廳沒有能操作這台設備的人員：客人不會使用它。到「員工清單」招聘對應職類。' }, '缺人') : null,
         !o.broken && wearable && w >= EQ.WEAR_TUNE.OLD_AT ? h('span', { class: 'tag u-eqb warn' }, '老舊') : null,
         maint > 0 ? h('span', { class: 'tag u-eqb good', tip: '保養合約中：耗損速度減半' }, `合約 ${maint} 週`) : null].filter(Boolean));
     }
@@ -329,7 +328,7 @@ function buildEquip(body, state, ui) {
       }
       // maintenance contract box
       const cw = Math.max(0, ...EQ.wearables(state).map(o => EQ.maintainedWeeksLeft(state, o)));
-      const info = nWear ? (cw > 0 ? `保養合約生效中，剩 ${cw} 週：儀器耗損速度減半。` : '簽約期間所有儀器耗損速度減半（只涵蓋簽約當下已有的儀器）。') : '還沒有會耗損的儀器（電療、牽引、熱敷等）。';
+      const info = nWear ? (cw > 0 ? `保養合約生效中，剩 ${cw} 週：設備耗損速度減半。` : '簽約期間所有設備耗損速度減半（只涵蓋簽約當下已有的設備）。') : '還沒有會耗損的設備（油炸鍋、煮麵台、滷肉鍋等）。';
       setText(contractInfo, info);
       EQ.WEAR_TUNE.CONTRACT_WEEKS.forEach((w, i) => {
         const c = EQ.contractCost(state, w), btn = contractBtns[i];
@@ -360,7 +359,7 @@ function showZoneOnMap(state, ui, syn) {
   const zn = (state.zones || []).filter(z => z.id === syn.id).sort((a, b) => b.cells.length - a.cells.length)[0];
   const go = () => {
     if (zn) { focusTiles(state, cv, zn.cells, mapFreeRect(ui), ui); ui.zonePulse = { id: syn.id, until: performance.now() + 2000 }; }
-    else { recenter(state, cv, ui); bus.emit('toast', { text: `「${syn.name}」還沒啟動：已回到診所全景，照下方「怎麼擺」試試看。`, kind: 'info' }); }
+    else { recenter(state, cv, ui); bus.emit('toast', { text: `「${syn.name}」還沒啟動：已回到餐廳全景，照下方「怎麼擺」試試看。`, kind: 'info' }); }
   };
   if (layout.mobile && layout.portrait && layout.sheetFrac > 0.7) { layout.sheetFrac = SHEET_HALF; applySheet(); setTimeout(go, 260); }   // un-cover the map first
   else go();
@@ -496,7 +495,7 @@ function buildSyn(body, state, ui) {
 
 export function mountOverview(root, state, ui) {
   const t = tabbed([
-    { id: 'patients', label: '🧑 病患病歷', build: b => buildPatients(b, state, ui) },
+    { id: 'patients', label: '🧑 客人名單', build: b => buildPatients(b, state, ui) },
     { id: 'staff', label: '🩺 員工', build: b => buildStaff(b, state, ui) },
     { id: 'equip', label: '🔧 設備維護', build: b => buildEquip(b, state, ui) },
     { id: 'syn', label: '✨ 專區辭典', build: b => buildSyn(b, state, ui) },

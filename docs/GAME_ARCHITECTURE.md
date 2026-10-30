@@ -223,7 +223,7 @@ core ◀── data ◀── sim ◀── render
 | 類別 | 事件（部分） |
 |---|---|
 | 時間 | `week:start`、`week:end`、`month:start`、`month:end`、`year:start`、`year:end`、`speed:set` |
-| 經濟 | `nhi:settled`、`treatment:done`、`game:over` |
+| 經濟 | `month:settled`、`treatment:done`、`game:over` |
 | 病患與員工 | `patient:spawn`、`patient:left`、`patient:slip`、`patient:chat`、`staff:changed`、`staff:resigned` |
 | 建造與地圖 | `map:changed`、`mods:dirty`、`object:move`、`object:moved`、`object:context`、`lot:expanded` |
 | 事件與兩難 | `event:show`、`dilemma:request`、`dilemma:show`、`dilemma:resolved`、`community:started`、`equipment:broken`、`equipment:fixed` |

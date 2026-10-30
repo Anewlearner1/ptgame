@@ -1,5 +1,5 @@
 // Interface style switch: html.style-concept is on while the art style is 'new' (render/art.js artEnabled()).
-// index.html's inline script sets the class (and the theme-color meta) before first paint from localStorage 'ptgame.art';
+// index.html's inline script sets the class (and the theme-color meta) before first paint from localStorage 'restgame.art';
 // this module keeps both in sync when the player toggles the style (bus 'art:changed').
 import { bus } from '../core/bus.js';
 import { artEnabled } from '../render/art.js';

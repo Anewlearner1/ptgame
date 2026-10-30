@@ -1,4 +1,4 @@
-// 運作 panel: 研發 / 自費定價 / 社區衛教
+// 運作 panel: 研發 / 特色料理定價 / 社區活動
 import { bus } from '../../core/bus.js';
 import { RESEARCH, RESEARCH_TRACKS } from '../../data/research.js';
 import { BUILDABLES } from '../../data/buildables.js';
@@ -6,7 +6,7 @@ import { TREATMENTS } from '../../data/treatments.js';
 import { PATIENT_TYPES } from '../../data/patients.js';
 import { COMMUNITY } from '../../data/events.js';
 import { LOTS } from '../../data/lots.js';
-import { TREATMENT_FEES, EXAM_FEE_TIERS, PT_TIERS, COPAY_NTD, NHI_POINT_VALUE, FEES_AS_OF, SINGLE_CLAIM_NOTE } from '../../data/fees.js';
+import { DISH_FEES, FEES_AS_OF } from '../../data/fees.js';
 import { patientWeight } from '../../sim/economy.js';
 import * as RS from '../../sim/research.js';
 import * as EV from '../../sim/events.js';
@@ -22,13 +22,13 @@ const store = { tab: 'research' };
 function effectText(e) {
   switch (e.type) {
     case 'unlockBuild': return '解鎖建築：' + e.ids.map(i => (BUILDABLES[i] || {}).name || i).join('、');
-    case 'unlockTreatment': return '解鎖療程：' + e.ids.map(i => (TREATMENTS[i] || {}).name || i).join('、');
+    case 'unlockTreatment': return '解鎖餐點：' + e.ids.map(i => (TREATMENTS[i] || {}).name || i).join('、');
     case 'maxStaff': return `員工上限 +${e.n}`;
     case 'rep': return `聲譽 +${e.value}`;
     case 'mod': {
       const key = e.key.startsWith('typeSpawn.') ? (PATIENT_TYPES[e.key.split('.')[1]] || {}).name + '來客' : e.key;
-      const names = { selfPayConv: '自費轉換率', selfPayPrice: '自費單價', researchGain: '點數獲得', elderSat: '長輩滿意度', walkSpeed: '步行速度',
-        spawnMult: '來客量', patience: '病患耐心', slipRisk: '滑倒風險', staffStamina: '員工體力消耗', rentMult: '房租', wageMult: '薪資', nhiTurnover: '健保翻桌率', nhiCapBonus: '健保上限' };
+      const names = { selfPayConv: '加點轉換率', selfPayPrice: '特色料理單價', researchGain: '點數獲得', elderSat: '長輩滿意度', walkSpeed: '步行速度',
+        spawnMult: '來客量', patience: '客人耐心', slipRisk: '滑倒風險', staffStamina: '員工體力消耗', rentMult: '房租', wageMult: '薪資', nhiTurnover: '基本餐點翻桌率', foodCost: '食材成本' };
       const nm = names[e.key] || key;
       if (e.op === 'mul') return `${nm} ×${e.value}`;
       const pctKey = e.key !== 'elderSat';
@@ -130,7 +130,7 @@ function buildResearch(body, state) {
 }
 
 // ---------------------------------------------------------------- pricing
-// Rough share of patients who take a self-pay offer: the type-weighted willingness (data/patients.js selfPay), scaled by the conv mods, damped by price.
+// Rough share of guests who take a special-dish offer: the type-weighted willingness (data/patients.js selfPay), scaled by the conv mods, damped by price.
 function convOf(state, mult) {
   let w = 0, tot = 0;
   for (const P of Object.values(PATIENT_TYPES)) { w += (P.weight || 1) * (P.selfPay || 0); tot += (P.weight || 1); }
@@ -146,40 +146,35 @@ function weeklyPatients(state) {
 
 // Market reference from data/fees.js: 「市場行情 低–高」 (typical x slider is what the game charges).
 function marketText(id) {
-  const f = TREATMENT_FEES[id] && TREATMENT_FEES[id].selfPrice;
-  return f ? `市場行情 ${money(f.low)}–${money(f.high)}` : '';
+  const f = DISH_FEES[id];
+  return f ? `食材成本率 ${Math.round(f.foodCost * 100)}%` : '';
 }
 function marketTip(id) {
-  const F = TREATMENT_FEES[id];
-  if (!F || !F.selfPrice) return '';
-  const conf = { high: '高', medium: '中', low: '低' }[F.confidence] || F.confidence;
-  return `真實行情（${FEES_AS_OF}）：低 ${money(F.selfPrice.low)}／典型 ${money(F.selfPrice.typical)}／高 ${money(F.selfPrice.high)}（${F.unit}）\n資料可信度：${conf}${F.estimate ? '（估計）' : ''}`;
+  const F = DISH_FEES[id];
+  if (!F) return '';
+  return `市場行情（${FEES_AS_OF}）：${F.note}\n單位：${F.unit}`;
 }
-function nhiRulesCard() {
-  const conf = { high: '', medium: '', low: '（估計）' };
-  const row = (name, v, c) => h('div', { class: 'u-kvrow' }, h('span', null, name), h('b', null, v + (conf[c] || '')));
-  const ex = EXAM_FEE_TIERS.slice(0, 4).map((t, i) => `${i ? EXAM_FEE_TIERS[i - 1].upTo + 1 : 1}–${t.upTo} 人 ${t.points} 點${t.confidence === 'low' ? '（估計）' : ''}`).join('，');
+function menuCard() {
+  const menu = Object.values(TREATMENTS).filter(t => t.kind === 'menu' && t.price > 0);
+  const rows = menu.map(t => h('div', { class: 'u-kvrow' }, h('span', null, t.name), h('b', null, `${money(t.price)}（成本 ${Math.round(t.foodCost * 100)}%）`)));
   return h('div', { class: 'card u-nhirules' },
-    h('b', null, '🧾 健保給付速查（真實費率）'),
-    h('p', { class: 'muted u-small' }, `${SINGLE_CLAIM_NOTE}：熱敷、電療、牽引、紅外線、貼紮、健保徒手只取當日最高階申報一次（其餘照做、照樣累積研發點數，但不另計點）；職能、語言治療與超音波各自申報。`),
-    h('p', { class: 'muted u-small' }, `診察費：${ex}。人多的日子診察費會被稀釋。`),
-    row('物理治療：簡單 / 中度', `${PT_TIERS.simple} / ${PT_TIERS.moderate} 點`, 'low'),
-    row('部分負擔（回診每次）', money(COPAY_NTD), 'high'),
-    row('健保點值（未稀釋）', NHI_POINT_VALUE.typical.toFixed(2), 'high'),
-    h('p', { class: 'muted u-small' }, '標示「估計」的數字來自搜尋摘要，尚待對照健保署支付標準。'));
+    h('b', null, '🍱 基本菜單速查'),
+    h('p', { class: 'muted u-small' }, '基本菜單的價格固定，上菜即收現金，食材成本會同時扣掉。特色料理才能調價。'),
+    rows,
+    h('p', { class: 'muted u-small' }, '價格為市場行情的抽象化數字，各項成本率落在 22%～45%。'));
 }
 
 function buildPricing(body, state) {
   const PATIENT_WEIGHT = patientWeight(state);   // per-lot (lots.js patientWeight, default economy.PATIENT_WEIGHT)
   body.append(h('div', { class: 'card u-note' },
-    h('b', null, `⚖ 每位模擬病患代表 ${PATIENT_WEIGHT} 位真實病患`),
-    h('p', { class: 'muted u-small' }, `下列售價都是真實的「每次」自費價格（市場行情資料截至 ${FEES_AS_OF}）。入帳時會乘以 ${PATIENT_WEIGHT}（健保給付、部分負擔也一樣），薪資與房租則不乘。`)));
-  body.append(h('div', { class: 'muted u-p' }, '自費項目的售價 = 市場典型價 × 你設定的倍率（0.5–2.0）× 專區加成。定價越高，願意升級自費的病人越少。下方「預估」為粗略推算，僅供參考。'));
+    h('b', null, `⚖ 每位模擬客人代表 ${PATIENT_WEIGHT} 位真實客人`),
+    h('p', { class: 'muted u-small' }, `下列售價是每位客人的特色料理價格（市場行情資料截至 ${FEES_AS_OF}）。入帳與食材成本都會乘以 ${PATIENT_WEIGHT}，薪資與房租則不乘。`)));
+  body.append(h('div', { class: 'muted u-p' }, '特色料理的售價 = 菜單價 × 你設定的倍率（0.5–2.0）× 專區加成。定價越高，願意加點的客人越少。下方「預估」為粗略推算，僅供參考。'));
   const rows = [];
   const plist = h('div', { class: 'u-list2' });
   body.appendChild(plist);
-  body.appendChild(nhiRulesCard());
-  const self = Object.values(TREATMENTS).filter(t => t.kind === 'self');
+  body.appendChild(menuCard());
+  const self = Object.values(TREATMENTS).filter(t => t.kind === 'special');
   for (const t of self) {
     const slider = h('input', { type: 'range', min: 0.5, max: 2, step: 0.05, value: (state.policy.priceMult[t.id]) || 1 });
     const multEl = h('b'), priceEl = h('b'), hint = h('span', { class: 'muted' }), income = h('b'), conv = bar(), warn = h('div', { class: 'bad u-small' });
@@ -191,7 +186,7 @@ function buildPricing(body, state) {
     const reset = h('button', { class: 'btn small', type: 'button', onclick: () => { slider.value = 1; slider.dispatchEvent(new Event('input')); } }, '×1');
     const el = h('div', { class: 'card u-price' },
       h('div', { class: 'u-row2' }, h('div', { class: 'u-grow' }, h('b', null, t.name), h('div', { class: 'muted u-small' }, t.intro)),
-        h('div', { class: 'u-side' }, h('div', { class: 'muted u-small' }, `市場典型 ${money(t.price)}`), h('div', { class: 'muted u-small', tip: marketTip(t.id) || null }, marketText(t.id)))),
+        h('div', { class: 'u-side' }, h('div', { class: 'muted u-small' }, `菜單價 ${money(t.price)}`), h('div', { class: 'muted u-small', tip: marketTip(t.id) || null }, marketText(t.id)))),
       h('div', { class: 'u-slide' }, slider, multEl, reset),
       h('div', { class: 'u-grid2' },
         h('div', { class: 'stat' }, h('span', null, '實收單價'), priceEl),
@@ -207,14 +202,14 @@ function buildPricing(body, state) {
     const price = r.t.price * mult * ((state.mods && state.mods.selfPayPrice) || 1);   // real NT$ per session (not weighted)
     const cv = convOf(state, mult);
     const nSelf = Math.max(3, self.filter(x => RS.isTreatmentUnlocked(state, x.id)).length);
-    const vol = weeklyPatients(state) / nSelf;      // each patient is offered at most one or two of the unlocked items
+    const vol = weeklyPatients(state) / nSelf;      // each guest is offered at most one or two of the unlocked items
     setText(r.multEl, '×' + mult.toFixed(2));
     setText(r.priceEl, money(price));
     setBar(r.conv, cv, cv < 0.15 ? 'bad' : cv < 0.3 ? 'warn' : '');
     setText(r.income, money(price * cv * vol * PATIENT_WEIGHT));   // banked NT$ = price x PATIENT_WEIGHT per sale
-    setText(r.hint, cv >= 0.4 ? '💬 價格親民，多數病人願意嘗試。' : cv >= 0.25 ? '💬 約三、四成的病人會升級。' : cv >= 0.12 ? '💬 只有少數人買單，高價走精緻路線。' : '💬 定價偏高，幾乎沒人願意自費。');
+    setText(r.hint, cv >= 0.4 ? '💬 價格親民，多數客人願意嘗試。' : cv >= 0.25 ? '💬 約三、四成的客人會加點。' : cv >= 0.12 ? '💬 只有少數人買單，高價走精緻路線。' : '💬 定價偏高，幾乎沒人願意加點。');
     const built = state.objects.some(o => r.t.objects.includes(o.defId));
-    setText(r.warn, built ? '' : '⚠ 尚未建置對應設備，目前無法提供此療程。');
+    setText(r.warn, built ? '' : '⚠ 尚未建置對應設備，目前無法提供這道餐點。');
     r.warn.hidden = built;
   }
   return {
@@ -288,8 +283,8 @@ function buildCommunity(body, state) {
 export function mountOperate(root, state, ui) {
   const t = tabbed([
     { id: 'research', label: '🔬 研發', build: b => buildResearch(b, state) },
-    { id: 'pricing', label: '💲 自費定價', build: b => buildPricing(b, state) },
-    { id: 'community', label: '🎪 社區衛教', build: b => buildCommunity(b, state) },
+    { id: 'pricing', label: '💲 特色定價', build: b => buildPricing(b, state) },
+    { id: 'community', label: '🎪 社區活動', build: b => buildCommunity(b, state) },
   ], store);
   root.appendChild(t.el);
   return { update() { t.update(); } };

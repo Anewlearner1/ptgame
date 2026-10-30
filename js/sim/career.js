@@ -13,14 +13,14 @@
 // While the review is built state.time.year is temporarily the finished year.
 //
 // ---- Interpretation table ----
-// Goal latching: a goal becomes done the first time all its conditions hold at a check (week:end, nhi:settled and the relevant
+// Goal latching: a goal becomes done the first time all its conditions hold at a check (week:end, month:settled and the relevant
 //   events). Conditions that are "cumulative, lower is better" (slipYear / resignYear / breakdownYear <= n) only count at year:end.
 // Core goals: year 1..10 follow CORE_GOALS (variants picked by lot level at generation, targetByLot by the lot at generation);
 //   years > 10 pick randomly (seeded by state.seed + year) among core goals that are not trivially satisfied.
 // Bonus goals: 2 per year, weighted random (seeded), eligible by `cond`, not already satisfied (trivial), not impossible
 //   (equipment goals need a machine, staff goals need staff), never the same goal as last year, preferring different groups.
-// kid courses       = kidCured + floor(kidServed / 8)  (kids are practically never 'cured' in the sim: 8-16 visits per course).
-// selfPayShare3     = the minimum monthly self-pay share (self / (nhi + self + copay)) of the last 3 settled months ("3 months in a row").
+// family courses    = familyCured + floor(familyServed / 8)  (families rarely become 熟客 within the course: 4-8 visits).
+// selfPayShare3     = the minimum monthly special-dish share (special / (menu + special)) of the last 3 settled months ("3 months in a row").
 // avgSatYear / netMonthlyAvgYear = 0 until the year has >= 3 settled months (no lucky first month).
 // trainYear         = staff.level has no event: the total of (level - 1) is polled; increases count as trainings.
 // Score dims (0..100): fin = year net / (bench monthly net x 12) (bench = mean of the lot at year start and end);
@@ -29,7 +29,7 @@
 // Career score = weighted mean of yearly totals (years 6..10 x1.5) + lot bonus (0/4/8/12) + achievement rate x 10.
 import { bus } from '../core/bus.js';
 import { state as singleton } from '../core/state.js';
-import { earn, riskOf, reviewOf } from './economy.js';
+import { earn, riskOf, reviewOf, GOOD_MARGIN } from './economy.js';
 import { avgSatisfaction } from './inspection.js';
 import { absoluteWeek } from './calendar.js';
 import { isWearable, wearOf } from './equipment.js';
@@ -73,13 +73,19 @@ export function defaultCareer() {
     inited: false, counters: {}, shares: [], doneOnce: [], prevBonus: [], prevCore: '' };
 }
 const YEAR_KEYS = ['yrCured', 'yrSlip', 'yrResign', 'yrTrain', 'yrBreak', 'yrCommunity', 'yrDilemma', 'yrEvents', 'moraleSum', 'moraleN', 'wearSum', 'wearN'];
-const BASE_KEYS = ['treat', 'elderCured', 'kidCured', 'sportsServed', 'events', 'incomeTotal', 'peakRep', 'goalsDone', 'expandTab', 'trainSum',
-  'kidServed', 'fOrtho', 'fLtc', 'fPeds', 'yrYear', 'moneyStart', 'lotStart', 'repStart', 'rdStart', 'upgStart'];
+const BASE_KEYS = ['treat', 'elderCured', 'familyCured', 'studentServed', 'events', 'incomeTotal', 'peakRep', 'goalsDone', 'expandTab', 'trainSum',
+  'familyServed', 'fBusiness', 'fCommunity', 'fKids', 'yrYear', 'moneyStart', 'lotStart', 'repStart', 'rdStart', 'upgStart'];
 
 function seedCounters(state, c) {
   const k = c.counters;
   for (const key of [...YEAR_KEYS, ...BASE_KEYS]) if (typeof k[key] !== 'number' || !Number.isFinite(k[key])) k[key] = 0;
   return k;
+}
+
+// career counter key of the current shop focus (policy.focus: business | community | kids)
+function focusKey(state) {
+  const f = (state.policy && state.policy.focus) || 'business';
+  return f === 'community' ? 'fCommunity' : f === 'kids' ? 'fKids' : 'fBusiness';
 }
 
 function levelSum(state) { let s = 0; for (const x of state.staff || []) s += Math.max(0, (x.level || 1) - 1); return s; }
@@ -128,9 +134,8 @@ export function ensureCareer(state) {
     const ac = (state.achv && state.achv.counters) || {};
     if (!k.events) k.events = Object.values(ac.dilemmasDone || {}).reduce((s, v) => s + num(v), 0);
     const done = state.time.year - 1;
-    if (done > 0 && !k.fOrtho && !k.fLtc && !k.fPeds) {
-      const f = (state.policy && state.policy.focus) || 'ortho';
-      k[f === 'ltc' ? 'fLtc' : f === 'peds' ? 'fPeds' : 'fOrtho'] = Math.min(done, CAREER_YEARS);
+    if (done > 0 && !k.fBusiness && !k.fCommunity && !k.fKids) {
+      k[focusKey(state)] = Math.min(done, CAREER_YEARS);
     }
     for (const t of G.ONBOARDING || []) if (!c.onboarding.done[t.id] && cmpOk(metricValue(state, t.metric.key), t.metric.target, t.metric.cmp)) c.onboarding.done[t.id] = true;
     if (state.time.year > CAREER_YEARS && !c.ending) c.endless = true;
@@ -175,13 +180,13 @@ function trainYearNow(state) { const k = ctr(state); return k.yrTrain + Math.max
 
 const METRICS = {
   treatmentsDone: (s) => ctr(s).treat,
-  // the starter clinic already has 1 sofa + 1 plant, so "a seating set" means something added: a drinking fountain, a 2nd sofa or a 2nd plant
-  seatingSet: (s) => ((hasObj(s, 'sofa') && (hasObj(s, 'water') || countObj(s, 'plant') >= 2)) || countObj(s, 'sofa') >= 2 ? 1 : 0),
-  antislipTiles: (s) => { let n = 0; for (const row of s.map.floor) if (row) for (const f of row) if (f === 'floor_mat') n++; return n; },
+  // the starter shop already has 1 bench + 1 plant, so "a seating set" means something added: a water cooler, a 2nd bench or a 2nd plant
+  seatingSet: (s) => ((hasObj(s, 'bench') && (hasObj(s, 'water') || countObj(s, 'plant') >= 2)) || countObj(s, 'bench') >= 2 ? 1 : 0),
+  antislipTiles: (s) => { let n = 0; for (const row of s.map.floor) if (row) for (const f of row) if (f === 'floor_tile') n++; return n; },
   zoneActive_golden3: (s) => ((s.zones || []).some(z => z.id === 'golden3') ? 1 : 0),
   monthsSettled: monthsSettled,
   researchStartedOrDone: (s) => ((s.research.done || []).length + (s.research.current ? 1 : 0)),
-  ptCount: (s) => (s.staff || []).filter(x => x.role === 'pt').length,
+  cookCount: (s) => (s.staff || []).filter(x => x.role === 'cook').length,
   priceChanged: (s) => (Object.values((s.policy && s.policy.priceMult) || {}).some(v => typeof v === 'number' && Math.abs(v - 1) > 1e-9) ? 1 : 0),
   communityStarted: (s) => Object.values((s.achv && s.achv.counters && s.achv.counters.communityDone) || {}).reduce((a, v) => a + num(v), 0),
   expandTabOpened: (s) => (ctr(s).expandTab ? 1 : 0),
@@ -193,7 +198,7 @@ const METRICS = {
   netMonthlyAvgYear: (s) => { const h = yearHist(s); return h.length >= MIN_MONTHS ? h.reduce((a, x) => a + num(x.net), 0) / h.length : 0; },
   netPositiveMonthsYear: (s) => yearHist(s).filter(h => num(h.net) > 0).length,
   selfPayShare3: (s) => { const a = lastShares(s, 3); return a.length >= 3 ? Math.min(...a) : 0; },
-  pvGoodMonthsYear: (s) => yearHist(s).filter(h => num(h.pointValue, 1) >= 0.9 - 1e-9).length,
+  marginGoodMonthsYear: (s) => yearHist(s).filter(h => num(h.margin, 0) >= GOOD_MARGIN - 1e-9).length,
 
   patientsYear: (s) => yearHist(s).reduce((a, h) => a + num(h.patients), 0) + num(s.stats && s.stats.patientsMonth),
   curedYear: (s) => ctr(s).yrCured,
@@ -340,7 +345,7 @@ function refreshProgress(state, e) {
 // ---------------------------------------------------------------------------
 // rewards
 // ---------------------------------------------------------------------------
-const POINT_NAMES = (T.pointNames) || { medical: '醫術', device: '儀器', service: '服務' };
+const POINT_NAMES = (T.pointNames) || { culinary: '廚藝', device: '設備', service: '服務' };
 function scaledReward(state, reward, scale) {
   const f = scale ? REWARD_SCALE[clamp(state.lotLevel || 0, 0, 3)] : 1;
   const r = reward || {};
@@ -572,8 +577,8 @@ function statsFor(state, c) {
   };
 }
 
-// kids need 8-16 visits to be cured and (in the current sim) practically never finish, so a course is also credited per 8 treated visits
-const kidCourses = (k) => (k.kidCured || 0) + Math.floor((k.kidServed || 0) / 8);
+// families need 4-8 visits to become regulars and often stop earlier, so a course is also credited per 8 served visits
+const familyCourses = (k) => (k.familyCured || 0) + Math.floor((k.familyServed || 0) / 8);
 function selfShare12(c) { const a = (c.shares || []).slice(-12); return a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0; }
 function sp40Run(c, months) { const a = c.shares || []; if (a.length < months) return false; return a.slice(-months).every(v => v >= 0.4 - 1e-9); }
 
@@ -581,12 +586,12 @@ function endingMatches(state, c, e, score) {
   const p = e.params || {}, k = c.counters;
   const lot = state.lotLevel || 0;
   switch (e.id) {
-    case 'legend_center': return lot >= p.minLot && score >= p.minScore && state.reputation >= p.minRep;
-    case 'ltc_guardian': return (k.fLtc || 0) >= p.focusYears && (k.elderCured || 0) >= p.minElderCured && metricValue(state, 'avgSat6') >= p.minSat;
-    case 'sports_doctor': return (k.fOrtho || 0) >= p.focusYears && selfShare12(c) >= p.minSelfPayShare && (k.sportsServed || 0) >= p.minSportsServed;
-    case 'peds_pioneer': return (k.fPeds || 0) >= p.focusYears && kidCourses(k) >= p.minKidCured && (p.needObjects || []).every(id => hasObj(state, id));
-    case 'selfpay_brand': return sp40Run(c, p.months || 24) && (p.needResearch || []).every(id => (state.research.done || []).includes(id));
-    case 'steady_clinic': case 'struggling_shop': return score >= (p.minScore || 0);
+    case 'legend_chain': return lot >= p.minLot && score >= p.minScore && state.reputation >= p.minRep;
+    case 'community_hero': return (k.fCommunity || 0) >= p.focusYears && (k.elderCured || 0) >= p.minElderCured && metricValue(state, 'avgSat6') >= p.minSat;
+    case 'business_star': return (k.fBusiness || 0) >= p.focusYears && selfShare12(c) >= p.minSelfPayShare && (k.studentServed || 0) >= p.minStudentServed;
+    case 'family_pioneer': return (k.fKids || 0) >= p.focusYears && familyCourses(k) >= p.minFamilyCured && (p.needObjects || []).every(id => hasObj(state, id));
+    case 'special_brand': return sp40Run(c, p.months || 24) && (p.needResearch || []).every(id => (state.research.done || []).includes(id));
+    case 'steady_shop': case 'struggling_shop': return score >= (p.minScore || 0);
     default: return true;
   }
 }
@@ -637,10 +642,10 @@ export function careerCardText(state) {
   const c = ensureCareer(state);
   const ct = T.cardTemplate || {};
   const sm = careerSummary(state);
-  const lines = [ct.header || '🏥 院長生涯卡'];
+  const lines = [ct.header || '🍜 老闆生涯卡'];
   let title = '';
   try { title = displayTitle(state); } catch (e) { title = ''; }
-  lines.push(`院長稱號：${title || '—'}`);
+  lines.push(`老闆稱號：${title || '—'}`);
   let en = null;
   if (c.ending) en = (G.ENDINGS || []).find(x => x.id === c.ending.id);
   const endText = en ? `${en.emoji} ${en.title}` : (sm.projected ? (T.estimateEnding || '估算生涯結局：{ending}（僅供參考）').replace('{ending}', `${sm.projected.emoji} ${sm.projected.title}`) : '經營中');
@@ -651,15 +656,15 @@ export function careerCardText(state) {
   lines.push((ct.lot || '店面：{lot}').replace('{lot}', s.finalLot));
   lines.push((ct.score || '生涯總分：{score}').replace('{score}', score));
   lines.push((ct.income || '十年營收：NT$ {income}').replace('{income}', s.totalIncome.toLocaleString('en-US')));
-  lines.push((ct.patients || '服務病患：{patients} 人次').replace('{patients}', s.totalPatients.toLocaleString('en-US')));
-  lines.push((ct.cured || '治癒：{cured} 人').replace('{cured}', s.totalCured.toLocaleString('en-US')));
+  lines.push((ct.patients || '服務客人：{patients} 人次').replace('{patients}', s.totalPatients.toLocaleString('en-US')));
+  lines.push((ct.cured || '熟客：{cured} 人').replace('{cured}', s.totalCured.toLocaleString('en-US')));
   lines.push((ct.events || '處理事件：{events} 件').replace('{events}', s.eventsHandled));
   lines.push((ct.achievements || '達成成就：{achievements} 個').replace('{achievements}', s.achievementsDone));
   lines.push((ct.peakRep || '最高聲譽：{rep}').replace('{rep}', s.peakReputation));
-  lines.push((ct.topTreatment || '最常用療法：{treatment}').replace('{treatment}', s.topTreatment));
+  lines.push((ct.topTreatment || '最常點的餐點：{treatment}').replace('{treatment}', s.topTreatment));
   const grades = c.reviews.slice(-10).map(r => `${r.year}:${r.grade}`).join(' ');
   if (grades) lines.push('年度等級：' + grades);
-  lines.push(ct.footer || '—— 復健診所院長的十年');
+  lines.push(ct.footer || '—— 餐廳老闆的十年');
   return lines.join('\n');
 }
 
@@ -682,8 +687,7 @@ function finalizeYear(state, c, year) {
   pollTrain(state, c);
   tick(state, true);                       // year-end only goals (zero slips / resignations / breakdowns) latch here
   const k = c.counters;
-  const f = (state.policy && state.policy.focus) || 'ortho';
-  const fk = f === 'ltc' ? 'fLtc' : f === 'peds' ? 'fPeds' : 'fOrtho';
+  const fk = focusKey(state);
   k[fk] = (k[fk] || 0) + 1;
   k.peakRep = Math.max(k.peakRep || 0, Math.round(state.reputation));
   const review = buildReview(state, c, year);
@@ -716,10 +720,10 @@ export function initCareer() {
       if (p.cured || pat.cured) {
         k.yrCured++;
         if (pat.type === 'elder') k.elderCured++;
-        if (pat.type === 'kid') k.kidCured++;
+        if (pat.type === 'family') k.familyCured++;
       }
-      if ((pat.treated || 0) > 0 && pat.type === 'sports') k.sportsServed++;
-      if ((pat.treated || 0) > 0 && pat.type === 'kid') k.kidServed++;
+      if ((pat.treated || 0) > 0 && pat.type === 'student') k.studentServed++;
+      if ((pat.treated || 0) > 0 && pat.type === 'family') k.familyServed++;
     }),
     on('patient:slip', (s, c) => { c.counters.yrSlip++; }),
     on('staff:resigned', (s, c) => { c.counters.yrResign++; }),
@@ -736,10 +740,10 @@ export function initCareer() {
       c.counters.peakRep = Math.max(c.counters.peakRep || 0, Math.round(s.reputation));
       tick(s);
     }),
-    on('nhi:settled', (s, c, rec) => {
+    on('month:settled', (s, c, rec) => {
       const k = c.counters;
-      const base = num(rec.nhiIncome) + num(rec.selfIncome) + num(rec.copayIncome);
-      c.shares.push(base > 0 ? Math.round(clamp(num(rec.selfIncome) / base, 0, 1) * 1000) / 1000 : 0);
+      const base = num(rec.menuIncome) + num(rec.specialIncome);
+      c.shares.push(base > 0 ? Math.round(clamp(num(rec.specialIncome) / base, 0, 1) * 1000) / 1000 : 0);
       if (c.shares.length > 24) c.shares.splice(0, c.shares.length - 24);
       k.incomeTotal += Math.max(0, Math.round(num(rec.income)));
       pollTrain(s, c);

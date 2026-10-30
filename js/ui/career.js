@@ -96,13 +96,13 @@ export function metricText(key, v) {
 // `low`: lower is better (delta colours flip); `money`: deltas shown in 萬.
 const STAT_SLOTS = [
   { keys: ['moneyDelta', 'moneyChange', 'cashDelta', 'netProfit', 'net'], label: '資金變化', f: signedMoney, tone: true, money: true },
-  { keys: ['patients', 'patientsYear', 'patientsServed', 'served'], label: '看診病患', f: v => fmt(v) + ' 人' },
+  { keys: ['patients', 'patientsYear', 'patientsServed', 'served'], label: '來客數', f: v => fmt(v) + ' 人' },
   { keys: ['repDelta', 'reputationDelta', 'repChange'], label: '聲譽變化', f: signedNum, tone: true },
-  { keys: ['cured', 'curedYear'], label: '治癒人數', f: v => fmt(v) + ' 人' },
+  { keys: ['cured', 'curedYear'], label: '熟客人數', f: v => fmt(v) + ' 人' },
   { keys: ['events', 'eventsHandled', 'eventCount'], label: '處理事件', f: v => fmt(v) + ' 件' },
   { keys: ['reputation', 'rep', 'repEnd'], label: '年底聲譽', f: fmt },
   { keys: ['income', 'revenue', 'yearIncome'], label: '全年營收', f: money, money: true },
-  { keys: ['lot', 'lotName', 'lotLevel'], label: '診所規模', f: lotLabel, expanded: true },
+  { keys: ['lot', 'lotName', 'lotLevel'], label: '餐廳規模', f: lotLabel, expanded: true },
   { keys: ['community', 'communityCount', 'outreach'], label: '社區活動', f: v => fmt(v) + ' 次' },
   { keys: ['research', 'researchDone'], label: '完成研發', f: v => fmt(v) + ' 項' },
   { keys: ['slip', 'slips', 'slipCount'], label: '滑倒事故', f: v => fmt(v) + ' 次', low: true },
@@ -110,7 +110,7 @@ const STAT_SLOTS = [
   { keys: ['breakdown', 'breakdowns'], label: '設備故障', f: v => fmt(v) + ' 次', low: true },
   { keys: ['morale'], label: '平均士氣', f: v => nv(v) },
   { keys: ['avgSat', 'satisfaction', 'avgSatisfaction'], label: '平均滿意度', f: v => nv(v) },
-  { keys: ['selfPayShare', 'selfShare'], label: '自費占比', f: v => (v <= 1 ? Math.round(v * 100) : Math.round(v)) + '%' },
+  { keys: ['selfPayShare', 'selfShare'], label: '特色料理占比', f: v => (v <= 1 ? Math.round(v * 100) : Math.round(v)) + '%' },
 ];
 function lotLabel(v) {
   if (typeof v === 'string' && !/^L?\d$/i.test(v)) return v;
@@ -217,7 +217,7 @@ export function reviewSummary(review, prev) {
     h('div', { class: 'u-sec u-sec-sm' }, '五大面向'), dimBars(review, prev),
     statGrid(review, prev, 16) ? [h('div', { class: 'u-sec u-sec-sm' }, ct('yearReview.highlights', '本年重點')), statGrid(review, prev, 16)] : null,
     goalResults(review) ? [h('div', { class: 'u-sec u-sec-sm' }, ct('yearReview.plan', '年度計畫')), goalResults(review)] : null,
-    review && review.journal ? quoteBox(review.journal, ct('milestoneJournal', '📖 院長日誌')) : null);
+    review && review.journal ? quoteBox(review.journal, ct('milestoneJournal', '📖 老闆日誌')) : null);
 }
 
 export function yearReviewBody(review, prev, moodArt) {
@@ -238,7 +238,7 @@ export function yearReviewBody(review, prev, moodArt) {
     h('div', { class: 'u-sec u-sec-sm' }, '五大面向' + (prev ? '（↑↓ 與去年相比）' : '')), dimBars(review, prev),
     sg ? [h('div', { class: 'u-sec u-sec-sm' }, ct('yearReview.highlights', '本年重點')), sg] : null,
     gr ? [h('div', { class: 'u-sec u-sec-sm' }, ct('yearReview.plan', '年度計畫')), gr] : null,
-    review.journal ? quoteBox(review.journal, ct('milestoneJournal', '📖 院長日誌')) : null,
+    review.journal ? quoteBox(review.journal, ct('milestoneJournal', '📖 老闆日誌')) : null,
   ] };
 }
 
@@ -268,13 +268,13 @@ function treatLabel(v) {
 }
 const END_STATS = [
   ['totalIncome', '十年營收', v => money(v)],
-  ['totalPatients', '累計病患', v => fmt(v) + ' 人'],
-  ['totalCured', '治癒人數', v => fmt(v) + ' 人'],
+  ['totalPatients', '累計來客', v => fmt(v) + ' 人'],
+  ['totalCured', '熟客人數', v => fmt(v) + ' 人'],
   ['eventsHandled', '處理事件', v => fmt(v) + ' 件'],
   ['achievementsDone', '完成成就', v => fmt(v) + ' 個'],
   ['peakReputation', '最高聲譽', v => fmt(v)],
   ['finalLot', '最終店面', lotLabel],
-  ['topTreatment', '最常用療法', treatLabel],
+  ['topTreatment', '最常點的餐點', treatLabel],
 ];
 export function endingStatRows(stats) {
   const out = [];
@@ -310,11 +310,11 @@ export function cardText(state, ending) {
   if (typeof sim === 'string' && sim.trim()) return sim;
   const info = endingInfo(ending || {});
   const rv = reviewsNow(state);
-  const lines = [`🏥 ${state.clinicName || '幸福復健科診所'}　${info.emoji} ${info.title}`];
+  const lines = [`🍜 ${state.shopName || '幸福小吃店'}　${info.emoji} ${info.title}`];
   if (ending && ending.grade) lines.push(`最終評等 ${ending.grade}${ending.score != null ? `（${Math.round(ending.score)} 分）` : ''}`);
   if (rv.length) lines.push('歷年評等：' + rv.map(r => `${r.year}${gradeKey(r.grade) || '-'}`).join(' '));
   for (const r of endingStatRows(ending && ending.stats)) lines.push(`${r.label}：${r.text}`);
-  lines.push('— 復健科診所物語');
+  lines.push('— 餐廳物語');
   return lines.join('\n');
 }
 export async function copyText(text) {
@@ -381,7 +381,7 @@ export function refreshDot(state) {
   const n = goalsViewed ? 0 : unseenCount(state);
   if (ensureDot()) {
     if (dotEl.hidden === (n > 0)) dotEl.hidden = !(n > 0);
-    if (dotBtn) { const lab = n > 0 ? '診所（有新的目標）' : '診所'; if (dotBtn.getAttribute('aria-label') !== lab) dotBtn.setAttribute('aria-label', lab); }
+    if (dotBtn) { const lab = n > 0 ? '餐廳（有新的目標）' : '餐廳'; if (dotBtn.getAttribute('aria-label') !== lab) dotBtn.setAttribute('aria-label', lab); }
   }
   // dot on the 🎯 目標 tab button while another clinic tab is open
   const tb = [...document.querySelectorAll('#panel .tabs .tab')].find(t => (t.firstChild && String(t.firstChild.textContent || '').startsWith('🎯')));

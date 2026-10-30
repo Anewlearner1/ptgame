@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content">
-  <title>復健科診所物語</title>
+  <title>餐廳物語</title>
   <meta name="theme-color" content="#1d5c57" data-classic="#1d5c57">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="復健診所">
+  <meta name="apple-mobile-web-app-title" content="餐廳">
   <meta name="format-detection" content="telephone=no">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -18,12 +18,12 @@
   <link rel="stylesheet" href="css/mobile.css">
   <script>
     // First-paint layout class (portrait = phone/tablet upright; compact = short landscape). js/ui/layout.js keeps it current.
-    // Also the interface style: html.style-concept unless the player chose the classic art style (localStorage 'ptgame.art');
+    // Also the interface style: html.style-concept unless the player chose the classic art style (localStorage 'restgame.art');
     // js/ui/theme.js keeps the class and the theme-color meta in sync afterwards.
     (function () {
       var d = document.documentElement, w = innerWidth, h = innerHeight;
       var p = h > w && w <= 900, c = !p && h <= 520, concept = true;
-      try { concept = localStorage.getItem('ptgame.art') !== 'classic'; } catch (e) { /* storage blocked: default style */ }
+      try { concept = localStorage.getItem('restgame.art') !== 'classic'; } catch (e) { /* storage blocked: default style */ }
       d.className = (p ? 'lay-portrait lay-mobile' : c ? 'lay-compact lay-mobile' : 'lay-desktop') +
         (matchMedia('(pointer: coarse)').matches ? ' touch' : '') + (concept ? ' style-concept' : '');
       if (concept) { var m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', '#1e365a'); }
@@ -45,7 +45,7 @@
   </div>
   <noscript>
     <div class="noscript">
-      <h1>復健科診所物語</h1>
+      <h1>餐廳物語</h1>
       <p>這個遊戲需要 JavaScript 才能執行。請在瀏覽器設定中啟用 JavaScript 後重新整理頁面。</p>
       <p>This game needs JavaScript. Please enable it and reload the page.</p>
     </div>

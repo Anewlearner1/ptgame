@@ -11,7 +11,7 @@ import { fmt, POINT_ICONS, TRACK_COLORS } from '../fmt.js';
 const MINUS = '−';
 const round1 = (v) => Math.round(v * 10) / 10;
 
-// One effect of a line at some level -> { label, text }. typeCure.* / typeSat.* entries collapse to a single "四類病患…" row.
+// One effect of a line at some level -> { label, text }. typeCure.* / typeSat.* entries collapse to a single "四類客人…" row.
 function effectParts(line, level) {
   const out = [], seenGroup = new Set();
   for (const e of line.effects) {
@@ -22,7 +22,7 @@ function effectParts(line, level) {
       if (seenGroup.has(dot[1])) continue;
       seenGroup.add(dot[1]);
       const n = Object.keys(PATIENT_TYPES).length;
-      label = (n === 4 ? '四類病患' : '各類病患') + (dot[1] === 'typeCure' ? '治癒效率' : '滿意度');
+      label = (n === 4 ? '四類客人' : '各類客人') + (dot[1] === 'typeCure' ? '熟客效率' : '滿意度');
       if (dot[1] === 'typeSat') kind = 'abs';
     } else {
       const m = MOD_LABELS[e.key] || [e.key, 'abs'];

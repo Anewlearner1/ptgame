@@ -96,7 +96,7 @@ export function initUI(state, ui) {
     remount(state, ui, true);
     setTimeout(() => { if (!state.flags.tutorialDone) showTutorial(); }, 50);
   });
-  bus.on('patient:slip', () => bus.emit('toast', { text: '⚠ 有病患滑倒了！地面記得鋪防滑墊', kind: 'bad' }));
+  bus.on('patient:slip', () => bus.emit('toast', { text: '⚠ 有客人滑倒了！地面記得鋪防滑墊', kind: 'bad' }));
   bus.on('week:start', () => { dirty = true; });
   bus.on('staff:changed', () => { dirty = true; lastTick = 0; });      // hire / fire / resign: role chips, 缺人 badges, hire-pool tags
   bus.on('map:changed', () => { dirty = true; });
@@ -119,7 +119,7 @@ export function initUI(state, ui) {
   });
 
   // default speed preference (applied once on a fresh load)
-  const ds = parseInt(lsGet('ptgame.defaultSpeed', '1'), 10);
+  const ds = parseInt(lsGet('restgame.defaultSpeed', '1'), 10);
   if (ds > 1 && ds <= 3) setTimeout(() => bus.emit('speed:set', { speed: ds }), 0);
 
   updateTopbar(state);

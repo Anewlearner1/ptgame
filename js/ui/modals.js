@@ -10,8 +10,7 @@ import { showModal, closeModal } from './modal.js';
 import { LOTS } from '../data/lots.js';
 import { DILEMMAS, RANDOM_EVENTS } from '../data/events.js';
 import { INTRO_STEPS } from '../data/texts.js';
-import { monthlyCosts, PATIENT_WEIGHT, PV_BASE } from '../sim/economy.js';
-import { SINGLE_CLAIM_NOTE, COPAY_NTD } from '../data/fees.js';
+import { monthlyCosts, PATIENT_WEIGHT, GOOD_MARGIN } from '../sim/economy.js';
 import { resolveDilemma, eventById, choiceAffordable } from '../sim/events.js';
 import { newGame, loadGame, listSaves } from '../sim/save.js';
 import * as CAR from '../sim/career.js';
@@ -37,26 +36,21 @@ function kv(label, value, cls) {
 // ---------------------------------------------------------------- month settlement
 export function showSettlement(p) {
   const state = ctx.state;
-  const lot = LOTS[state.lotLevel || 0] || LOTS[0];
-  const cap = Math.round(p.cap != null ? p.cap : lot.nhiCap * (1 + ((state.mods && state.mods.nhiCapBonus) || 0)));
-  const pts = Math.round(p.points != null ? p.points : 0);
-  const base = p.basePointValue != null ? p.basePointValue : PV_BASE;     // undiluted point value (real ~0.95)
   const weight = p.patientWeight != null ? p.patientWeight : PATIENT_WEIGHT;
-  const pv = p.pointValue != null ? p.pointValue : base;
-  const nhiIncome = p.nhiIncome != null ? p.nhiIncome : Math.round(pts * pv * weight);
 
   // Prefer the itemised record from economy.settleMonth; fall back to our pre-reset ledger snapshot.
   let costs = { salary: p.salary, rent: p.rent, maintain: p.maintain };
   if (costs.salary == null) { try { costs = monthlyCosts(state) || {}; } catch (e) { costs = {}; } }
-  const self = p.selfIncome != null ? p.selfIncome : (snap.income.self || 0);
-  const copay = p.copayIncome != null ? p.copayIncome : (snap.income.copay || 0);
+  const menu = p.menuIncome != null ? p.menuIncome : (snap.income.menu || 0);
+  const special = p.specialIncome != null ? p.specialIncome : (snap.income.special || 0);
   const other = p.otherIncome != null ? p.otherIncome : (snap.income.other || 0);
+  const food = p.food != null ? p.food : (snap.expense.food || 0);
   const build = p.build != null ? p.build : (snap.expense.build || 0);
   const otherExp = p.otherExpense != null ? p.otherExpense : (snap.expense.other || 0);
 
-  const inc = [['健保給付', nhiIncome], ['自費收入', self], ['部分負擔', copay]];
+  const inc = [['基本菜單收入', menu], ['特色料理收入', special]];
   if (other) inc.push(['其他收入（活動、事件）', other]);
-  const exp = [['員工薪資', costs.salary || 0], ['診所房租', costs.rent || 0], ['設備與看板維護', costs.maintain || 0]];
+  const exp = [['食材成本', food], ['員工薪資', costs.salary || 0], ['店面房租', costs.rent || 0], ['設備與看板維護', costs.maintain || 0]];
   if (build) exp.push(['建設與購置', build]);
   if (otherExp) exp.push(['其他支出（訓練、招聘、活動）', otherExp]);
 
@@ -68,26 +62,18 @@ export function showSettlement(p) {
   const net = typeof p.net === 'number' ? p.net : incTotal - expTotal;
   if (p.year) { snap.year = p.year; snap.month = p.month; }
 
-  const diluted = p.diluted != null ? !!p.diluted : pv < base - 0.0005;
-  const usage = cap > 0 ? pts / cap : 0;
-  let explain;
-  if (diluted) {
-    const lost = Math.round(nhiIncome / pv * base - nhiIncome);
-    explain = h('div', { class: 'u-note bad-note' },
-      h('b', null, '⚠ 點值被稀釋了'),
-      h('p', null, `本月健保申報 ${fmt(pts)} 點，超過${lot.name}的上限 ${fmt(cap)} 點（${Math.round(usage * 100)}%）。` +
-        `超過上限後，點值 ＝ 上限 ÷ 申報點數 ＝ ${pv.toFixed(2)}（正常為 ${base.toFixed(2)}），而且這個折扣是套用在「全部」點數上。`),
-      h('p', null, `${fmt(pts)} 點 × ${pv.toFixed(2)} × ${weight} ＝ ${money(nhiIncome)}，比點值 ${base.toFixed(2)} 時少收 ${money(lost)}。` +
-        `多做的熱敷、電療不但不賺，還拖累原本的收入。`),
-      h('p', { class: 'muted' }, '出路：發展自費項目（不受點值影響）、擴建提高上限，或調整接診結構。'));
-  } else {
-    explain = h('div', { class: 'u-note' },
-      h('b', null, '點值正常'),
-      h('p', null, `本月健保申報 ${fmt(pts)} 點，上限為 ${fmt(cap)} 點（使用率 ${Math.round(usage * 100)}%），點值維持 ${pv.toFixed(2)}。`),
-      h('p', { class: 'muted' }, `申報超過上限時，點值會降到「上限 ÷ 申報點數」（最低 0.6），所有健保點數一起打折。${SINGLE_CLAIM_NOTE}，診察費也會隨當日看診人數遞減。`));
-  }
+  const sales = menu + special;
+  const margin = p.margin != null ? p.margin : (sales > 0 ? (sales - food) / sales : 0);
+  const spShare = sales > 0 ? special / sales : 0;
+  const goodMargin = margin >= GOOD_MARGIN;
+  const explain = h('div', { class: 'u-note' + (goodMargin ? '' : ' bad-note') },
+    h('b', null, goodMargin ? '毛利健康' : '⚠ 毛利偏低'),
+    h('p', null, `本月餐點營收 ${money(sales)}，食材成本 ${money(food)}，毛利率 ${Math.round(margin * 100)}%（目標 ≥ ${Math.round(GOOD_MARGIN * 100)}%）。特色料理占營收 ${Math.round(spShare * 100)}%。`),
+    h('p', { class: 'muted' }, goodMargin
+      ? '特色料理的毛利通常比平價主餐高一點；把爐具保養好、研發冷鏈與在地食材，可以再壓低食材成本。'
+      : '食材成本吃掉太多利潤：多賣毛利較高的特色料理、研發「冷鏈與食材管理」，或調高特色料理的價格倍率。'));
   const footnote = h('p', { class: 'muted u-small' },
-    `※ 每位模擬病患代表 ${weight} 位真實病患：上列健保給付、自費收入與部分負擔（每次回診 NT$ ${COPAY_NTD}）都已乘以 ${weight} 後入帳；薪資、房租與事件金額則為實際金額。`);
+    `※ 每位模擬客人代表 ${weight} 位真實客人：上列餐點收入與食材成本都已乘以 ${weight} 後入帳；薪資、房租與事件金額則為實際金額。`);
 
   const col = (title, rows, total, cls) => h('div', { class: 'u-col' },
     h('div', { class: 'u-sec' }, title),
@@ -97,11 +83,11 @@ export function showSettlement(p) {
   const repMood = netMood(Math.round(net));
   const body = h('div', { class: 'u-report' },
     h('div', { class: 'u-speaker u-rephead u-artonly' },
-      artEl(doctorFace(repMood), { size: 56, cls: 'u-bust u-bust-card', title: '診所醫師' }),
+      artEl(doctorFace(repMood), { size: 56, cls: 'u-bust u-bust-card', title: '餐廳主廚' }),
       h('p', { class: 'u-p u-repsay', dataset: { mood: repMood } }, repMood === 'happy' ? '這個月有賺，辛苦大家了！' : repMood === 'tired' ? '這個月虧損，要再想想辦法…' : '這個月收支打平。')),
     h('div', { class: 'u-stats3' },
-      h('div', { class: 'stat' }, h('span', null, '健保申報點數'), h('span', null, fmt(pts))),
-      h('div', { class: 'stat' }, h('span', null, '本月點值'), h('span', { class: diluted ? 'bad' : 'good' }, pv.toFixed(2))),
+      h('div', { class: 'stat' }, h('span', null, '餐點營收'), h('span', null, money(sales))),
+      h('div', { class: 'stat' }, h('span', null, '毛利率'), h('span', { class: goodMargin ? 'good' : 'bad' }, Math.round(margin * 100) + '%')),
       h('div', { class: 'stat' }, h('span', null, '本月淨利'), h('span', { class: net >= 0 ? 'good' : 'bad' }, signed(net)))),
     h('div', { class: 'u-two' }, col('收入', inc, incTotal, 'good'), col('支出', exp, expTotal, 'bad')),
     explain,
@@ -126,12 +112,12 @@ export function showInspection(p) {
     if (c.length) rfNode = chips(c);
   }
   const body = h('div', null,
-    h('div', { class: 'u-verdict ' + (pass ? 'good' : 'bad') }, pass ? '✅ 通過督導' : '❌ 未通過督導'),
+    h('div', { class: 'u-verdict ' + (pass ? 'good' : 'bad') }, pass ? '✅ 通過稽查' : '❌ 未通過稽查'),
     h('div', { class: 'u-kvrow' }, h('span', null, '評分'), h('b', null, `${Math.round(p.score || 0)} 分`)),
     rfNode,
-    h('div', { class: 'u-sec' }, '督導意見'),
+    h('div', { class: 'u-sec' }, '稽查意見'),
     h('ul', { class: 'u-list' }, (p.notes && p.notes.length ? p.notes : ['無特別意見']).map(n => h('li', null, String(n)))));
-  showModal({ title: h('span', null, artEl('role.assess', { size: 28, fallback: '🏛', cls: 'u-art-ico u-modal-ico', title: '督導' }), '年度督導與健保署抽查'), body, tag: 'inspection', buttons: [{ label: '收到', primary: true }] });
+  showModal({ title: h('span', null, artEl('role.assess', { size: 28, fallback: '🏛', cls: 'u-art-ico u-modal-ico', title: '稽查' }), '衛生局年度稽查'), body, tag: 'inspection', buttons: [{ label: '收到', primary: true }] });
 }
 
 // ---------------------------------------------------------------- events & dilemmas
@@ -185,7 +171,7 @@ export function showPending(raw) {
   const body = h('div', null,
     h('div', { class: 'u-speaker' }, face
       ? artEl(face.name, { size: 72, cls: 'u-bust u-bust-card u-art-portrait', title: face.title })
-      : artEl('portrait.doctor', { size: 72, cls: 'u-art-tile u-art-portrait', title: '診所醫師' }), h('p', { class: 'u-p' }, d.text || '')), list);
+      : artEl('portrait.doctor', { size: 72, cls: 'u-art-tile u-art-portrait', title: '餐廳主廚' }), h('p', { class: 'u-p' }, d.text || '')), list);
   showModal({
     title: (isDilemma ? '🤔 兩難抉擇：' : '📰 事件：') + (d.title || ''),
     body, noActions: true, dismissable: false, pause: false, tag: 'dilemma',
@@ -209,7 +195,7 @@ function choose(d, i) {
   let mood = outcomeMood(out.effects || ch.effects, eff);
   if (mood === 'normal' && out.roll === 'lose') mood = 'tired';
   const body = h('div', { class: 'u-speaker u-resbody' },
-    artEl(doctorFace(mood), { size: 64, cls: 'u-bust u-bust-card', title: '診所醫師' }),
+    artEl(doctorFace(mood), { size: 64, cls: 'u-bust u-bust-card', title: '餐廳主廚' }),
     h('div', { class: 'u-resmain', dataset: { mood } },
       h('p', { class: 'u-p' }, h('b', null, `你選擇了：${ch.label}`)),
       out.roll ? h('p', { class: 'u-p ' + (out.roll === 'win' ? 'good' : 'bad') }, out.roll === 'win' ? '🎲 運氣不錯，成功了！' : '🎲 運氣不好，失敗了…') : null,
@@ -222,11 +208,11 @@ function choose(d, i) {
 export function showGameOver(p) {
   const state = ctx.state;
   const body = h('div', null,
-    h('div', { class: 'u-verdict bad' }, '💸 診所倒閉了'),
+    h('div', { class: 'u-verdict bad' }, '💸 餐廳倒閉了'),
     h('p', { class: 'u-p' }, p && p.reason ? p.reason : '資金見底，無力繼續經營。'),
     h('div', { class: 'u-kvrow' }, h('span', null, '經營時間'), h('b', null, `${state.time.year} 年 ${state.time.month} 月`)),
-    h('div', { class: 'u-kvrow' }, h('span', null, '累計看診'), h('b', null, `${fmt(state.stats.patientsTotal)} 人`)),
-    h('div', { class: 'u-kvrow' }, h('span', null, '治癒人數'), h('b', null, `${fmt(state.stats.cured)} 人`)),
+    h('div', { class: 'u-kvrow' }, h('span', null, '累計來客'), h('b', null, `${fmt(state.stats.patientsTotal)} 人`)),
+    h('div', { class: 'u-kvrow' }, h('span', null, '熟客人數'), h('b', null, `${fmt(state.stats.cured)} 人`)),
     h('div', { class: 'u-kvrow' }, h('span', null, '最終聲譽'), h('b', null, fmt(state.reputation))));
   const buttons = [];
   let hasAuto = false;
@@ -250,10 +236,10 @@ export function showYearReview(review) {
   const g = gradeKey(review.grade);
   const mood = gradeMood(g);
   const bust = h('span', { class: 'u-rv-bust u-artonly' },
-    artEl(doctorFace(mood), { size: 64, cls: 'u-bust u-bust-card', title: '診所醫師', fallback: MOOD_EMOJI[mood], fbCls: 'u-rv-fb' }));
+    artEl(doctorFace(mood), { size: 64, cls: 'u-bust u-bust-card', title: '餐廳主廚', fallback: MOOD_EMOJI[mood], fbCls: 'u-rv-fb' }));
   const { hero, rest } = yearReviewBody(review, prev, bust);
   const body = h('div', { class: 'u-review', dataset: { grade: g, mood, year: review.year } },
-    artBanner('scene.clinic', { title: '診所一景', maxVh: 14, cls: 'u-banner-sm' }), hero, rest);
+    artBanner('scene.clinic', { title: '餐廳一景', maxVh: 14, cls: 'u-banner-sm' }), hero, rest);
   const last = review.year >= careerYears() && !(state.career && state.career.endless);
   showModal({
     title: h('span', null, artEl('role.record', { size: 28, fallback: '📊', cls: 'u-art-ico u-modal-ico', title: '年度總結' }), `第 ${review.year} 年 ${ct('yearReview.title', '年度總結')}`),
@@ -275,27 +261,27 @@ export function showCareerEnding(ending, o = {}) {
   const g = gradeKey(ending.grade);
   const mood = bankrupt ? 'tired' : (g ? gradeMood(g) : 'happy');
   const bust = h('span', { class: 'u-rv-bust u-artonly' },
-    artEl(doctorFace(mood), { size: 64, cls: 'u-bust u-bust-card', title: '診所醫師', fallback: MOOD_EMOJI[mood], fbCls: 'u-rv-fb' }));
+    artEl(doctorFace(mood), { size: 64, cls: 'u-bust u-bust-card', title: '餐廳主廚', fallback: MOOD_EMOJI[mood], fbCls: 'u-rv-fb' }));
   const reviews = careerReviews(state);
   const reason = bankrupt ? (o.reason || (state.flags && state.flags.gameOverReason) || '資金見底，無力繼續經營。') : '';
   const card = h('div', { class: 'u-endcard' });
   const body = h('div', { class: 'u-ending', dataset: { ending: ending.id || '', bankrupt: bankrupt ? '1' : '0' } },
-    artBanner('scene.clinic', { title: '診所一景', maxVh: 14, cls: 'u-banner-sm' }),
+    artBanner('scene.clinic', { title: '餐廳一景', maxVh: 14, cls: 'u-banner-sm' }),
     h('div', { class: 'u-end-hero' },
       h('div', { class: 'u-end-emoji', 'aria-hidden': 'true' }, info.emoji),
       h('div', { class: 'u-end-titles' },
-        h('div', { class: 'u-end-kicker' }, bankrupt ? '診所經營結束' : ct('careerEnd.title', '生涯結算')),
+        h('div', { class: 'u-end-kicker' }, bankrupt ? '餐廳經營結束' : ct('careerEnd.title', '生涯結算')),
         h('div', { class: 'u-end-title' }, info.title),
         info.desc ? h('div', { class: 'u-small muted u-end-desc' }, info.desc) : null)),
     g || ending.score != null ? h('div', { class: 'u-rv-hero u-end-grade' }, bust, g ? gradeBadge(g, 'u-grade-xl u-grade-pop') : null,
       h('div', { class: 'u-rv-heroT' }, h('div', { class: 'u-small muted' }, '生涯總評'), ending.score != null ? h('div', { class: 'u-rv-score' }, h('b', null, Math.round(ending.score)), ' 分') : null,
         g && gradeName(g) ? h('div', { class: 'u-small muted' }, `等級 ${g}・${gradeName(g)}`) : null)) : null,
     reason ? h('p', { class: 'u-p u-end-reason' }, reason) : null,
-    quoteBox(info.thanks, ct('careerEnd.quote', '院長感言')),
+    quoteBox(info.thanks, ct('careerEnd.quote', '老闆感言')),
     endingStatsCard(ending.stats) ? [h('div', { class: 'u-sec u-sec-sm' }, ct('careerEnd.statsTitle', '十年統計')), endingStatsCard(ending.stats)] : null,
     h('div', { class: 'u-sec u-sec-sm' }, '十年歷程'), gradeStrip(reviews, 0),
     bankrupt ? null : h('div', { class: 'u-note u-end-note' }, h('b', null, '♾ 無盡模式'),
-      h('p', null, ct('careerEnd.endlessNote', '選「繼續經營」可以接著玩：年度計畫照常循環、獎勵照發，但不會再出現結局。想重看成績，隨時到診所面板的「目標」分頁。'))),
+      h('p', null, ct('careerEnd.endlessNote', '選「繼續經營」可以接著玩：年度計畫照常循環、獎勵照發，但不會再出現結局。想重看成績，隨時到餐廳面板的「目標」分頁。'))),
     card);
 
   const showCopyFallback = text => {
@@ -319,7 +305,7 @@ export function showCareerEnding(ending, o = {}) {
   if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
     buttons.push({ label: ct('careerEnd.shareCard', '分享生涯卡'), onClick: () => {
       const text = cardText(state, ending);
-      navigator.share({ title: '復健科診所物語 生涯卡', text }).then(() => bus.emit('toast', { text: '已分享生涯卡', kind: 'good' })).catch(() => { /* cancelled */ });
+      navigator.share({ title: '餐廳物語 生涯卡', text }).then(() => bus.emit('toast', { text: '已分享生涯卡', kind: 'good' })).catch(() => { /* cancelled */ });
       return false;
     } });
   }
@@ -362,7 +348,7 @@ let tutorialWaiting = false;
 export function showTutorial(force) {
   const state = ctx.state;
   let seen = false;
-  try { seen = localStorage.getItem('ptgame.tutorialSeen') === '1'; } catch (e) { /* storage unavailable */ }
+  try { seen = localStorage.getItem('restgame.tutorialSeen') === '1'; } catch (e) { /* storage unavailable */ }
   if (!force && ((state.flags && state.flags.tutorialDone) || seen)) return;
   if (ctx.ui && ctx.ui.coverOn) {                                  // the cover goes first (one deferred call is enough)
     if (!tutorialWaiting) { tutorialWaiting = true; const off = bus.on('cover:closed', () => { off(); tutorialWaiting = false; showTutorial(force); }); }
@@ -372,10 +358,10 @@ export function showTutorial(force) {
   if (!steps.length) return;
   let i = 0;
   const textEl = h('p', { class: 'u-p u-intro-text' });
-  const goalHint = h('p', { class: 'u-intro-goal' }, '🎯 到診所面板的『目標』分頁看新手任務');
+  const goalHint = h('p', { class: 'u-intro-goal' }, '🎯 到餐廳面板的『目標』分頁看新手任務');
   const dots = h('div', { class: 'u-dots' });
   const head = h('div', { class: 'u-intro-head' });
-  const body = h('div', null, artBanner('scene.clinic', { title: '診所一景' }), head, textEl, goalHint, dots);
+  const body = h('div', null, artBanner('scene.clinic', { title: '餐廳一景' }), head, textEl, goalHint, dots);
   function fill() {
     const s = steps[i];
     head.textContent = `${s.title ? s.title + '　' : ''}${i + 1} / ${steps.length}`;
@@ -386,11 +372,11 @@ export function showTutorial(force) {
   fill();
   function done() {
     if (state.flags) state.flags.tutorialDone = true;
-    try { localStorage.setItem('ptgame.tutorialSeen', '1'); } catch (e) { /* ignore */ }
+    try { localStorage.setItem('restgame.tutorialSeen', '1'); } catch (e) { /* ignore */ }
   }
   let prevBtn, nextBtn;
   showModal({
-    title: '🏥 新手導覽', body, tag: 'tutorial', pause: true, dismissable: true, onClose: done,
+    title: '🍜 新手導覽', body, tag: 'tutorial', pause: true, dismissable: true, onClose: done,
     buttons: [
       { label: '略過', onClick: () => { done(); } },
       { label: '上一步', onClick: (el) => { prevBtn = el; if (i > 0) { i--; fill(); syncBtns(); } return false; } },
@@ -414,16 +400,16 @@ export function showHelp() {
     ['左鍵', '放置／選取'], ['右鍵拖曳', '平移地圖'], ['滾輪', '縮放'],
     ['R', '旋轉建築'], ['M', '移動設備'], ['Shift', '連續放置'], ['G', '顯示／隱藏格線'],
     ['空白鍵', '暫停／繼續'], ['1 2 3', '切換速度'], ['Esc', '取消／關閉'],
-    ['B', '建造'], ['O', '運作'], ['C', '診所'], ['V', '一覽'], ['P', '地圖'], ['Y', '系統'], ['?', '本說明'],
+    ['B', '建造'], ['O', '運作'], ['C', '餐廳'], ['V', '一覽'], ['P', '地圖'], ['Y', '系統'], ['?', '本說明'],
   ];
   const body = h('div', null,
     h('div', { class: 'u-keys' }, keys.map(k => h('div', { class: 'u-keyrow' }, h('span', { class: 'kbd' }, k[0]), h('span', null, k[1])))),
-    h('p', { class: 'muted u-p' }, '小提醒：候診區要有沙發；熱敷、電療、牽引相鄰擺放有「黃金三寶區」加成；健保點數超過上限會稀釋點值。'));
+    h('p', { class: 'muted u-p' }, '小提醒：候位區要有長椅；煮麵台、滷肉鍋、油炸鍋相鄰擺放有「黃金爐火區」加成；賣得多不等於賺得多，記得看毛利。'));
   showModal({ title: '⌨ 操作說明', body, pause: false, tag: 'help', buttons: [{ label: '關閉', primary: true }] });
 }
 
 export function initModals() {
-  bus.on('nhi:settled', p => showSettlement(p || {}));
+  bus.on('month:settled', p => showSettlement(p || {}));
   bus.on('inspection:result', p => showInspection(p || {}));
   bus.on('dilemma:show', p => showPending(p && (p.dilemma || p.event)));
   bus.on('event:show', p => showPending(p && (p.event || p.dilemma)));

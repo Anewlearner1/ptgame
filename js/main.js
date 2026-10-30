@@ -11,7 +11,7 @@ import { recomputeZones } from './sim/synergy.js';
 import { recomputeMods } from './sim/modifiers.js';
 import { updatePatients, closeUp } from './sim/patients.js';
 import { updateStaff, refreshPool } from './sim/staff.js';
-import { seedStarterClinic } from './sim/build.js';
+import { seedStarterShop } from './sim/build.js';
 import { initInspection } from './sim/inspection.js';
 import { loadGame, listSaves } from './sim/save.js';
 import { initResearch } from './sim/research.js';
@@ -66,7 +66,7 @@ function boot() {
   let loaded = false;
   try { loaded = listSaves().some(s => s.slot === 'auto') && loadGame(state, 'auto'); } catch (e) { console.warn(e); }
   if (!loaded) {
-    seedStarterClinic(state);
+    seedStarterShop(state);
     refreshPool(state);
   }
   refreshDerived();

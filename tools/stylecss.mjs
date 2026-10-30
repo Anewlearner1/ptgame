@@ -164,7 +164,7 @@ async function scenes(page, { shot, visit }) {
   const modal = async (name, fn) => { await fn(); await wait(page, 500); await shot(name); await visit(name, true); await closeModals(page); await wait(page, 250); };
   await modal('modal-help', () => press(page, '?'));
   await modal('modal-confirm', () => page.evaluate(async () => { const m = await import('/js/ui/modal.js'); m.confirmDialog({ title: '出售設備', text: '確定拆除「電療機」？將退回約 NT$ 4,000。', okLabel: '拆除', danger: true }); }));
-  await modal('modal-report', () => page.evaluate(() => __game.bus.emit('nhi:settled', { year: 1, month: 3, points: 1200, cap: 9000, pointValue: 1, nhiIncome: 1200, income: 5000, expense: 4000, net: 1000 })));
+  await modal('modal-report', () => page.evaluate(() => __game.bus.emit('month:settled', { year: 1, month: 3, points: 1200, cap: 9000, pointValue: 1, nhiIncome: 1200, income: 5000, expense: 4000, net: 1000 })));
   await modal('modal-inspection', () => page.evaluate(() => __game.bus.emit('inspection:result', { pass: true, score: 80, notes: ['環境整潔', '病歷完整'] })));
   await modal('modal-event', async () => {
     await page.evaluate(async () => { const { DILEMMAS } = await import('/js/data/events.js'); __game.state.events.pendingDilemma = DILEMMAS[0]; __game.bus.emit('dilemma:show', { dilemma: DILEMMAS[0] }); });

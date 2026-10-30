@@ -24,11 +24,11 @@ export function showCover(ui) {
   const go = h('button', { class: 'btn primary cover-go', type: 'button', dataset: { cover: 'start' }, onclick: close },
     auto ? '▶ 繼續遊戲' : '▶ 開始遊戲');
   const box = installBox({ always: true });
-  const el = h('div', { id: 'cover', class: 'cover', role: 'dialog', 'aria-label': '復健科診所物語 封面' },
+  const el = h('div', { id: 'cover', class: 'cover', role: 'dialog', 'aria-label': '餐廳物語 封面' },
     h('div', { class: 'cover-card' },
-      h('div', { class: 'cover-title' }, '復健科診所物語'),
-      h('div', { class: 'cover-sub' }, '台灣復健科診所模擬經營'),
-      artBanner('scene.clinic', { title: '診所一景', maxVh: 30 }),
+      h('div', { class: 'cover-title' }, '餐廳物語'),
+      h('div', { class: 'cover-sub' }, '台灣餐廳模擬經營'),
+      artBanner('scene.clinic', { title: '餐廳一景', maxVh: 30 }),
       go,
       supportAvailable() ? h('button', { class: 'btn small cover-support', type: 'button', dataset: { cover: 'support' }, onclick: showSupport }, '☕ 支持作者') : null,
       auto ? h('div', { class: 'cover-save muted u-small' }, `自動存檔：${auto.label || ''}　${auto.savedAt ? fmtDateTime(auto.savedAt) : ''}`) : null,

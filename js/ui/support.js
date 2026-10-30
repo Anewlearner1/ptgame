@@ -14,7 +14,7 @@ export function openSupportLink() {
 
 export function supportBody() {
   return h('div', { class: 'support-page', dataset: { support: 'page' } },
-    artBanner('scene.clinic', { title: '診所一景', cls: 'u-banner-sm' }),
+    artBanner('scene.clinic', { title: '餐廳一景', cls: 'u-banner-sm' }),
     h('p', { class: 'support-lead' }, SUPPORT.lead),
     h('ul', { class: 'support-points' }, SUPPORT.points.map(t => h('li', null, t))),
     h('p', { class: 'support-thanks' }, SUPPORT.thanks),

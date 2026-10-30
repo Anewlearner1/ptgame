@@ -136,7 +136,7 @@ state.achv = {
 - 解鎖流程：寫入 `state.achv.unlocked` → `economy.earn` 發獎勵、加點數與聲譽 → `bus.emit('toast', ...)` + `bus.emit('achievement:unlocked', {id})` → 必要時 `bus.emit('mods:dirty')`（目前無永久加成，僅預留）。
 - `listAchievements(state) -> [{def, unlocked, at, progress, goal}]`（隱藏且未解鎖者將名稱與條件遮蔽）。
 - `equipTitle(state, id|null) -> bool`、`setBadges(state, ids) -> bool`、`displayTitle(state) -> string`、`badgeIcons(state) -> string[]`（供 UI、渲染使用）。
-- 觸發來源（已存在的事件）：`week:end`、`month:end`／`nhi:settled`、`year:end`、`inspection:result`、`lot:expanded`、`research:done`、`patient:left`、`patient:slip`、`treatment:done`、`dilemma:resolved`、`map:changed`（建造類）。
+- 觸發來源（已存在的事件）：`week:end`、`month:end`／`month:settled`、`year:end`、`inspection:result`、`lot:expanded`、`research:done`、`patient:left`、`patient:slip`、`treatment:done`、`dilemma:resolved`、`map:changed`（建造類）。
 - **需要新增的少量事件（小改動）**：
   - `events.js`：開始社區活動時 `bus.emit('community:started', {id})`。
   - `patients.js`：長輩聊天完成時 `bus.emit('patient:chat', {patient})`（隱藏成就 h_chat）。

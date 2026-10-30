@@ -263,7 +263,7 @@ for (const mode of ['new', 'classic']) {
   await wait(page, 100);
   // settlement + inspection + review emitted in the sim order, and in a "wrong" order (review before inspection) in the same tick
   await page.evaluate(() => {
-    __game.bus.emit('nhi:settled', { year: 3, month: 12, points: 1000, cap: 9000, pointValue: 1, nhiIncome: 1000, income: 5000, expense: 4000, net: 1000 });
+    __game.bus.emit('month:settled', { year: 3, month: 12, points: 1000, cap: 9000, pointValue: 1, nhiIncome: 1000, income: 5000, expense: 4000, net: 1000 });
     __game.bus.emit('career:year-review', { review: window.__careerFake.reviews[2] });
     __game.bus.emit('inspection:result', { pass: true, score: 80, notes: ['ok'] });
   });

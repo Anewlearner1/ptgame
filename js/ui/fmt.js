@@ -7,18 +7,18 @@ export function money(n) { n = Math.round(n || 0); return (n < 0 ? '-' : '') + '
 export function signed(n) { n = Math.round(n || 0); return (n > 0 ? '+' : n < 0 ? '-' : '') + nf.format(Math.abs(n)); }
 export function pct(r, d = 0) { return (r * 100).toFixed(d) + '%'; }
 
-export const POINT_ICONS = { medical: '🩺', device: '🔧', service: '🛎' };
-export const TRACK_COLORS = { medical: '#d1495b', device: '#3b7fd1', service: '#3a9d4d' };
+export const POINT_ICONS = { culinary: '🍳', device: '🔧', service: '🛎' };
+export const TRACK_COLORS = { culinary: '#d1495b', device: '#3b7fd1', service: '#3a9d4d' };
 
 export const STAGE_LABELS = {
-  arriving: '抵達中', to_reception: '前往掛號', registering: '掛號中', waiting: '候診中',
-  to_station: '前往治療', treating: '治療中', leaving: '離院中',
+  arriving: '抵達中', to_reception: '前往點餐', registering: '點餐中', waiting: '候位中',
+  to_station: '前往取餐', treating: '用餐中', leaving: '離店中',
 };
 export const STAFF_STATE_LABELS = {
-  idle: '待命', walking: '移動中', working: '治療中', resting: '休息中', chatting: '聊天中',
+  idle: '待命', walking: '移動中', working: '出餐中', resting: '休息中', chatting: '聊天中',
 };
-export const TYPE_ICONS = { elder: '👴', office: '💼', sports: '🏃', kid: '🧒' };
-export const ROLE_ICONS = { doctor: '🩺', pt: '💪', ot: '🧩', st: '🗣', nurse: '💉' };
+export const TYPE_ICONS = { elder: '👴', office: '💼', student: '🎒', family: '👨‍👩‍👧' };
+export const ROLE_ICONS = { chef: '👨‍🍳', cook: '🔥', barista: '🧋', server: '🍽', cashier: '🧾' };
 
 // mod labels / chips live in sim/efftext.js (shared with the event engine's result summaries)
 export { MOD_LABELS, modChips } from '../sim/efftext.js';
@@ -33,7 +33,7 @@ export function effectChips(e) {
   if (e.points) for (const k of Object.keys(e.points)) {
     if (e.points[k]) out.push({ text: `${POINT_LABELS[k] || k}點 ${signed(e.points[k])}`, good: e.points[k] > 0 });
   }
-  if (e.nhiPenalty) out.push({ text: `健保扣款 ${money(e.nhiPenalty)}`, good: false });
+  if (e.risk) out.push({ text: `食安風險 ${signed(e.risk)}`, good: e.risk < 0 });
   return out;
 }
 

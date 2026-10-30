@@ -1,4 +1,4 @@
-// Annual inspection (衛生局督導 + 健保署抽查) and lot expansion.
+// Annual inspection (衛生局稽查) and lot expansion.
 import { bus } from '../core/bus.js';
 import { state as singleton, ui } from '../core/state.js';
 import { BUILDABLES } from '../data/buildables.js';
@@ -22,10 +22,8 @@ export const FINE_BASE = 100000;          // NT$ fine = base + per-failed-rule
 export const FINE_PER_FAILED_RULE = 50000;
 export const ANTISLIP_TARGET = 0.4;      // coverage of walkable lot tiles by 防滑地墊/坡道
 export const SAT_TARGET = 50;            // yearly avg satisfaction
-export const NHI_ABUSE_PV = 0.9;          // a month only counts as 'abuse' when the diluted point value falls below this (mild saturation is fine)
-export const NHI_ABUSE_MONTHS_FAIL = 4;  // diluted months per year that count as full abuse
-export const RISK_PENALTY_FROM = 30;     // NHI review risk (0..100) above this reduces the nhi_abuse rule score
-export const RISK_PENALTY_MAX = 0.6;     // ... by up to this fraction of the rule at risk 100
+export const RISK_PENALTY_FROM = 20;     // 食安風險 (0..100) above this reduces the food_safety rule score
+export const RISK_PENALTY_MAX = 1;       // ... by up to this fraction of the rule at risk 100
 export const SAT_WINDOW_MONTHS = 3;      // window for "current" average satisfaction used by expansion
 
 let unsub = [];
@@ -63,12 +61,12 @@ export function antislipCoverage(state) {
     if (occ.has(x + ',' + y)) continue;
     total++;
     const f = state.map.floor[y] && state.map.floor[y][x];
-    if (f === 'floor_mat' || f === 'ramp') good++;
+    if (f === 'floor_tile' || f === 'ramp') good++;
   }
   return total ? good / total : 0;
 }
 
-// Patient-weighted average satisfaction over the last `months` history entries (+ the running month).
+// Guest-weighted average satisfaction over the last `months` history entries (+ the running month).
 export function avgSatisfaction(state, months = SAT_WINDOW_MONTHS, onlyYear = null) {
   let sum = 0, n = 0;
   let hist = state.history || [];
@@ -89,34 +87,33 @@ export function evaluateRules(state, year) {
   const add = (id, dflt, frac, note, critical = false) => results.push({ id, name: nameOf(id, id), weight: ruleW(id, dflt), frac: Math.max(0, Math.min(1, frac)), ok: frac >= 0.999, note, critical });
 
   const ramp = hasRamp(state);
-  add('ramp', 10, ramp ? 1 : 0, ramp ? '有設置無障礙坡道。' : '未設置無障礙坡道，輪椅無法順利通行。');
+  add('ramp', 10, ramp ? 1 : 0, ramp ? '有設置無障礙坡道。' : '未設置無障礙坡道，輪椅與嬰兒車無法順利通行。');
 
   const seats = countSeats(state), needSeats = need.minSeats || 0;
-  add('seats', 8, needSeats ? seats / needSeats : 1, `候診座位 ${seats} / 要求 ${needSeats}。`);
+  add('seats', 8, needSeats ? seats / needSeats : 1, `候位座位 ${seats} / 要求 ${needSeats}。`);
 
   const cov = antislipCoverage(state);
   add('antislip', 9, cov / ANTISLIP_TARGET, `防滑地面覆蓋率 ${(cov * 100).toFixed(0)}%（標準 ${ANTISLIP_TARGET * 100}%）。`);
 
-  const hasDoc = staffCountOf(state, 'doctor') > 0, hasPT = staffCountOf(state, 'pt') > 0;
-  let lic = (hasDoc ? 0.5 : 0) + (hasPT ? 0.5 : 0);
+  const hasChef = staffCountOf(state, 'chef') > 0, hasCook = staffCountOf(state, 'cook') > 0;
+  let lic = (hasChef ? 0.5 : 0) + (hasCook ? 0.5 : 0);
   const objDefs = new Set((state.objects || []).map(o => o.defId));
   const miss = [];
-  if (!hasDoc) miss.push('復健科醫師');
-  if (!hasPT) miss.push('物理治療師');
-  if ((objDefs.has('si_room') || objDefs.has('fine_table')) && !staffCountOf(state, 'ot')) { lic -= 0.25; miss.push('職能治療師'); }
-  if (objDefs.has('speech_room') && !staffCountOf(state, 'st')) { lic -= 0.25; miss.push('語言治療師'); }
-  // no doctor or no PT on the books = cannot legally operate -> automatic fail (OT / ST gaps only cost points)
-  add('staff_license', 10, lic, miss.length ? '缺少執照人員：' + miss.join('、') + '。' : '執照人員配置齊全。', !hasDoc || !hasPT);
+  if (!hasChef) miss.push('主廚');
+  if (!hasCook) miss.push('廚師');
+  if ((objDefs.has('drink_bar') || objDefs.has('ice_shop') || objDefs.has('dessert_bar') || objDefs.has('bar_counter')) && !staffCountOf(state, 'barista')) { lic -= 0.25; miss.push('吧台師'); }
+  if ((objDefs.has('table2') || objDefs.has('table4') || objDefs.has('hotpot_table')) && !staffCountOf(state, 'server')) { lic -= 0.25; miss.push('外場服務生'); }
+  // no chef or no cook on the books = cannot legally operate -> automatic fail (barista / server gaps only cost points)
+  add('staff_license', 10, lic, miss.length ? '缺少持證人員：' + miss.join('、') + '。' : '持證廚師配置齊全。', !hasChef || !hasCook);
 
   const sat = avgSatisfaction(state, 12, year);
-  add('satisfaction', 8, sat == null ? 1 : sat / SAT_TARGET, sat == null ? '本年度尚無病患資料。' : `全年平均滿意度 ${sat.toFixed(0)}（標準 ${SAT_TARGET}）。`);
+  add('satisfaction', 8, sat == null ? 1 : sat / SAT_TARGET, sat == null ? '本年度尚無客人資料。' : `全年平均滿意度 ${sat.toFixed(0)}（標準 ${SAT_TARGET}）。`);
 
-  const dil = (state.history || []).filter(h => h.year === year && (h.pointValue || 1) < NHI_ABUSE_PV).length;
-  // M3: a high NHI review risk also costs points at the annual 健保署抽查 (RISK_PENALTY_FROM..100 -> up to RISK_PENALTY_MAX)
+  // 食安風險 (state.safety.risk) above RISK_PENALTY_FROM costs points at the annual 衛生局稽查 (RISK_PENALTY_FROM..100 -> up to RISK_PENALTY_MAX)
   const risk = riskOf(state);
   const riskPen = risk > RISK_PENALTY_FROM ? (risk - RISK_PENALTY_FROM) / (100 - RISK_PENALTY_FROM) * RISK_PENALTY_MAX : 0;
-  const nhiNote = (dil ? `全年有 ${dil} 個月健保點數超出上限、點值被壓低。` : '健保申報量都在合理範圍內。') + (riskPen > 0 ? `審查風險偏高（${Math.round(risk)}），抽查時被多看了幾眼。` : '');
-  add('nhi_abuse', 12, 1 - dil / NHI_ABUSE_MONTHS_FAIL - riskPen, nhiNote);
+  const fsNote = riskPen > 0 ? `食安風險偏高（${Math.round(risk)}），稽查員把冷藏與爐具多看了幾眼。` : `食安風險控制得宜（${Math.round(risk)}）。`;
+  add('food_safety', 12, 1 - riskPen, fsNote);
   return results;
 }
 
@@ -138,7 +135,7 @@ export function runInspection(state) {
     repDelta = -Math.round(REP_FAIL_BASE + (PASS_SCORE - score) * REP_FAIL_PER_POINT);
     const fine = FINE_BASE + FINE_PER_FAILED_RULE * failed.filter(r => r.frac < 0.5).length;
     rewardOrFine = -fine;
-    state.money -= fine;                       // fines may push the clinic into debt
+    state.money -= fine;                       // fines may push the shop into debt
     state.ledger.expense.other += fine;
   }
   state.reputation = Math.max(0, Math.min(1000, state.reputation + repDelta));
@@ -169,7 +166,7 @@ export function canExpand(state) {
     chk(s != null && s >= r.minAvgSat, `平均滿意度 ≥ ${r.minAvgSat}（目前 ${s == null ? '—' : s.toFixed(0)}）`);
   }
   if (r.needRamp) chk(hasRamp(state), '有無障礙坡道');
-  if (r.minSeats) chk(countSeats(state) >= r.minSeats, `候診座位 ≥ ${r.minSeats}（目前 ${countSeats(state)}）`);
+  if (r.minSeats) chk(countSeats(state) >= r.minSeats, `候位座位 ≥ ${r.minSeats}（目前 ${countSeats(state)}）`);
   if (r.research) chk((state.research.done || []).includes(r.research), `完成研發「${(RESEARCH[r.research] || {}).name || r.research}」`);
   chk(state.money >= (next.expandCost || 0), `資金 ≥ NT$ ${(next.expandCost || 0).toLocaleString('en-US')}`);
   const missing = checks.filter(c => !c.ok).map(c => c.label);
@@ -190,6 +187,6 @@ export function expand(state) {
   recomputeMods(state);
   bus.emit('map:changed', {});
   bus.emit('lot:expanded', { level: state.lotLevel });
-  bus.emit('toast', { text: `診所擴建完成：${next.name}！`, kind: 'good' });
+  bus.emit('toast', { text: `餐廳擴建完成：${next.name}！`, kind: 'good' });
   return true;
 }

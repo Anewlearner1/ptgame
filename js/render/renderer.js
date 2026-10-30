@@ -129,7 +129,7 @@ function signBadges(state) {
 
 function layerSignature(state) {
   const l = state.lot, d = state.door;
-  let s = l.x0 + ',' + l.y0 + ',' + l.w + ',' + l.h + '|' + d.x + ',' + d.y + '|' + state.clinicName + '|' + signBadges(state).join(',');
+  let s = l.x0 + ',' + l.y0 + ',' + l.w + ',' + l.h + '|' + d.x + ',' + d.y + '|' + state.shopName + '|' + signBadges(state).join(',');
   return s;
 }
 
@@ -225,7 +225,7 @@ function buildLayer(state) {
   layerNew = false;
   if (artEnabled() && CS.sceneSupported()) {
     const lot0 = state.lot;
-    const ok = CS.buildSceneLayer({ state, groundKind: (gx, gy) => groundKind(gx, gy, lot0, state.door, state), items: collectItems(state), name: String(state.clinicName || '復健科診所').slice(0, 12), badges: signBadges(state) });
+    const ok = CS.buildSceneLayer({ state, groundKind: (gx, gy) => groundKind(gx, gy, lot0, state.door, state), items: collectItems(state), name: String(state.shopName || '餐廳').slice(0, 12), badges: signBadges(state) });
     if (ok) { layerNew = true; return; }
   }
   CS.releaseSceneLayer();
@@ -256,7 +256,7 @@ function buildLayer(state) {
 
   // clinic signboard on the back-right wall (plane y = y0); unlocked-achievement badges sit right of the name
   const cx = x0 + lot.w / 2 - 0.5;
-  const name = String(state.clinicName || '復健科診所').slice(0, 12);
+  const name = String(state.shopName || '餐廳').slice(0, 12);
   const badges = signBadges(state);
   const FS = 14, BS = BADGE_CV * BADGE_SCALE, BGAP = 2;       // badge cell size on the sign
   g.font = '700 ' + FS + 'px ' + FONT;

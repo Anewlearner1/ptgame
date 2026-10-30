@@ -1,13 +1,13 @@
 // 效能診斷 HUD: a small always-on-top overlay with live frame statistics.
 // Toggle: 系統 → 設定 → 效能診斷, URL `?perf=1` (`?perf=0` forces off), key F3 (desktop). The switch and F3 are remembered
-// (localStorage 'ptgame.perfhud'); the URL param is per page load only.
+// (localStorage 'restgame.perfhud'); the URL param is per page load only.
 // Cost: while hidden nothing runs (no timer). While shown: one 4 Hz timer, summarize() over <= 360 samples, 6 text nodes that
 // are only written when their string changed; the box is pointer-events:none and `contain:strict`-ish, so no layout of the game UI.
 import { bus } from '../core/bus.js';
 import { summarize } from '../core/perfstats.js';
 import { snapshot } from './perfinfo.js';
 
-const KEY = 'ptgame.perfhud';
+const KEY = 'restgame.perfhud';
 const WINDOW_MS = 2000, PERIOD_MS = 250;     // stats window; HUD refresh (4 Hz)
 let root = null, rows = [], timer = 0, on = false, stateRef = null, uiRef = null;
 
@@ -37,7 +37,7 @@ export function hudLines(state, ui, now) {
   lines.push(s ? `幀時間 p50 ${f1(s.frameP50)}　p95 ${f1(s.frameP95)} ms` : '幀時間 …');
   lines.push(s ? `模擬 ${f1(s.simAvg)}　繪製 ${f1(s.renderAvg)}　介面 ${f1(s.uiAvg)} ms` : '模擬 …　繪製 …');
   lines.push(`角色 ${k.agents}　畫布 ${k.canvasW}×${k.canvasH}　DPR ${k.dpr % 1 ? k.dpr.toFixed(2) : k.dpr}${k.effDpr !== k.dpr ? '→' + k.effDpr.toFixed(2) : ''}`);
-  lines.push(`畫質 ${k.qualityName} L${k.level}${k.auto ? '(自動)' : ''}　${k.art === 'new' ? '新美術' : '原像素'}　診所 L${k.lot}　上限 ${k.fpsCap}`);
+  lines.push(`畫質 ${k.qualityName} L${k.level}${k.auto ? '(自動)' : ''}　${k.art === 'new' ? '新美術' : '原像素'}　餐廳 L${k.lot}　上限 ${k.fpsCap}`);
   lines.push(k.heap != null ? `JS 記憶體 ${f0(k.heap)} MB　縮放 ${k.zoom.toFixed(2)}` : `縮放 ${k.zoom.toFixed(2)}`);
   return { lines, stats: s, snap: k };
 }

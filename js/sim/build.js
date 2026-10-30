@@ -1,4 +1,4 @@
-// Building: placement validation, floor painting, demolition and the starter clinic.
+// Building: placement validation, floor painting, demolition and the starter shop.
 import { bus } from '../core/bus.js';
 import { ui, newId } from '../core/state.js';
 import { START_MONEY } from '../core/constants.js';
@@ -17,7 +17,7 @@ export const REFUND_FRAC = 0.5;            // demolition refund
 export const STARTER_CHARGE_FRAC = 0.4;    // share of the starter objects' list price deducted from the start money
 export const RELOCATE_MIN = 500;           // minimum relocation fee (NT$)
 export const RELOCATE_FRAC = 0.10;         // relocation fee = max(RELOCATE_MIN, 10% of the build cost)
-export const STARTER_SKILL = 5;            // skill of the three pre-hired staff
+export const STARTER_SKILL = 5;            // skill of the pre-hired staff
 export const STARTER_CHARM = 5;
 
 export function placementCost(defId) {
@@ -77,7 +77,7 @@ export function canPlace(state, defId, x, y, rot) {
   rot = rot ? 1 : 0;
 
   if (def.layer === 'floor') {
-    if (!inLot(state, x, y)) return { ok: false, reason: '必須在診所範圍內' };
+    if (!inLot(state, x, y)) return { ok: false, reason: '必須在店面範圍內' };
     if (state.map.floor[y] && state.map.floor[y][x] === defId) return { ok: false, reason: '已經鋪設相同地板' };
     if (state.money < def.cost) return { ok: false, reason: '資金不足' };
     return { ok: true, reason: '' };
@@ -95,7 +95,7 @@ function checkObjectCells(state, def, x, y, rot, ignoreId) {
   const cells = cellsFor(def, x, y, rot);
   const entry = entryTile(state);
   for (const c of cells) {
-    if (!inLot(state, c.x, c.y)) return { ok: false, reason: '必須完全在診所範圍內' };
+    if (!inLot(state, c.x, c.y)) return { ok: false, reason: '必須完全在店面範圍內' };
     if (c.x === entry.x && c.y === entry.y) return { ok: false, reason: '不能擋住入口' };
   }
   const others = state.objects.filter(o => o.id !== ignoreId);
@@ -113,7 +113,7 @@ function checkObjectCells(state, def, x, y, rot, ignoreId) {
     const hadAccess = accessMap(state, before, entry);
     const after = before.concat([{ id: -1, cells }]);
     const now = accessMap(state, after, entry);
-    if (!now.get(-1)) return { ok: false, reason: '會擋住通道，病患走不進去' };
+    if (!now.get(-1)) return { ok: false, reason: '會擋住通道，客人走不進去' };
     for (const b of before) if (hadAccess.get(b.id) && !now.get(b.id)) return { ok: false, reason: '會擋住其他設施的通道' };
   }
   return { ok: true, reason: '' };
@@ -244,22 +244,26 @@ export function removeAt(state, x, y) {
   return false;
 }
 
-// ---- starter clinic ----
+// ---- starter shop ----
 const STARTER_OBJECTS = [
   // [defId, x, y, rot]   lot is x 10..21, y 10..19; entry tile (15,19); x=14..15 is a clear walkway
   ['reception', 16, 17, 0],
-  ['sofa', 12, 18, 0],
+  ['bench', 12, 18, 0],
   ['plant', 13, 19, 0],
-  ['exam_room', 11, 12, 0],
-  ['heatbox', 17, 12, 0],
-  ['heatbox', 18, 12, 0],
-  ['tens', 19, 12, 0],
+  ['chef_range', 11, 12, 0],
+  ['noodle_stove', 17, 12, 0],
+  ['braise_pot', 18, 12, 0],
+  ['soup_pot', 19, 12, 0],
+  ['table4', 11, 15, 0],
+  ['table2', 18, 15, 0],
+  ['table2', 20, 15, 0],
 ];
 // role -> preferred stand tile (float centre added below)
 const STARTER_STAFF = [
-  ['doctor', 13, 13],
-  ['nurse', 18, 16],
-  ['pt', 18, 14],
+  ['chef', 13, 13],
+  ['cook', 18, 14],
+  ['cashier', 18, 16],
+  ['server', 16, 15],
 ];
 
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -279,7 +283,7 @@ export function makeStarterStaff(state, role, tx, ty) {
   };
 }
 
-export function seedStarterClinic(state) {
+export function seedStarterShop(state) {
   const L = LOTS[0];
   state.lotLevel = 0;
   state.lot = { ...L.lot };

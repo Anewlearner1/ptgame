@@ -116,7 +116,7 @@ for (const [w, h] of VIEWPORTS) {
   await page.evaluate(() => document.querySelector('.modal .u-choice')?.click()); await page.waitForTimeout(300); await closeAll(page);
 
   // month report + inspection icons
-  await page.evaluate(() => __game.bus.emit('nhi:settled', { year: 1, month: 3, points: 1200, cap: 9000, pointValue: 1, nhiIncome: 1200, income: 5000, expense: 4000, net: 1000 }));
+  await page.evaluate(() => __game.bus.emit('month:settled', { year: 1, month: 3, points: 1200, cap: 9000, pointValue: 1, nhiIncome: 1200, income: 5000, expense: 4000, net: 1000 }));
   await settle(page);
   a = await arts(page, '.modal-title');
   ok(a.names.includes('role.record'), `${tag} month report title has role.record`);
@@ -412,7 +412,7 @@ for (const [w, hh] of VIEWPORTS) {
 
   // month report: doctor mood from the net
   for (const [net, want] of [[3000, 'happy'], [-3000, 'tired'], [0, 'normal']]) {
-    await page.evaluate(n => __game.bus.emit('nhi:settled', { year: 1, month: 3, points: 1200, cap: 9000, pointValue: 1, nhiIncome: 1200, income: 5000, expense: 5000 - n, net: n }), net);
+    await page.evaluate(n => __game.bus.emit('month:settled', { year: 1, month: 3, points: 1200, cap: 9000, pointValue: 1, nhiIncome: 1200, income: 5000, expense: 5000 - n, net: n }), net);
     await page.waitForTimeout(300);
     const nm = await page.evaluate(() => { const e = document.querySelector('.modal .u-rephead .u-bust'); return e && e._art.name; });
     ok(nm === `face.doctor.${want}`, `${tag} month report net ${net} => doctor ${want} (${nm})`);
@@ -474,7 +474,7 @@ for (const mode of ['classic', 'blocked']) {
   const rm = await page.evaluate(() => ({ shown: [...document.querySelectorAll('.modal .u-bust')].some(e => e.dataset.art === 'on'), txt: document.querySelector('.modal-body')?.textContent.includes('你選擇了') }));
   ok(!rm.shown && rm.txt, `${mode}: result modal text intact, no bust`);
   await closeAll(page); await page.waitForTimeout(250);
-  await page.evaluate(() => __game.bus.emit('nhi:settled', { year: 1, month: 3, points: 1200, cap: 9000, pointValue: 1, nhiIncome: 1200, income: 5000, expense: 4000, net: 1000 }));
+  await page.evaluate(() => __game.bus.emit('month:settled', { year: 1, month: 3, points: 1200, cap: 9000, pointValue: 1, nhiIncome: 1200, income: 5000, expense: 4000, net: 1000 }));
   await page.waitForTimeout(300);
   const rep = await page.evaluate(() => { const e = document.querySelector('.modal .u-rephead'); return e ? getComputedStyle(e).display : 'none'; });
   ok(mode === 'classic' ? rep === 'none' : true, `${mode}: month report header hidden in classic (${rep})`);

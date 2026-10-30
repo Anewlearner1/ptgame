@@ -60,11 +60,11 @@ export function mountMap(root, state, ui) {
   const cbHeat = h('input', { type: 'checkbox', checked: store.heat, onchange: () => { store.heat = cbHeat.checked; } });
   const cbPeople = h('input', { type: 'checkbox', checked: store.people, onchange: () => { store.people = cbPeople.checked; } });
   root.append(
-    section('診所平面圖與人流熱度',
+    section('餐廳平面圖與人流熱度',
       h('div', { class: 'row' },
         h('label', { class: 'u-check2' }, cbHeat, '人流熱度'),
-        h('label', { class: 'u-check2' }, cbPeople, '病患／員工'),
-        h('span', { class: 'u-legend', tip: '紅色越深表示越多人在該格停留（候診最重）' }, '少', h('i'), '多')),
+        h('label', { class: 'u-check2' }, cbPeople, '客人／員工'),
+        h('span', { class: 'u-legend', tip: '紅色越深表示越多人在該格停留（候位最重）' }, '少', h('i'), '多')),
       h('div', { class: 'u-canvaswrap' }, canvas), info));
 
   const hotList = h('div', { class: 'u-hotgrid' });
@@ -80,7 +80,7 @@ export function mountMap(root, state, ui) {
       b, h('div', { class: 'row u-between' }, noteEl, cntEl)));
   }
   root.append(section('周邊客群熱點（來客占比）', hotList,
-    h('div', { class: 'muted u-small' }, '占比 = 基本客群 × 經營方針 × 研發／活動加成 × 今日天氣。想改變客群：到「診所」改方針，或到「運作」舉辦社區活動。')));
+    h('div', { class: 'muted u-small' }, '占比 = 基本客群 × 經營方針 × 研發／活動加成 × 今日天氣。想改變客群：到「餐廳」改方針，或到「運作」舉辦社區活動。')));
 
   // geometry cache
   let geo = null;
@@ -179,7 +179,7 @@ export function mountMap(root, state, ui) {
         setText(r.pctEl, Math.round(now * 100) + '%');
         const d = Math.round((now - base) * 100);
         setText(r.noteEl, d === 0 ? `基準 ${Math.round(base * 100)}%` : `基準 ${Math.round(base * 100)}% → ${d > 0 ? '+' : ''}${d}%`);
-        setText(r.cntEl, `診所內 ${counts[t] || 0} 人`);
+        setText(r.cntEl, `餐廳內 ${counts[t] || 0} 人`);
       }
     },
   };

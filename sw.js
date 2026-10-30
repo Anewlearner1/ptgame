@@ -3,10 +3,9 @@
 // Bump CACHE when the caching strategy itself changes; content updates need no bump.
 // version.json (written by the Pages workflow) goes through the same network-first path, so the in-app 'update available'
 // check (js/ui/version.js) always sees the live deploy while online and the last known one offline.
-const CACHE = 'ptgame-v3';
+const CACHE = 'restgame-v1';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'css/style.css', 'css/ui.css', 'css/mobile.css',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'icons/icon.svg',
-  'assets/art/atlas.json', 'assets/art/atlas.png'];   // sprite atlas: precached (optional: the game falls back to the procedural art)
+  'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'icons/icon.svg'];
 const NET_TIMEOUT = 5000;   // slow mobile networks: fall back to the cache after this long
 
 self.addEventListener('install', e => {
@@ -19,7 +18,7 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (k !== CACHE && k.startsWith('ptgame-')) await caches.delete(k);
+    for (const k of await caches.keys()) if (k !== CACHE && k.startsWith('restgame-')) await caches.delete(k);
     await self.clients.claim();
   })());
 });

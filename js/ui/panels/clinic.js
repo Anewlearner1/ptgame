@@ -1,4 +1,4 @@
-// 診所 panel: 經營方針 / 衛教看板 / 擴建 / 稱號與徽章
+// 餐廳 panel: 經營方針 / 菜單看板 / 擴建 / 稱號與徽章
 import { bus } from '../../core/bus.js';
 import { FOCUS, PATIENT_TYPES } from '../../data/patients.js';
 import { POLICY_TEXT } from '../../data/events.js';
@@ -36,7 +36,7 @@ function buildPolicy(body, state) {
       h('div', null, h('b', null, `${F.name}`), ' ', h('span', { class: 'muted' }, T.label || ''), ' ', mark),
       h('div', { class: 'muted u-small' }, T.hint || ''),
       h('div', { class: 'u-small' }, F.desc),
-      h('div', { class: 'u-small' }, '各類病患來客倍率：', chipList(chips)));
+      h('div', { class: 'u-small' }, '各類客人來客倍率：', chipList(chips)));
     cards[f] = { el, mark };
     wrap.appendChild(el);
   }
@@ -47,14 +47,14 @@ function buildPolicy(body, state) {
   }
   body.append(section('經營方針', wrap));
 
-  const nameIn = h('input', { type: 'text', maxLength: 16, class: 'u-input', value: state.clinicName || '' });
+  const nameIn = h('input', { type: 'text', maxLength: 16, class: 'u-input', value: state.shopName || '' });
   const save = () => {
     const v = nameIn.value.trim();
-    if (v) { state.clinicName = v; nameIn._dirty = false; bus.emit('toast', { text: '診所名稱已更新', kind: 'good' }); }
+    if (v) { state.shopName = v; nameIn._dirty = false; bus.emit('toast', { text: '店名已更新', kind: 'good' }); }
   };
   nameIn.addEventListener('input', () => { nameIn._dirty = true; });
   nameIn.addEventListener('keydown', e => { if (e.key === 'Enter') { save(); nameIn.blur(); } e.stopPropagation(); });
-  body.append(section('診所名稱', h('div', { class: 'row' }, nameIn, h('button', { class: 'btn small', type: 'button', onclick: save }, '儲存'))));
+  body.append(section('店名', h('div', { class: 'row' }, nameIn, h('button', { class: 'btn small', type: 'button', onclick: save }, '儲存'))));
   return {
     update() {
       for (const f of Object.keys(cards)) {
@@ -62,7 +62,7 @@ function buildPolicy(body, state) {
         setClass(cards[f].el, 'selected', on);
         cards[f].mark.hidden = !on;
       }
-      if (document.activeElement !== nameIn && nameIn.value !== state.clinicName && !nameIn._dirty) nameIn.value = state.clinicName || '';
+      if (document.activeElement !== nameIn && nameIn.value !== state.shopName && !nameIn._dirty) nameIn.value = state.shopName || '';
     },
   };
 }
@@ -83,7 +83,7 @@ function buildExpand(body, state) {
     const next = LOTS[(state.lotLevel || 0) + 1];
     if (!next) return;
     confirmDialog({
-      title: '擴建診所', text: `擴建為「${next.name}」需花費 ${money(next.expandCost)}。確定要擴建嗎？`, okLabel: '擴建',
+      title: '擴建店面', text: `擴建為「${next.name}」需花費 ${money(next.expandCost)}。確定要擴建嗎？`, okLabel: '擴建',
       onOk: () => {
         let ok = false;
         try { ok = INSP.expand(state); } catch (e) { console.error(e); }
@@ -91,7 +91,7 @@ function buildExpand(body, state) {
       },
     });
   });
-  body.append(section('擴建診所', info, list, note, h('div', { class: 'row' }, btn)));
+  body.append(section('擴建店面', info, list, note, h('div', { class: 'row' }, btn)));
   return {
     update() {
       const lvl = state.lotLevel || 0, cur = LOTS[lvl], next = LOTS[lvl + 1];
@@ -106,8 +106,7 @@ function buildExpand(body, state) {
           h('div', null, `目前：${cur.name}　下一級：`, h('b', null, next.name)),
           h('div', { class: 'u-grid2' },
             cmp('土地', cur.lot.w * cur.lot.h, next.lot.w * next.lot.h, v => v + ' 格'),
-            cmp('健保上限', cur.nhiCap, next.nhiCap),
-            cmp('每週來客上限', cur.maxPatientsPerWeek, next.maxPatientsPerWeek),
+            cmp('每日來客上限', cur.maxPatientsPerWeek, next.maxPatientsPerWeek),
             cmp('員工上限', cur.maxStaff, next.maxStaff),
             cmp('房租/月', cur.rent, next.rent, money),
             cmp('擴建費', 0, next.expandCost, v => money(v))));
@@ -168,7 +167,7 @@ function rewardChips(def) {
 }
 
 function buildTitle(body, state) {
-  // -- current 院長稱號 (reputation ladder, unchanged) + equipped special title
+  // -- current 老闆稱號 (reputation ladder, unchanged) + equipped special title
   const nameEl = h('div', { class: 'u-bigtitle u-curtitle' }), nextEl = h('div', { class: 'muted u-small' }), b = bar();
   const repList = h('div', { class: 'u-list2 u-replist' });
   const repItems = TITLES.map(t => {
@@ -343,12 +342,12 @@ function buildTitle(body, state) {
   };
 }
 
-// ---- 營運狀態列 (always visible above the tabs): 院長稱號 · 網路評價 (M7) · 審查風險 (M3) + 目前效應 (buffs / community)
+// ---- 營運狀態列 (always visible above the tabs): 老闆稱號 · 網路評價 (M7) · 食安風險 (M3) + 目前效應 (buffs / community)
 function buildStatus(state) {
   const titleEl = h('span', { class: 'u-st-title' });
   const reviewEl = h('span', { class: 'tag u-st-review', tip: '網路評價（1~5）：每月依平均滿意度漲跌，每差 0.1 影響新客量約 1%。' });
   const riskNum = h('em', { class: 'u-num' }), riskBar = bar();
-  const riskEl = h('span', { class: 'u-bl u-st-risk', tip: `健保審查風險（0~100）：申報量逼近上限、成長太快或複雜治療占比高會上升，每週自然下降 ${RISK_TUNE.WEEK_DECAY}。超過 ${RISK_TUNE.HIGH} 時審查類事件更容易發生，年度抽查也會扣分。` }, '審查風險', riskBar, riskNum);
+  const riskEl = h('span', { class: 'u-bl u-st-risk', tip: `食安風險（0~100）：設備老舊、員工疲勞或客人滿意度低會上升，每週自然下降 ${RISK_TUNE.WEEK_DECAY}。超過 ${RISK_TUNE.HIGH} 時食安類事件更容易發生，年度稽查也會扣分。` }, '食安風險', riskBar, riskNum);
   const eff = h('div', { class: 'u-st-eff' });
   const el = h('div', { class: 'card u-status' }, h('div', { class: 'u-st-row' }, titleEl, reviewEl, riskEl), eff);
   let sig = '';
@@ -382,7 +381,7 @@ function buildStatus(state) {
 }
 
 let liveTabs = null;
-// 診所 panel -> 🎯 目標 tab (year-review 「看生涯進度」, career card); works whether or not the panel is already open
+// 餐廳 panel -> 🎯 目標 tab (year-review 「看生涯進度」, career card); works whether or not the panel is already open
 setGoalsOpener(() => {
   const ui = ctx.ui;
   store.tab = 'goals';
@@ -395,7 +394,7 @@ export function mountClinic(root, state, ui) {
   const t = tabbed([
     { id: 'goals', label: '🎯 目標', build: b => mountGoalsTab(b, state) },
     { id: 'policy', label: '🧭 經營方針', build: b => buildPolicy(b, state) },
-    { id: 'boards', label: '📌 衛教看板', build: b => buildBoards(b, state) },
+    { id: 'boards', label: '📌 菜單看板', build: b => buildBoards(b, state) },
     { id: 'expand', label: '🏗 擴建', build: b => buildExpand(b, state) },
     { id: 'title', label: '🎖 稱號與徽章', build: b => buildTitle(b, state) },
   ], store);

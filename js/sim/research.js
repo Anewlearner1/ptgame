@@ -40,7 +40,7 @@ export function canStart(state, id) {
   const missing = (node.requires || []).filter(q => !r.done.includes(q));
   if (missing.length) return { ok: false, reason: '需先完成：' + missing.map(q => (RESEARCH[q] ? RESEARCH[q].name : q)).join('、') };
   const key = pointKeyOf(node);
-  if ((state.points[key] || 0) < node.cost) return { ok: false, reason: `${key === 'medical' ? '醫術' : key === 'device' ? '儀器' : '服務'}點數不足（需要 ${node.cost}）` };
+  if ((state.points[key] || 0) < node.cost) return { ok: false, reason: `${key === 'culinary' ? '廚藝' : key === 'device' ? '設備' : '服務'}點數不足（需要 ${node.cost}）` };
   return { ok: true, reason: '' };
 }
 

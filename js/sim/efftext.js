@@ -1,17 +1,17 @@
 // Human-readable (繁體中文) labels for mod patches and event effects. Pure data -> text helpers, shared by the
-// event engine (result summaries), the 診所 panel (目前效應) and ui/fmt.js. No state access.
+// event engine (result summaries), the 餐廳 panel (目前效應) and ui/fmt.js. No state access.
 import { PATIENT_TYPES } from '../data/patients.js';
 
 export const MOD_LABELS = {
-  nhiTurnover: ['健保翻桌率', 'pct'], selfPayConv: ['自費轉換率', 'pct'], selfPayPrice: ['自費單價', 'pct'],
+  nhiTurnover: ['基本餐點翻桌率', 'pct'], selfPayConv: ['加點轉換率', 'pct'], selfPayPrice: ['特色料理單價', 'pct'],
   researchGain: ['點數獲得', 'pct'], elderSat: ['長輩滿意度', 'abs'], walkSpeed: ['步行速度', 'pct'],
-  spawnMult: ['來客量', 'pct'], patience: ['病患耐心', 'pct'], slipRisk: ['滑倒風險', 'pct'],
+  spawnMult: ['來客量', 'pct'], patience: ['客人耐心', 'pct'], slipRisk: ['滑倒風險', 'pct'],
   staffStamina: ['員工體力消耗', 'pct'], rentMult: ['房租', 'pct'], wageMult: ['薪資支出', 'pct'],
-  nhiCapBonus: ['健保點數上限', 'pct'],
-  cureGain: ['治癒效率', 'pct'], treatTime: ['療程時間', 'pct'], wearRate: ['設備磨損', 'pct'],
-  repGrowth: ['聲望成長/週', 'abs'], satGain: ['病患滿意度', 'abs'],
+  foodCost: ['食材成本', 'pct'],
+  cureGain: ['熟客化效率', 'pct'], treatTime: ['出餐時間', 'pct'], wearRate: ['設備磨損', 'pct'],
+  repGrowth: ['聲望成長/週', 'abs'], satGain: ['客人滿意度', 'abs'],
 };
-export const LOWER_BETTER = new Set(['slipRisk', 'staffStamina', 'rentMult', 'wageMult', 'treatTime', 'wearRate']);
+export const LOWER_BETTER = new Set(['slipRisk', 'staffStamina', 'rentMult', 'wageMult', 'treatTime', 'wearRate', 'foodCost']);
 
 const MINUS = '−';   // U+2212, same glyph the event result chips use
 export function sgn(v) { return v > 0 ? '+' : v < 0 ? MINUS : ''; }
@@ -27,12 +27,12 @@ function labelOf(key, over) {
     const t = key.slice('typeSpawn.'.length);
     return [((PATIENT_TYPES[t] || {}).name || t) + '來客', 'pct'];
   }
-  if (key.startsWith('typeCure.')) return [(((PATIENT_TYPES[key.slice(9)] || {}).name) || key.slice(9)) + '治癒效率', 'pct'];
+  if (key.startsWith('typeCure.')) return [(((PATIENT_TYPES[key.slice(9)] || {}).name) || key.slice(9)) + '熟客化效率', 'pct'];
   if (key.startsWith('typeSat.')) return [(((PATIENT_TYPES[key.slice(8)] || {}).name) || key.slice(8)) + '滿意度', 'abs'];
   return MOD_LABELS[key] || [key, 'abs'];
 }
 
-// {nhiTurnover:0.2, elderSat:8, 'typeSpawn.elder':0.3} -> [{text:'健保翻桌率 +20%', good:true}, ...]
+// {nhiTurnover:0.2, elderSat:8, 'typeSpawn.elder':0.3} -> [{text:'基本餐點翻桌率 +20%', good:true}, ...]
 export function modChips(patch, over) {
   const out = [];
   for (const k of Object.keys(patch || {})) {
@@ -54,8 +54,8 @@ export function buffPatch(b) {
   return mods;
 }
 
-// 「持續 3 週：病患 +15%」
-const BUFF_LABELS = { spawnMult: ['病患', 'pct'] };
+// 「持續 3 週：客人 +15%」
+const BUFF_LABELS = { spawnMult: ['客人', 'pct'] };
 export function buffText(b) {
   const chips = modChips(buffPatch(b), BUFF_LABELS);
   const body = chips.length ? chips.map(c => c.text).join('、') : (b.label || '特殊效應');

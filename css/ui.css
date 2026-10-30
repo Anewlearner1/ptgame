@@ -1,5 +1,5 @@
 /* ==========================================================================
-   復健科診所物語 — UI extras (S-D). Builds on css/style.css tokens & classes.
+   餐廳物語 — UI extras (S-D). Builds on css/style.css tokens & classes.
    ========================================================================== */
 
 :root { --u-title-h: 46px; --u-good-bg: #d6f0da; --u-bad-bg: #f8d9dd; }
@@ -269,7 +269,7 @@ html.style-concept .u-upg-card.u-done { box-shadow: 0 0 0 2px #e0a92a; }
   .u-keys { grid-template-columns: 1fr; }
 }
 
-/* ---------- achievements: 稱號與徽章 (診所 panel) + topbar title ---------- */
+/* ---------- achievements: 稱號與徽章 (餐廳 panel) + topbar title ---------- */
 .tb-title .tb-val { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .tb-item[hidden] { display: none; }
 @media (max-width: 1100px) { .tb-title .tb-val { max-width: 130px; } }

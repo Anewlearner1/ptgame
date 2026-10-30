@@ -16,7 +16,7 @@ import { EVENTS_EXT_B } from '../data/events_ext2.js';
 import { FOCUS } from '../data/patients.js';
 import { TREATMENTS } from '../data/treatments.js';
 import { STAFF_ROLES } from '../data/staffdefs.js';
-import { spend, nhiCap, setBoardUpkeepResolver, riskOf, addRisk, reviewOf, addReview, RISK_TUNE } from './economy.js';
+import { spend, setBoardUpkeepResolver, riskOf, addRisk, reviewOf, addReview, RISK_TUNE } from './economy.js';
 import { recomputeMods } from './modifiers.js';
 import { absoluteWeek } from './calendar.js';
 import { modChips, buffPatch, buffText, buffGood, sgn, signedNum } from './efftext.js';
@@ -34,13 +34,13 @@ export const EVENT_TUNE = { CHANCE: EVENT_CHANCE_PER_WEEK, GRACE: EVENT_GRACE_WE
 export const EVENT_REPEAT_COOLDOWN_WEEKS = 20;   // default cooldown of the legacy RANDOM_EVENTS
 export const EVENT_EXT_COOLDOWN_WEEKS = 24;      // default cooldown of extended events (def.cooldownWeeks overrides)
 export const EVENT_SEASON_MULT = 1.5;        // weight multiplier of cat 'season' events
-export const EVENT_RISK_MULT = 2;            // weight multiplier of cat 'nhi' events while risk > RISK_TUNE.HIGH
+export const EVENT_RISK_MULT = 2;            // weight multiplier of cat 'safety' events while 食安風險 > RISK_TUNE.HIGH
 export const EVENT_WEIGHT_DEFAULT = 6;       // def.weight default (season 10, big 3)
 export const EVENT_WEIGHT_SEASON = 10;
 export const EVENT_WEIGHT_BIG = 3;
 export const BIG_PER_MONTH = 1;
-export const RESIGN_EVENT_ID = 'pt_resign';
-export const DILEMMA_ACCEPT_CHANCE = 0.85;   // chance a patient's dilemma:request becomes a modal
+export const RESIGN_EVENT_ID = 'cook_resign';
+export const DILEMMA_ACCEPT_CHANCE = 0.85;   // chance a guest's dilemma:request becomes a modal
 export const DILEMMA_TRIGGER_COOLDOWN_WEEKS = 4;
 export const DILEMMA_GLOBAL_GAP_WEEKS = 3;
 export const DILEMMA_REPEAT_COOLDOWN_WEEKS = 6;   // same dilemma id
@@ -166,7 +166,6 @@ export function condMet(state, cond) {
   if (c.hasStaff) {
     for (const role of Object.keys(c.hasStaff)) if (ST.staffCount(state, role) < c.hasStaff[role]) return false;
   }
-  if (c.pvBelow != null && !((state.nhi && typeof state.nhi.pointValue === 'number' ? state.nhi.pointValue : 1) < c.pvBelow)) return false;
   if (c.policy && !asList(c.policy).includes(state.policy && state.policy.focus)) return false;
   if (c.flag && !asList(c.flag).every(f => flagOn(state, f))) return false;
   if (c.notFlag && asList(c.notFlag).some(f => flagOn(state, f))) return false;
@@ -178,12 +177,6 @@ export function condMet(state, cond) {
   }
   if (c.moraleBelow != null && !(state.staff || []).some(s => ST.moraleOf(s) < c.moraleBelow)) return false;
   if (c.reviewBelow != null && !(reviewOf(state) < c.reviewBelow)) return false;
-  if (c.monthPointsOverCapPct != null) {
-    // events roll at week:start, when the new month's counter is still ~0: in week 1 the month that just closed counts too
-    const cap = nhiCap(state);
-    const pts = Math.max(state.nhi.monthPoints || 0, state.time.week === 1 ? ((state.nhi.lastSettlement && state.nhi.lastSettlement.points) || 0) : 0);
-    if (!(cap > 0 && (pts / cap) * 100 >= c.monthPointsOverCapPct)) return false;
-  }
   if (c.minPatientsTotal != null && ((state.stats && state.stats.patientsTotal) || 0) < c.minPatientsTotal) return false;
   return true;
 }
@@ -192,7 +185,7 @@ export function condMet(state, cond) {
 export function eventWeight(state, def) {
   let w = def.weight;
   if (def.cat === 'season') w *= EVENT_SEASON_MULT;
-  if (def.cat === 'nhi' && riskOf(state) > RISK_TUNE.HIGH) w *= EVENT_RISK_MULT;
+  if (def.cat === 'safety' && riskOf(state) > RISK_TUNE.HIGH) w *= EVENT_RISK_MULT;
   return w;
 }
 
@@ -304,8 +297,8 @@ export function triggerBreakdownEvent(state, obj) {
   const def = breakdownEventFor(state, obj);
   if (def) return triggerEvent(state, def.id);
   const cost = EQ.repairCost(obj), name = EQ.defName(obj.defId);
-  return openAdHoc(state, 'equip_breakdown', `${name}故障了`, `${name}突然停止運轉，螢幕上只剩一行錯誤碼。病人在旁邊探頭問：「這台今天不能用喔？」`, [
-    { label: `立刻叫修（NT$ ${cost.toLocaleString('en-US')}）`, requires: { money: cost }, effects: { money: -cost, repairObj: obj.id }, result: '師傅一小時內到場，換了零件，機器又開始嗡嗡運轉。' },
+  return openAdHoc(state, 'equip_breakdown', `${name}故障了`, `${name}突然停止運轉，只剩一股焦味。客人在旁邊探頭問：「這台今天不能用喔？」`, [
+    { label: `立刻叫修（NT$ ${cost.toLocaleString('en-US')}）`, requires: { money: cost }, effects: { money: -cost, repairObj: obj.id }, result: '師傅一小時內到場，換了零件，設備又開始運轉了。' },
     { label: '先停用，之後再修', effects: {}, result: '你在機器上貼了張「維修中」，之後可到〈一覽〉→〈設備維護〉叫修。' },
   ]);
 }
@@ -318,7 +311,7 @@ function maybeResignEvent(state) {
   if (!cand || rnd() >= ST.MORALE.RESIGN_P) return null;
   if ((e.cooldowns['gen:resign'] || 0) > now) return null;
   e.cooldowns['gen:resign'] = now + EVENT_EXT_COOLDOWN_WEEKS;
-  const def = cand.role === 'pt' ? eventById(RESIGN_EVENT_ID) : null;
+  const def = cand.role === 'cook' ? eventById(RESIGN_EVENT_ID) : null;
   if (def && (e.cooldowns['evt:' + def.id] || 0) <= now && !(def.big && bigUsedThisMonth(state))) return triggerEvent(state, def.id);
   const role = (STAFF_ROLES[cand.role] || {}).name || cand.role;
   const raise = Math.round((cand.salary || 60000) / 1000) * 1000;
@@ -441,21 +434,17 @@ export function applyEffectsDetailed(state, fx, ctx = {}) {
     for (const k of Object.keys(fx.points)) {
       if (!fx.points[k]) continue;
       state.points[k] = Math.max(0, (state.points[k] || 0) + fx.points[k]);
-      push(`${k === 'medical' ? '醫術' : k === 'device' ? '儀器' : '服務'} ${signedNum(fx.points[k])}`, fx.points[k] > 0);
+      push(`${k === 'culinary' ? '廚藝' : k === 'device' ? '設備' : '服務'} ${signedNum(fx.points[k])}`, fx.points[k] > 0);
     }
   }
   if (typeof fx.sat === 'number' && fx.sat !== 0) {
     const targets = ctx.patient ? [ctx.patient] : (state.patients || []);
     const d = ctx.patient ? fx.sat : fx.sat / 2;
     for (const p of targets) p.satisfaction = clamp((p.satisfaction || 0) + d, 0, 100);
-    // a clinic-wide mood swing also colours the patients who arrive during the next week (events fire at the start of a week,
+    // a shop-wide mood swing also colours the guests who arrive during the next week (events fire at the start of a week,
     // when almost nobody is inside yet)
     if (!ctx.patient) { addBuff(state, { weeks: 1, label: fx.sat > 0 ? '口碑小回升' : '口碑小受挫', mods: { satShift: fx.sat } }, ctx.source); modsDirty = true; }
     push(`滿意度 ${signedNum(fx.sat)}`, fx.sat > 0);
-  }
-  if (typeof fx.nhiPenalty === 'number' && fx.nhiPenalty > 0) {
-    state.nhi.monthPoints = Math.max(0, state.nhi.monthPoints - fx.nhiPenalty);
-    push(`健保點數 −${fx.nhiPenalty.toLocaleString('en-US')}`, false);
   }
   if (fx.buff && typeof fx.buff === 'object') {
     addBuff(state, fx.buff, ctx.source);
@@ -472,7 +461,7 @@ export function applyEffectsDetailed(state, fx, ctx = {}) {
   }
   if (typeof fx.risk === 'number' && fx.risk !== 0) {
     addRisk(state, fx.risk);
-    push(`審查風險 ${signedNum(fx.risk)}`, fx.risk < 0);
+    push(`食安風險 ${signedNum(fx.risk)}`, fx.risk < 0);
   }
   if (fx.wear && typeof fx.wear.delta === 'number' && fx.wear.delta !== 0) {
     const hit = EQ.addWear(state, fx.wear.target || 'all', fx.wear.delta);
@@ -555,7 +544,7 @@ export function resolveDilemma(state, choiceIndex, opts = {}) {
   return out;
 }
 
-// ---------- 目前效應 (for the 診所 panel) ----------
+// ---------- 目前效應 (for the 餐廳 panel) ----------
 // [{kind:'buff'|'community', label, weeksLeft, chips:[{text,good}]}]
 export function activeEffects(state) {
   const e = ev(state), out = [];
@@ -629,7 +618,7 @@ export function setFocus(state, focus) {
 
 export function setPriceMult(state, treatmentId, mult) {
   const t = TREATMENTS[treatmentId];
-  if (!t || t.kind !== 'self' || typeof mult !== 'number' || Number.isNaN(mult)) return false;
+  if (!t || t.kind !== 'special' || typeof mult !== 'number' || Number.isNaN(mult)) return false;
   const m = Math.round(Math.max(PRICE_MULT_MIN, Math.min(PRICE_MULT_MAX, mult)) * 20) / 20;
   state.policy.priceMult[treatmentId] = m;
   return true;

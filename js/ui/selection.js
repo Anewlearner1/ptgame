@@ -3,7 +3,7 @@ import { bus } from '../core/bus.js';
 import { BUILDABLES } from '../data/buildables.js';
 import { PATIENT_TYPES } from '../data/patients.js';
 import { TREATMENTS } from '../data/treatments.js';
-import { TREATMENT_FEES, SINGLE_CLAIM_NOTE } from '../data/fees.js';
+import { DISH_FEES } from '../data/fees.js';
 import { STAFF_ROLES, TRAITS } from '../data/staffdefs.js';
 import { removeAt, rotateObject, relocationCost } from '../sim/build.js';
 import { h, clear, setText, bar, setBar, toneOf, setClass, append } from './dom.js';
@@ -79,18 +79,18 @@ function updPatient(state, e) {
     clear(refs.plan);
     (e.plan || []).forEach((t, i) => {
       const T = TREATMENTS[t];
-      const F = TREATMENT_FEES[t];
-      refs.plan.appendChild(h('span', { class: 'tag u-step' + (i < e.planIdx ? ' done' : i === e.planIdx ? ' cur' : ''), tip: F && F.claim === 'pt' ? SINGLE_CLAIM_NOTE : null },
+      const F = DISH_FEES[t];
+      refs.plan.appendChild(h('span', { class: 'tag u-step' + (i < e.planIdx ? ' done' : i === e.planIdx ? ' cur' : ''), tip: F && F.price > 0 ? `單價 NT$ ${F.price}` : null },
         (i < e.planIdx ? '✓ ' : '') + (T ? T.name : t)));
     });
   }
   const b = e.bubble && e.bubble.text ? '💬 ' + e.bubble.text : '';
   setText(refs.bubble, b); refs.bubble.hidden = !b;
-  setText(refs.paid, `健保 ${e.paid ? e.paid.nhi : 0} 點　自費 ${money(e.paid ? e.paid.self : 0)}`);
+  setText(refs.paid, `主餐 ${money(e.paid ? e.paid.menu : 0)}　特色 ${money(e.paid ? e.paid.special : 0)}`);
   const f = [];
   if (e.flags && e.flags.slipped) f.push('⚠ 曾滑倒');
-  if (e.cured) f.push('✅ 已治癒');
-  if (e.upsold) f.push('💰 已升級自費');
+  if (e.cured) f.push('✅ 已成為熟客');
+  if (e.upsold) f.push('💰 已加點特色料理');
   setText(refs.flags, f.join('　'));
 }
 
@@ -175,9 +175,9 @@ function updObject(state, e) {
   if (refs.rr) updateRoleRow(refs.rr, state);
   const unst = isUnstaffed(state, e);
   const req = requiredRolesFor(e.defId);
-  setText(refs.use, e.broken ? '故障中' : unst ? (e.defId === 'reception' ? '缺人（掛號較慢）' : '缺人，無法運作') : e.usedBy ? (e.staffId ? '運作中' : '使用中') : e.busy ? '忙碌' : '閒置');
+  setText(refs.use, e.broken ? '故障中' : unst ? (e.defId === 'reception' ? '缺人（點餐較慢）' : '缺人，無法運作') : e.usedBy ? (e.staffId ? '運作中' : '使用中') : e.busy ? '忙碌' : '閒置');
   setClass(refs.use, 'bad', !!e.broken || unst);
-  refs.use.dataset.tip = unst ? `診所尚未僱用${req.map(roleShort).join('或')}：先到「一覽 → 員工清單」招聘` : '';
+  refs.use.dataset.tip = unst ? `餐廳尚未僱用${req.map(roleShort).join('或')}：先到「一覽 → 員工清單」招聘` : '';
 }
 
 const BUILDERS = { patient: [buildPatient, updPatient], staff: [buildStaff, updStaff], object: [buildObject, updObject] };

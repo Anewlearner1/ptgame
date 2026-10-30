@@ -8,11 +8,12 @@
 //   artCanvas(name)      -> HTMLCanvasElement | null                  cached native-size cut-out (null unless artReady())
 //   artFigure(name)      -> {y0,y1,x0,x1,h} | null   opaque bounding box of the cut-out (alpha > 40), cached; h = y1 - y0 + 1
 //   artUrl()             -> string             absolute URL of atlas.png (for DOM CSS backgrounds; valid even before load)
-//   artEnabled() / setArtEnabled(on)           persisted in localStorage 'ptgame.art' ('classic' | 'new', default 'new')
+//   artEnabled() / setArtEnabled(on)           persisted in localStorage 'restgame.art' ('classic' | 'new', default 'new')
 // Bus events: 'art:changed' {enabled, ready} on toggle AND when the atlas finishes loading (so UIs can re-render).
 import { bus } from '../core/bus.js';
 
-const KEY = 'ptgame.art';
+const ATLAS_AVAILABLE = false;
+const KEY = 'restgame.art';
 const JSON_URL = new URL('../../assets/art/atlas.json', import.meta.url).href;
 const PNG_URL = new URL('../../assets/art/atlas.png', import.meta.url).href;
 
@@ -38,6 +39,8 @@ function decode(url) {
 }
 
 export function loadArt() {
+  // Restaurant edition: there is no sprite atlas (the clinic concept sheet was removed), everything is drawn procedurally.
+  if (!ATLAS_AVAILABLE) return Promise.resolve(false);
   if (loading) return loading;
   loading = (async () => {
     try {

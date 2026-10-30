@@ -6,7 +6,7 @@ import { dual, icon } from './icons.js';
 export const PANELS = [
   { id: 'build', label: '建造', ico: '🔨', key: 'B' },
   { id: 'operate', label: '運作', ico: '🔬', key: 'O' },
-  { id: 'clinic', label: '診所', ico: '🏥', key: 'C' },
+  { id: 'clinic', label: '餐廳', ico: '🍜', key: 'C' },
   { id: 'overview', label: '一覽', ico: '📋', key: 'V' },
   { id: 'map', label: '地圖', ico: '🗺', key: 'P' },
   { id: 'system', label: '系統', ico: '⚙', key: 'Y' },

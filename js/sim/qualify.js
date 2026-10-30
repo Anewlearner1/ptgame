@@ -1,9 +1,9 @@
-// Qualification rules: which staff role operates which facility (docs/ARCHITECTURE.md, 「設施人員資格」).
-//   * a station hosts treatments (buildables.js stationFor); every treatment lists the roles that may run it (staffRole, ANY-of)
-//   * machines (attend 'setup') need a qualified staff member only for the first `setupMin` minutes, manual / room treatments
+// Qualification rules: which staff role operates which facility (docs/ARCHITECTURE.md, 「設施人員資格」; restaurant roles in docs/RESTAURANT_DESIGN.md §2).
+//   * a station hosts dishes (buildables.js stationFor); every dish lists the roles that may run it (staffRole, ANY-of)
+//   * pots / machines / tables (attend 'setup') need a qualified staff member only for the first `setupMin` minutes, hand-cooked dishes
 //     (attend 'full') for the whole session - see patients.js
 //   * an object is UNSTAFFED when no staff member on the payroll has any role that qualifies for ANY treatment it hosts;
-//     a room that is only partly covered (e.g. a heatbox with a PT but no nurse) is fine
+//     a station that is only partly covered (e.g. a braise pot with a cook but no cashier) is fine
 // Pure functions of `state` + static data; results are cached and invalidated by bus events (and a cheap signature check, so
 // tests that mutate state.staff / state.objects directly stay correct).
 import { bus } from '../core/bus.js';
@@ -11,16 +11,16 @@ import { ROLES, ROLE_LABELS } from '../core/constants.js';
 import { BUILDABLES } from '../data/buildables.js';
 import { TREATMENTS } from '../data/treatments.js';
 
-// reception is not a treatment station but still wants a nurse (patients register on their own, slowly, without one)
-const EXTRA_ROLES = { reception: ['nurse'] };
-// short names for chips / toasts (ROLE_LABELS.nurse is the long 「櫃檯護理師/行政」)
-const SHORT = { doctor: '醫師', pt: '物理治療師', ot: '職能治療師', st: '語言治療師', nurse: '護理師' };
+// reception is not a dish station but still wants a cashier (guests order on their own, slowly, without one)
+const EXTRA_ROLES = { reception: ['cashier'] };
+// short names for chips / toasts
+const SHORT = { chef: '主廚', cook: '廚師', barista: '吧台師', server: '服務生', cashier: '收銀員' };
 
 export function roleLabel(role) { return ROLE_LABELS[role] || role; }
 export function roleShort(role) { return SHORT[role] || roleLabel(role); }
 
 const hostedMemo = new Map();
-// treatment ids a building can host (buildables.js stationFor, plus treatments.js objects)
+// dish ids a building can host (buildables.js stationFor, plus treatments.js objects)
 export function treatmentsHostedBy(defId) {
   let v = hostedMemo.get(defId);
   if (v) return v;
@@ -33,7 +33,7 @@ export function treatmentsHostedBy(defId) {
 }
 
 const rolesMemo = new Map();
-// roles that can operate a building (union over the treatments it hosts; 'nurse' for reception), in first-seen order
+// roles that can operate a building (union over the dishes it hosts; 'cashier' for reception), in first-seen order
 export function requiredRolesFor(defId) {
   let v = rolesMemo.get(defId);
   if (v) return v;
@@ -112,7 +112,7 @@ export function hasRole(state, role) { return get(state).roles.has(role); }
 // Set of object ids that cannot be operated right now (shared set: do not mutate)
 export function unstaffedIds(state) { return get(state).unst; }
 export function isUnstaffed(state, obj) { return !!obj && get(state).unst.has(obj.id); }
-// [{role, objects:[ids], label}] roles the clinic lacks for at least one built facility
+// [{role, objects:[ids], label}] roles the shop lacks for at least one built facility
 export function missingRoles(state) { return get(state).missing; }
 export function isRoleMissing(state, role) { return get(state).missing.some(m => m.role === role); }
 // can this treatment be run by anybody on the payroll?
@@ -128,7 +128,7 @@ export function roleChips(state, defId) {
   const roles = state ? get(state).roles : new Set();
   return requiredRolesFor(defId).map(r => ({ role: r, label: roleShort(r), ok: roles.has(r) }));
 }
-// 「需要：物理治療師／護理師」 (any one of them is enough) or '' for buildings that need nobody
+// 「需要：廚師／收銀員」 (any one of them is enough) or '' for buildings that need nobody
 export function requirementText(defId) {
   const r = requiredRolesFor(defId);
   return r.length ? '需要：' + r.map(roleShort).join('／') : '';
@@ -141,7 +141,7 @@ export function toastIfUnstaffed(state, obj) {
   const req = requiredRolesFor(obj.defId);
   if (!req.some(r => !toasted.has(r))) return false;
   for (const r of req) toasted.add(r);
-  bus.emit('toast', { text: `尚未僱用${req.map(roleShort).join('或')}，這台設備無法運作`, kind: 'bad' });
+  bus.emit('toast', { text: `尚未僱用${req.map(roleShort).join('或')}，這個設備無法運作`, kind: 'bad' });
   return true;
 }
 export function resetQualifyToasts() { toasted.clear(); }

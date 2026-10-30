@@ -1,5 +1,5 @@
 /* ==========================================================================
-   復健科診所物語 — phone / tablet layer (S-H). Loaded after style.css + ui.css.
+   餐廳物語 — phone / tablet layer (S-H). Loaded after style.css + ui.css.
    Layout classes on <html> come from js/ui/layout.js (and the inline script in index.html):
      .lay-portrait  phone / tablet upright  -> 2-row topbar, bottom tab bar, bottom sheets   (PRIMARY phone layout)
      .lay-compact   short landscape (h<=520)-> 1-row topbar, icon rail, right drawer

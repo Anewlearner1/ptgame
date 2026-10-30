@@ -276,7 +276,7 @@ function featuresSection() {
     check('economy: ledger reset (incl. copay) + history pushed + monthPoints reset', state.ledger.income.copay === 0 && state.history.length === 1 && state.nhi.monthPoints === 0 && state.ledger.income.nhi === 0 && state.ledger.expense.salary === 0);
     check('economy: record has diluted flag', rec.diluted === true && rec.pointValue === 0.6);
     state.nhi.monthPoints = cap * 0.5; const rec2 = Eco.settleMonth(state);
-    check('economy: undiluted record: pointValue 0.95, diluted=false (nhi:settled shows the real value)', rec2.pointValue === 0.95 && rec2.diluted === false && state.nhi.lastSettlement.pointValue === 0.95, JSON.stringify([rec2.pointValue, rec2.diluted]));
+    check('economy: undiluted record: pointValue 0.95, diluted=false (month:settled shows the real value)', rec2.pointValue === 0.95 && rec2.diluted === false && state.nhi.lastSettlement.pointValue === 0.95, JSON.stringify([rec2.pointValue, rec2.diluted]));
     state.mods.wageMult = 0.5; state.mods.rentMult = 2;
     const c2 = Eco.monthlyCosts(state);
     check('economy: wageMult/rentMult applied', c2.salary === Math.round(costs.salary * 0.5) && c2.rent === costs.rent * 2, JSON.stringify(c2));
@@ -426,7 +426,7 @@ function featuresSection() {
       fresh(8); clearObjects();
       put('reception', 16, 17); put('sofa', 12, 18); put('exam_room', 11, 14); put('heatbox', 11, 11); put('heatbox', 12, 11); put('tens', 14, 11);
       state.reputation = 150; const perVisit = new Map(); let firstVisitCopay = 0, retCopay = 0, retTreat = 0, copayRec = 0;
-      const offS = bus.on('nhi:settled', (rc) => { copayRec += rc.copayIncome || 0; });
+      const offS = bus.on('month:settled', (rc) => { copayRec += rc.copayIncome || 0; });
       const off = bus.on('treatment:done', (e) => {
         const k = e.patient.id + '/' + e.patient.visit;
         if (e.copay > 0) { perVisit.set(k, (perVisit.get(k) || 0) + 1); if (e.patient.visit === 0) firstVisitCopay++; else retCopay++; }
@@ -1345,7 +1345,7 @@ function achievementsSection() {
   const treat = (p, selfPay = 0) => bus.emit('treatment:done', { patient: p, treatmentId: 'x', nhiPoints: 0, selfPay, staffId: null });
   const left = (p, o = {}) => bus.emit('patient:left', { patient: p, satisfaction: 70, cured: false, reason: 'done', ...o });
   const weekEnd = () => { bus.emit('week:end', { ...state.time }); state.events.pendingDilemma = null; state.time.paused = false; };
-  const settle = (rec = {}) => bus.emit('nhi:settled', { year: state.time.year, month: state.time.month, nhiIncome: 100000, selfIncome: 0, income: 100000, ...rec });
+  const settle = (rec = {}) => bus.emit('month:settled', { year: state.time.year, month: state.time.month, nhiIncome: 100000, selfIncome: 0, income: 100000, ...rec });
   const yearEnd = (y = 1) => Ach.evaluate(state, 'year:end', { year: y });   // (direct: the real year:end would also run a real inspection)
   const mkStaff = (role) => state.staff.push({ id: state.nextId++, role, skill: 5, charm: 5, salary: 1000 });
   const dil = (t) => bus.emit('dilemma:resolved', { ok: true, kind: 'dilemma', trigger: t, id: 'x' });
@@ -2239,7 +2239,7 @@ function careerSection() {
     seatingSet: () => { state.objects.push({ id: state.nextId++, defId: 'water', x: 1, y: 1, rot: 0 }); bus.emit('map:changed', {}); },
     antislipTiles: () => { for (let i = 0; i < 6; i++) state.map.floor[12][12 + i] = 'floor_mat'; bus.emit('map:changed', {}); },
     zoneActive_golden3: () => { state.zones = [{ id: 'golden3' }]; bus.emit('map:changed', {}); },
-    monthsSettled: () => { hist(1); bus.emit('nhi:settled', { year: 1, month: 1, nhiIncome: 1, selfIncome: 0, copayIncome: 0, income: 1 }); },
+    monthsSettled: () => { hist(1); bus.emit('month:settled', { year: 1, month: 1, nhiIncome: 1, selfIncome: 0, copayIncome: 0, income: 1 }); },
     researchStartedOrDone: () => { state.research.current = 'rs_heat'; wk(); },
     ptCount: () => { state.staff.push({ id: state.nextId++, role: 'pt', skill: 5, charm: 5, salary: 1000 }, { id: state.nextId++, role: 'pt', skill: 5, charm: 5, salary: 1000 }); wk(); },
     priceChanged: () => { state.policy.priceMult.shockwave = 1.2; wk(); },
@@ -2411,7 +2411,7 @@ function careerSection() {
     const g = GD.CORE_GOALS[0];
     CF(); const k = state.career.counters; state.career.goals.list = [{ id: g.id, kind: 'core', progress: 0, target: 0, done: false, claimed: false, lot: 0, vi: -1 }];
     state.reputation = 100; state.money = 2e6; wk();
-    const m1 = state.money; wk(); wk(); bus.emit('nhi:settled', { year: 1, month: 1, nhiIncome: 1, selfIncome: 0, copayIncome: 0, income: 1 });
+    const m1 = state.money; wk(); wk(); bus.emit('month:settled', { year: 1, month: 1, nhiIncome: 1, selfIncome: 0, copayIncome: 0, income: 1 });
     check('goals: a claimed goal is not paid again', state.money === m1 && evs('career:goal-done').length === 1 && k.goalsDone === 1);
     state.reputation = 10; state.money = 0; wk();
     check('goals: a done goal stays done when the metric falls back', Car.currentGoals(state)[0].done && Car.currentGoals(state)[0].claimed);
@@ -2611,9 +2611,9 @@ function careerSection() {
     state.staff.push(S.createStaff(state, 'pt', null, 17, 15));
     wk(); state.staff[state.staff.length - 1].level = 3; wk(); wk();
     check('counters: training detected through staff.level (no double count)', k.yrTrain === 2 && Car.metricValue(state, 'trainYear') === 2, k.yrTrain);
-    bus.emit('nhi:settled', { year: 1, month: 1, nhiIncome: 600000, selfIncome: 300000, copayIncome: 100000, income: 1e6 });
+    bus.emit('month:settled', { year: 1, month: 1, nhiIncome: 600000, selfIncome: 300000, copayIncome: 100000, income: 1e6 });
     check('counters: selfPay share ring + income total', near(state.career.shares[0], 0.3, 1e-9) && k.incomeTotal === 1e6);
-    for (let i = 0; i < 3; i++) bus.emit('nhi:settled', { year: 1, month: 1, nhiIncome: 700000, selfIncome: 300000, copayIncome: 0, income: 1e6 });
+    for (let i = 0; i < 3; i++) bus.emit('month:settled', { year: 1, month: 1, nhiIncome: 700000, selfIncome: 300000, copayIncome: 0, income: 1e6 });
     check('metric: selfPayShare3 = min of the last 3 months', near(Car.metricValue(state, 'selfPayShare3'), 0.3, 1e-9));
     state.career.shares.push(0.1);
     check('metric: one weak month drops selfPayShare3', near(Car.metricValue(state, 'selfPayShare3'), 0.1, 1e-9));

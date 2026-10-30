@@ -8,8 +8,8 @@ import { spend } from './economy.js';
 import { absoluteWeek } from './calendar.js';
 
 // ---- tuning constants ----
-export const WEAR_DEFS = ['tens', 'traction', 'heatbox', 'ir_lamp', 'us_room', 'shockwave', 'shockwave_room', 'laser_room', 'redcord'];
-export const LIGHT_USE_DEFS = ['shockwave', 'shockwave_room'];   // 徒手/震波類: half the wear per treatment
+export const WEAR_DEFS = ['fryer', 'noodle_stove', 'braise_pot', 'griddle', 'teppan', 'chef_range', 'drink_bar', 'ice_shop', 'soup_pot', 'chef_table', 'wok_range', 'bbq_grill'];
+export const LIGHT_USE_DEFS = ['soup_pot', 'braise_pot', 'ice_shop'];   // slow-cook / cold gear: half the wear per dish
 export const WEAR_TUNE = {
   USE: 0.4, USE_LIGHT: 0.2,       // wear per completed treatment
   WEEK: 0.3,                      // base wear per week

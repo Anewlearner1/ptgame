@@ -14,7 +14,7 @@ export function section(title, ...kids) {
   return h('div', { class: 'u-section' }, h('div', { class: 'u-sec' }, title), kids);
 }
 
-// 衛教看板 toggles (used by 診所 and 運作 panels)
+// 菜單看板 toggles (used by 餐廳 and 運作 panels)
 export function boardsSection(state) {
   const list = h('div', { class: 'u-list2' });
   const rows = {};
@@ -35,7 +35,7 @@ export function boardsSection(state) {
     list.appendChild(el);
   }
   return {
-    el: section('衛教看板（張貼後長期生效，每月扣維護費）', list),
+    el: section('菜單看板（張貼後長期生效，每月扣維護費）', list),
     update(state) {
       for (const b of BOARDS) {
         const r = rows[b.id], on = state.policy.boards.includes(b.id);

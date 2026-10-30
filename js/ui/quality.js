@@ -2,10 +2,10 @@
 //   畫質: 自動 = the existing scaler (ui.perf.auto; it only runs on touch devices, desktops stay at full quality) /
 //         高 = level 0 / 中 = level 2 / 低 = level 3   (levels: see renderer.js "Quality scaler state")
 //   幀率上限: 60 (every display refresh) | 30 (every second refresh; sim still advances by real dt, see main.js)
-// Storage keys: localStorage 'ptgame.quality' ('auto'|'high'|'mid'|'low'), 'ptgame.fpscap' ('60'|'30'); wrapped in try/catch.
+// Storage keys: localStorage 'restgame.quality' ('auto'|'high'|'mid'|'low'), 'restgame.fpscap' ('60'|'30'); wrapped in try/catch.
 import { bus } from '../core/bus.js';
 
-export const QUALITY_KEY = 'ptgame.quality', FPSCAP_KEY = 'ptgame.fpscap';
+export const QUALITY_KEY = 'restgame.quality', FPSCAP_KEY = 'restgame.fpscap';
 export const FRAME_30_MS = 1000 / 30;
 export const QUALITY_MODES = [['auto', '自動'], ['high', '高'], ['mid', '中'], ['low', '低']];
 export const QUALITY_LEVEL = { high: 0, mid: 2, low: 3 };

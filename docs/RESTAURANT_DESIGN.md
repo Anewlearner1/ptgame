@@ -62,7 +62,7 @@
 ## 6. 經濟
 - 基本餐點：上菜時 `earn(price × patientWeight, 'menu')`，同時 `food` 成本 = price × foodCost × mods.foodCost × weight。
 - 特色料理：價格 = `price × priceMult 滑桿 × mods.selfPayPrice`，記 `special`。
-- 月底：薪資、租金、維護；不再有「健保結算」，但仍發 `nhi:settled`（事件名保留，內容為月結報表）。
+- 月底：薪資、租金、維護；不再有「健保結算」，但仍發 `month:settled`（事件名保留，內容為月結報表）。
 - 破產線、年度巡查、職涯審查維持。
 - 平衡目標沿用診所版：起始第 1 個月約損益兩平；好佈局 +25…40%；專家路線年末月淨利 30–50 萬。
 

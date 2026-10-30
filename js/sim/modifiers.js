@@ -19,7 +19,7 @@ import { synergyList } from './synergy.js';
 export const BARE_GRIP = 0.45;            // floor grip with no floor painted
 export const COMFORT_RADIUS = 4;          // tiles
 export const COMFORT_MAX = 12;            // cap on comfortScoreAt
-export const ENV_PATIENCE_PER_COMFORT = 0.004;   // clinic-wide comfort -> patience multiplier delta
+export const ENV_PATIENCE_PER_COMFORT = 0.004;   // shop-wide comfort -> patience multiplier delta
 export const ENV_PATIENCE_PER_RELIEF = 0.008;    // anxietyRelief -> patience
 export const ENV_PATIENCE_CAP = 0.2;
 const SPAWN_MULT_MAX = 2.0;
@@ -30,7 +30,7 @@ const MODS_MIN_ZERO_OK = new Set(['selfPayConv', 'elderSat']);
 // Global bounds for the late-game mods (so zones + research + upgrades + events can never stack into a broken game).
 // [min, max]; null = unbounded on that side.
 export const MOD_BOUNDS = {
-  cureGain: [0.2, 1.6], treatTime: [0.6, 2], wearRate: [0.35, 3], satGain: [-12, 12], repGrowth: [-2, 1.2],
+  cureGain: [0.2, 1.6], treatTime: [0.6, 2], wearRate: [0.35, 3], satGain: [-12, 12], repGrowth: [-2, 1.2], foodCost: [0.5, 1.6],
 };
 export const TYPE_CURE_BOUNDS = [-0.5, 0.6];
 export const TYPE_SAT_BOUNDS = [-12, 15];
@@ -82,7 +82,7 @@ function clampMods(m) {
   for (const k of Object.keys(m)) {
     if (typeof m[k] !== 'number') continue;
     if (MODS_MIN_ZERO_OK.has(k)) continue;
-    if (['nhiTurnover', 'selfPayPrice', 'researchGain', 'walkSpeed', 'spawnMult', 'patience', 'slipRisk', 'staffStamina', 'rentMult', 'wageMult'].includes(k)) {
+    if (['nhiTurnover', 'selfPayPrice', 'researchGain', 'walkSpeed', 'spawnMult', 'patience', 'slipRisk', 'staffStamina', 'rentMult', 'wageMult', 'foodCost'].includes(k)) {
       if (m[k] < MULT_MIN) m[k] = MULT_MIN;
     }
   }
@@ -148,7 +148,7 @@ export function recomputeMods(state) {
   const f = FOCUS && state.policy && FOCUS[state.policy.focus];
   if (f && f.spawnMult) for (const t of Object.keys(f.spawnMult)) m.typeSpawn[t] = typeBase(m, t) * f.spawnMult[t];
 
-  // 7. environment comfort (clinic-wide, small patience bonus; local effects use comfortScoreAt)
+  // 7. environment comfort (shop-wide, small patience bonus; local effects use comfortScoreAt)
   let comfort = 0, relief = 0;
   for (const o of state.objects || []) {
     const d = BUILDABLES[o.defId];

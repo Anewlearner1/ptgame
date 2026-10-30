@@ -48,7 +48,7 @@ bus.on('map:changed', () => { ui.dirtyOcc = true; });
 bus.on('week:end', () => P.closeUp(state));
 bus.on('month:start', () => S.refreshPool(state));
 bus.on('toast', () => {});
-B.seedStarterClinic(state);
+B.seedStarterShop(state);
 S.refreshPool(state);
 refresh();
 
@@ -185,7 +185,7 @@ bus.on('treatment:done', (e) => {
 });
 let pointGain = { medical: 0, device: 0, service: 0 };
 const settle = [];
-bus.on('nhi:settled', (r) => { settle.push({ ...r, rep: Math.round(state.reputation), staff: state.staff.length, objs: state.objects.length, lot: state.lotLevel }); });
+bus.on('month:settled', (r) => { settle.push({ ...r, rep: Math.round(state.reputation), staff: state.staff.length, objs: state.objects.length, lot: state.lotLevel }); });
 const reasons = {}; const angryCtx = {}; bus.on('patient:left', (e) => { reasons[e.reason] = (reasons[e.reason] || 0) + 1; if (e.reason === 'angry' || e.satisfaction < 35) { const p = e.patient; const k = p.type + '|treated' + p.treated + '|plan' + p.planIdx + '/' + p.plan.length + '|' + (e.reason); angryCtx[k] = (angryCtx[k] || 0) + 1; } });
 let gameOver = false; let evCount = 0;
 bus.on('game:over', () => { gameOver = true; });

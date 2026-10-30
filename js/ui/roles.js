@@ -1,4 +1,4 @@
-// 「需要：物理治療師／護理師」 role chips (✔ = that role is on the payroll, ⚠ = not hired yet). Shared by the build cards / tray /
+// 「需要：廚師／收銀員」 role chips (✔ = that role is on the payroll, ⚠ = not hired yet). Shared by the build cards / tray /
 // tooltip / selection card / equipment table. Pure DOM helpers over sim/qualify.js.
 import { h, setClass, setText } from './dom.js';
 import { roleChips, requiredRolesFor, roleShort, operatesFor } from '../sim/qualify.js';
@@ -26,7 +26,7 @@ export function updateRoleRow(el, state) {
   setClass(el, 'lack', chips.length > 0 && chips.every(c => !c.ok));
   el.dataset.lack = chips.every(c => !c.ok) ? '1' : '0';
 }
-// plain-text variant: 「需要：✔ 物理治療師　⚠ 護理師」 ('' when nobody is needed)
+// plain-text variant: 「需要：✔ 廚師　⚠ 收銀員」 ('' when nobody is needed)
 export function roleLine(state, defId) {
   const chips = roleChips(state, defId);
   return chips.length ? '需要：' + chips.map(c => (c.ok ? '✔ ' : '⚠ ') + c.label).join('　') : '';
@@ -35,6 +35,6 @@ export function roleLine(state, defId) {
 // tooltip for a staff role: everything it can operate ("可操作的設施")
 export function operatesTip(role) {
   const lines = operatesFor(role).filter(o => o.treatments.length || o.defId === 'reception').map(o =>
-    `${o.name}${o.treatments.length ? '（' + o.treatments.join('、') + '）' : '（掛號）'}${o.setupOnly ? ' ・只需開機設定' : ''}`);
+    `${o.name}${o.treatments.length ? '（' + o.treatments.join('、') + '）' : '（點餐）'}${o.setupOnly ? ' ・只需開機設定' : ''}`);
   return lines.length ? `${roleShort(role)}可操作的設施\n` + lines.join('\n') : `${roleShort(role)}沒有專屬設施`;
 }

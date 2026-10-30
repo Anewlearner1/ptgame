@@ -12,31 +12,31 @@
 // ---- Interpretation table (ambiguous conditions -> what is implemented) ----
 // Monthly/yearly "streak-like" counters only count when tracking covered the WHOLE period (counters.trackMonth /
 // trackYear = index of the first fully-tracked month / year; null for periods that were already running when an old save was
-// migrated), so a mid-period migration can never grant c_no_angry_month / c_zero_slip_year / c_pure_nhi for free.
-// served (per week)     = unique patients that got >= 1 treatment:done in that week (counters.weekSeen).
+// migrated), so a mid-period migration can never grant c_no_angry_month / c_zero_slip_year / c_pure_menu for free.
+// served (per week)     = unique guests that got >= 1 treatment:done in that week (counters.weekSeen).
 // served (month / year) = patient:left with patient.treated > 0.
 // angry leaver          = patient:left with reason 'angry' (patience ran out) or final satisfaction < 25.
-// m_first_month         = history has >= 1 monthly settlement (checked on nhi:settled).
+// m_first_month         = history has >= 1 monthly settlement (checked on month:settled).
 // m_pat_* / m_cured_*   = state.stats.patientsTotal / state.stats.cured (never reset by the economy).
 // m_year3               = time.year >= 4.
 // t_cold_week           = at week:end the week's weather.kind == 'cold' and elderThisWeek (type 'elder') >= 15.
 // t_rain_safe           = week:end, weather.kind == 'rain' (rain + plumrain), served >= 12, slipThisWeek == 0.
 // t_typhoon             = week:end, weather.kind == 'typhoon', served >= 5.
-// t_temple / t_community_all = communityDone[id] counts startCommunity() successes (event 'community:started'); all 7 COMMUNITY ids.
+// t_temple / t_community_all = communityDone[id] counts startCommunity() successes (event 'community:started'); all 7 COMMUNITY ids ('temple_meal' for t_temple).
 // t_audit               = first inspection:result with pass.  t_audit_excellent = pass and score >= EXCELLENT_SCORE.
 // t_audit_3             = auditPassStreak >= 3 (a failed inspection resets it).
-// t_dilemma_*           = dilemma:resolved with kind 'dilemma' and trigger in painkiller/skip_doctor/overtreat/complain.
-// t_selfpay_40          = at nhi:settled: selfIncome / (nhiIncome + selfIncome) >= 0.4 (the 'other' ledger is excluded, so achievement
-//                         rewards / event money cannot distort it), needs nhiIncome + selfIncome > 0.
+// t_dilemma_*           = dilemma:resolved with kind 'dilemma' and trigger in freebie/skip_main/overpush/complain.
+// t_special_40          = at month:settled: specialIncome / (menuIncome + specialIncome) >= 0.4 (the 'other' ledger is excluded, so achievement
+//                         rewards / event money cannot distort it), needs menuIncome + specialIncome > 0.
 // t_board_3             = policy.boards.length >= 3.
 // c_zone_*              = state.zones contains the synergy id (zones are recomputed by build.js before map:changed fires).
 // c_zero_slip_year      = at year:end: fully tracked year, slipThisYear == 0 and servedThisYear >= 200.
-// c_no_angry_month      = at nhi:settled: fully tracked month, angryThisMonth == 0 and servedThisMonth >= 20.
+// c_no_angry_month      = at month:settled: fully tracked month, angryThisMonth == 0 and servedThisMonth >= 20.
 // c_full_house          = lot level >= 1 AND unique patients served this week >= ceil(0.9 * lot.maxPatientsPerWeek) (checked live, mid-week).
 //                         (the starter lot's cap of 22 is reached too easily, so it needs the first expansion)
-// c_pure_nhi            = at year:end of year 1: tracked since day 1, no self-pay ever, money >= counters.startMoney (money at the first
-//                         event of the game = START_MONEY minus the starter-clinic charge).
-// c_one_week_cure       = curedThisWeek (patient:left with cured) >= 10, checked live.
+// c_pure_menu           = at year:end of year 1: tracked since day 1, no special dish ever, money >= counters.startMoney (money at the first
+//                         event of the game = START_MONEY minus the starter-shop charge).
+// c_one_week_regular    = curedThisWeek (patient:left with cured) >= 10, checked live.
 // h_coffee / h_plants   = count of 'coffee' >= 3 / 'plant' >= 10 objects currently placed.
 // h_chat                = 50 completed patient:chat events with an 'elder' patient.
 // h_comeback            = lowestMoneySeen < 50,000 (sampled at every event; seeded from history on load) and money >= 1,000,000.
@@ -59,7 +59,7 @@ import { ENDINGS } from '../data/goals.js';
 import { SYNERGIES } from '../data/synergies.js';
 
 export const SUMMARY_TOAST_THRESHOLD = 5;
-export const DILEMMA_KINDS = ['painkiller', 'skip_doctor', 'overtreat', 'complain'];
+export const DILEMMA_KINDS = ['freebie', 'skip_main', 'overpush', 'complain'];
 const MAX_ICONS = 4;
 
 const DEFS = new Map(ACHIEVEMENTS.map(d => [d.id, d]));
@@ -68,7 +68,7 @@ const monthIdx = (y, m) => y * 12 + (m - 1);
 // ---------------- state ----------------
 function freshCounters() {
   return {
-    totalSelfPayMonth: 0, dilemmasDone: { painkiller: 0, skip_doctor: 0, overtreat: 0, complain: 0 }, communityDone: {}, auditPassStreak: 0, chatCount: 0,
+    totalSelfPayMonth: 0, dilemmasDone: { freebie: 0, skip_main: 0, overpush: 0, complain: 0 }, communityDone: {}, auditPassStreak: 0, chatCount: 0,
     slipThisYear: 0, angryThisMonth: 0, servedThisMonth: 0, servedThisYear: 0,
     servedThisWeek: 0, curedThisWeek: 0, elderThisWeek: 0, slipThisWeek: 0, weekSeen: [],
     selfPayEver: false, zonesSeen: {},       // zonesSeen: {zoneId: 1} every synergy zone that was ever active (c_zone_collect)
@@ -100,7 +100,7 @@ export function ensure(state) {
     for (const h of state.history || []) if (h && typeof h.money === 'number' && h.money < low) low = h.money;
     c.lowestMoneySeen = low;
   }
-  if (c.selfPayEver === false && c.trackYear !== 1 && (state.ledger && state.ledger.income.self > 0)) c.selfPayEver = true;
+  if (c.selfPayEver === false && c.trackYear !== 1 && (state.ledger && state.ledger.income.special > 0)) c.selfPayEver = true;
   return a;
 }
 
@@ -140,9 +140,9 @@ const STATE_EVENTS = ['load', 'week:end'];
 
 // id -> { on: [triggers], check(state, ctx) -> bool, prog?(state) -> [value, goal] }
 const R = {
-  m_first_month: { on: ['nhi:settled', 'load'], check: (s) => (s.history || []).length >= 1 },
-  m_cash_2m: { on: [...STATE_EVENTS, 'nhi:settled'], check: (s) => s.money >= 2000000 },
-  m_cash_10m: { on: [...STATE_EVENTS, 'nhi:settled'], check: (s) => s.money >= 10000000 },
+  m_first_month: { on: ['month:settled', 'load'], check: (s) => (s.history || []).length >= 1 },
+  m_cash_2m: { on: [...STATE_EVENTS, 'month:settled'], check: (s) => s.money >= 2000000 },
+  m_cash_10m: { on: [...STATE_EVENTS, 'month:settled'], check: (s) => s.money >= 10000000 },
   m_pat_100: { on: [...STATE_EVENTS, 'patient:left'], check: (s) => s.stats.patientsTotal >= 100 },
   m_pat_1000: { on: [...STATE_EVENTS, 'patient:left'], check: (s) => s.stats.patientsTotal >= 1000 },
   m_pat_5000: { on: [...STATE_EVENTS, 'patient:left'], check: (s) => s.stats.patientsTotal >= 5000 },
@@ -165,17 +165,17 @@ const R = {
   t_cold_week: { on: ['week:end'], check: (s) => s.weather.kind === 'cold' && cnt(s).elderThisWeek >= 15 },
   t_rain_safe: { on: ['week:end'], check: (s) => s.weather.kind === 'rain' && cnt(s).servedThisWeek >= 12 && cnt(s).slipThisWeek === 0 },
   t_typhoon: { on: ['week:end'], check: (s) => s.weather.kind === 'typhoon' && cnt(s).servedThisWeek >= 5 },
-  t_temple: { on: ['community:started'], check: (s) => (cnt(s).communityDone.temple_sarcopenia || 0) > 0 },
+  t_temple: { on: ['community:started'], check: (s) => (cnt(s).communityDone.temple_meal || 0) > 0 },
   t_community_all: { on: ['community:started', 'load'], check: (s) => (COMMUNITY || []).length > 0 && communityKinds(s) >= COMMUNITY.length },
   t_audit: { on: ['inspection:result'], check: (s, p) => !!(p ? p.pass : (s.inspections.lastYearResult && s.inspections.lastYearResult.pass)) },
   t_audit_excellent: { on: ['inspection:result'], check: (s, p) => { const r = p || s.inspections.lastYearResult; return !!(r && r.pass && r.score >= EXCELLENT_SCORE); } },
   t_audit_3: { on: ['inspection:result', 'load'], check: (s) => cnt(s).auditPassStreak >= 3, prog: (s) => [Math.min(3, cnt(s).auditPassStreak), 3] },
   t_dilemma_5: { on: ['dilemma:resolved'], check: (s) => dilemmaTotal(s) >= 5 },
   t_dilemma_all: { on: ['dilemma:resolved'], check: (s) => dilemmaKinds(s) >= DILEMMA_KINDS.length, prog: (s) => [dilemmaKinds(s), DILEMMA_KINDS.length] },
-  t_selfpay_40: { on: ['nhi:settled'], check: (s, p) => {
+  t_special_40: { on: ['month:settled'], check: (s, p) => {
     if (!p) return false;
-    const self = Number(p.selfIncome) || 0, tot = (Number(p.nhiIncome) || 0) + self;
-    return tot > 0 && self / tot >= 0.4;
+    const sp = Number(p.specialIncome) || 0, tot = (Number(p.menuIncome) || 0) + sp;
+    return tot > 0 && sp / tot >= 0.4;
   } },
   t_board_3: { on: ['mods:dirty', 'load', 'week:end'], check: (s) => (s.policy.boards || []).length >= 3, prog: (s) => [Math.min(3, (s.policy.boards || []).length), 3] },
 
@@ -190,20 +190,20 @@ const R = {
     const y = p && p.year != null ? p.year : s.time.year;
     return cnt(s).trackYear === y && cnt(s).slipThisYear === 0 && cnt(s).servedThisYear >= 200;
   } },
-  c_no_angry_month: { on: ['nhi:settled'], check: (s, p) => {
+  c_no_angry_month: { on: ['month:settled'], check: (s, p) => {
     if (!p) return false;
     return cnt(s).trackMonth === monthIdx(p.year, p.month) && cnt(s).angryThisMonth === 0 && cnt(s).servedThisMonth >= 20;
   } },
   c_full_house: { on: ['treatment:done', 'week:end'], check: (s) => (s.lotLevel || 0) >= 1 && cnt(s).servedThisWeek >= fullHouseNeed(s), prog: (s) => [Math.min(cnt(s).servedThisWeek, fullHouseNeed(s)), fullHouseNeed(s)] },
-  c_pure_nhi: { on: ['year:end'], check: (s, p) => {
+  c_pure_menu: { on: ['year:end'], check: (s, p) => {
     const y = p && p.year != null ? p.year : s.time.year;
     const c = cnt(s), start = typeof c.startMoney === 'number' ? c.startMoney : START_MONEY;
     return y === 1 && c.trackYear === 1 && !c.selfPayEver && s.money >= start;
   } },
-  c_one_week_cure: { on: ['patient:left'], check: (s) => cnt(s).curedThisWeek >= 10, prog: (s) => [Math.min(10, cnt(s).curedThisWeek), 10] },
+  c_one_week_regular: { on: ['patient:left'], check: (s) => cnt(s).curedThisWeek >= 10, prog: (s) => [Math.min(10, cnt(s).curedThisWeek), 10] },
   h_coffee: { on: ['map:changed', 'load', 'week:end'], check: (s) => count(s, 'coffee') >= 3, prog: (s) => [Math.min(3, count(s, 'coffee')), 3] },
   h_chat: { on: ['patient:chat'], check: (s) => cnt(s).chatCount >= 50 },
-  h_comeback: { on: [...STATE_EVENTS, 'nhi:settled'], check: (s) => cnt(s).lowestMoneySeen < 50000 && s.money >= 1000000 },
+  h_comeback: { on: [...STATE_EVENTS, 'month:settled'], check: (s) => cnt(s).lowestMoneySeen < 50000 && s.money >= 1000000 },
   h_plants: { on: ['map:changed', 'load', 'week:end'], check: (s) => count(s, 'plant') >= 10, prog: (s) => [Math.min(10, count(s, 'plant')), 10] },
 
   m_decade: { on: ['career:ending', 'load', 'year:start'], check: (s, p) => { const id = p && p.ending ? p.ending.id : endingId(s); return (!!id && id !== 'bankrupt') || s.time.year > 10; } },
@@ -395,7 +395,7 @@ function trackMoney(state) {
   if (state.money < c.lowestMoneySeen) c.lowestMoneySeen = state.money;
 }
 
-// starting money for c_pure_nhi = money seen at the first event of a fully-tracked first year (after the starter clinic was bought)
+// starting money for c_pure_menu = money seen at the first event of a fully-tracked first year (after the starter shop was bought)
 function noteStart(state) {
   const c = state.achv.counters;
   if (c.trackYear === 1 && typeof c.startMoney !== 'number') c.startMoney = Math.min(START_MONEY, state.money);
@@ -412,7 +412,7 @@ export function initAchievements() {
   unsub = [
     on('treatment:done', (s, p) => {
       const c = cnt(s), pat = p.patient;
-      if (p.selfPay > 0) { c.totalSelfPayMonth += p.selfPay; c.selfPayEver = true; }
+      if (p.kind === 'special' && p.price > 0) { c.totalSelfPayMonth += p.price; c.selfPayEver = true; }
       if (pat && !c.weekSeen.includes(pat.id)) {
         c.weekSeen.push(pat.id); c.servedThisWeek++;
         if (pat.type === 'elder') c.elderThisWeek++;
@@ -451,17 +451,17 @@ export function initAchievements() {
         c.servedThisWeek = 0; c.curedThisWeek = 0; c.elderThisWeek = 0; c.slipThisWeek = 0; c.weekSeen = [];
       } catch (e) { console.warn('[achv] week:end', e); }
     }),
-    // economy's own month:end handler (registered earlier) has already settled and emitted nhi:settled for this month
-    bus.on('nhi:settled', (rec) => {
+    // economy's own month:end handler (registered earlier) has already settled and emitted month:settled for this month
+    bus.on('month:settled', (rec) => {
       const s = S();
       try {
         ensure(s); trackMoney(s);
-        evaluate(s, 'nhi:settled', rec);
+        evaluate(s, 'month:settled', rec);
         const c = cnt(s);
         const y = rec && rec.year != null ? rec.year : s.time.year, m = rec && rec.month != null ? rec.month : s.time.month;
         c.angryThisMonth = 0; c.servedThisMonth = 0; c.totalSelfPayMonth = 0;
         c.trackMonth = monthIdx(y, m) + 1;
-      } catch (e) { console.warn('[achv] nhi:settled', e); }
+      } catch (e) { console.warn('[achv] month:settled', e); }
     }),
     bus.on('year:end', (p) => {
       const s = S();
