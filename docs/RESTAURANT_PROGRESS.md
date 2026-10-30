@@ -19,13 +19,14 @@
 - L0 每日來客上限 40、L1 70、L2 110、L3 150。
 - `tools/bal.mjs` 結尾多印累計熟客數與來客數。
 
-## 待辦（依優先序）
-1. ~~UI 測試工具~~（已完成）：`qualifyui`、`upgradesui`、`zonesui`、`mobileui`、`perftest`、`play`、`stylecss`、`stress`（load／chaos，含 `stress-page.js`）已改成餐廳版斷言並全綠；`audit.mjs --quick`（1720 項）仍全過。
-   - 起始店會自動啟動「黃金爐火區」（golden3），所以 zonesui 的基準是「已啟動 1 / 共 15」；`zonelayouts.mjs` 的 L0 combo 不含「宵夜熱炒廊」（flagship），故 combo 狀態為 14 / 15。
-   - 順手修的遊戲問題：觸控版面專區辭典的篩選 chip 高度 28px（`.touch .u-fchip` 補 min-height 40px）；概念風格的任務 ✔ 綠底對比不足 AA（`#3aa56a` → `#2a7f50`）。
-   - 內部 id 沿用診所版（如專區 `sportsRehab`、升級 `up_clinical`、mods `nhiTurnover`），測試依 id 斷言、依顯示文字（餐廳版）驗證。
-2. **文件**：`docs/GAME_ARCHITECTURE.md`、`docs/ARCHITECTURE.md`、`README.md` 仍是診所版敘述；診所專用文件（EVENT_RESEARCH、FEE_RESEARCH、ASSETS_LIST…）需加註或刪除。
-3. 平衡：已完成；後續可再檢視 Y2 前後（L1/L2）的曲線與 `goals.js` 其餘獎勵金額。
-4. 美術：物件用程式繪製（無圖集），可再精修；手機版面再檢查。
+## 整合狀態（2026-10-30）
+五個子分支已全部併入 `claude/restaurant-game`：`restaurant-docs`（文件）、`restaurant-art`（美術精修＋暖色主題）、`restaurant-balance`（平衡）、`restaurant-uitests`（UI 測試工具）、`restaurant-sprites`（圖集素材）。
 
-已完成：圖示改為麵碗、manifest/theme 色改暖紅、移除多餘的 `undefined/` 目錄。
+- **UI 測試工具**：`qualifyui`、`upgradesui`、`zonesui`、`mobileui`、`perftest`、`play`、`stylecss`、`stress`（含 `stress-page.js`）已改成餐廳版斷言。起始店自動啟動「黃金爐火區」（golden3），所以 zonesui 基準是「已啟動 1 / 共 15」。內部 id 沿用診所版（專區 `sportsRehab`、升級 `up_clinical`、mods `nhiTurnover` 等），測試依 id 斷言、依顯示文字驗證。
+- **美術**：電視牆改菜單看板、收銀螢幕改點餐單、店招去十字改麵碗、服務生加托盤；介面全改紅/木色。物件、人物、餐點圖示優先使用圖集裁切圖（101 張，`assets/rest/`，`tools/cut_restaurant_sheet.py` 可重現），無對應時退回程式繪製。
+- **文件狀態**：`GAME_ARCHITECTURE.md`、`ARCHITECTURE.md` 已改寫為餐廳版；`EVENTS_EXT`、`ACHIEVEMENTS`、`GOALS_AND_ENDING`、`ART_STYLE` 已加註修正；`EVENT_RESEARCH`、`FEE_RESEARCH`、`ASSETS_LIST`、`events_and_achievements.md` 標為診所遺留；`fee_data.json`、`*.xlsx` 已刪除（可從診所分支取回）。
+
+## 待辦（之後可做）
+1. 內部 id 仍沿用診所命名（不影響玩家，重新命名需要存檔遷移）。
+2. 圖集只有一張概念圖，部分設備（鐵板、燒烤、火鍋桌等）仍為程式繪製；有新素材可再用 `tools/cut_restaurant_sheet.py` 補裁。
+3. 部署：本分支未加入 `pages.yml` 自動部署。
