@@ -1,3 +1,5 @@
+> ⚠️ **診所版遺留，不適用。** 本檔列的是診所版的 29 種道具與人物，**不適用於餐廳版**（餐廳版有 32 種建造物、5 種職類、4 種客人，且已無圖集）。請改看 `js/data/buildables.js`、`js/data/staffdefs.js`、`js/data/patients.js` 與 `docs/RESTAURANT_DESIGN.md` §3–§5。對應的 `game_assets_list.xlsx` 已刪除。僅供參考，不再維護。
+
 # 遊戲內容清單：道具、機器、人物、場景
 
 （依目前程式與資料整理；所有圖像都是程式繪製的像素風，沒有外部圖檔。）
