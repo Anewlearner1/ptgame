@@ -210,10 +210,10 @@ const theme = page => page.evaluate(() => document.querySelector('meta[name=them
   ok(/\bstyle-concept\b/.test(await htmlCls(page)), 'default: html.style-concept present');
   ok(/\bstyle-concept\b/.test(await page.evaluate(() => window.__earlyCls || '')), 'class set before DOMContentLoaded (first paint)');
   ok(/lay-(desktop|portrait|compact)/.test(await htmlCls(page)), 'layout classes still present alongside style-concept');
-  ok((await theme(page)) === '#1e365a', `theme-color meta navy in concept (${await theme(page)})`);
+  ok((await theme(page)) === '#5a2a1c', `theme-color meta brown in concept (${await theme(page)})`);
   const tbN = { bg: await css(page, '#topbar', 'backgroundColor'), img: await css(page, '#topbar', 'backgroundImage') };
-  ok(tbN.bg === 'rgb(30, 54, 90)' && tbN.img === 'none', `concept topbar background navy (${tbN.bg} ${tbN.img})`);
-  ok(await css(page, 'body', 'backgroundColor') === 'rgb(30, 54, 90)', 'concept body/page background navy');
+  ok(tbN.bg === 'rgb(90, 42, 28)' && tbN.img === 'none', `concept topbar background brown (${tbN.bg} ${tbN.img})`);
+  ok(await css(page, 'body', 'backgroundColor') === 'rgb(90, 42, 28)', 'concept body/page background brown');
   await page.evaluate(() => document.querySelector('#modal-root .modal-actions .btn')?.click());
   await page.evaluate(() => __game.bus.emit('speed:set', { speed: 0 }));
   await page.keyboard.press('y'); await wait(page, 400);
@@ -225,7 +225,7 @@ const theme = page => page.evaluate(() => document.querySelector('meta[name=them
   ok((await theme(page)) === '#7a2a1c', `theme-color meta back to the classic red in classic (${await theme(page)})`);
   const tbC = { bg: await css(page, '#topbar', 'backgroundColor'), img: await css(page, '#topbar', 'backgroundImage') };
   ok(/gradient/.test(tbC.img) && tbC.bg !== tbN.bg, `classic topbar keeps the old classic gradient (${tbC.img.slice(0, 40)})`);
-  ok(await css(page, 'body', 'backgroundColor') === 'rgb(38, 70, 83)', 'classic body background unchanged (#264653)');
+  ok(await css(page, 'body', 'backgroundColor') === 'rgb(74, 42, 32)', 'classic body background is --deep (#4a2a20)');
   ok((await css(page, '#panel .panel-title', 'backgroundColor')) !== panelBandN, 'panel title colours differ between styles');
   ok(await page.evaluate(() => localStorage.getItem('restgame.art')) === 'classic', 'classic persisted');
   await page.reload(); await page.waitForTimeout(1400);
@@ -237,7 +237,7 @@ const theme = page => page.evaluate(() => document.querySelector('meta[name=them
   await page.evaluate(() => [...document.querySelectorAll('#panel .tab')].find(t => /設定/.test(t.textContent))?.click()); await wait(page, 300);
   await page.click('.u-artbtn[data-art="new"]'); await wait(page, 400);
   ok(/\bstyle-concept\b/.test(await htmlCls(page)), 'switch back to new re-applies html.style-concept (live)');
-  ok((await theme(page)) === '#1e365a', 'theme-color navy again');
+  ok((await theme(page)) === '#5a2a1c', 'theme-color brown again');
   await page.reload(); await page.waitForTimeout(1400);
   ok(/\bstyle-concept\b/.test(await htmlCls(page)), 'after reload: concept persists');
   ok(problems.length === 0, 'no console problems (activation) ' + problems.join(' | '));

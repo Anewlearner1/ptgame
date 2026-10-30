@@ -119,10 +119,12 @@ async function suite(W, H) {
   ok(bar && bar.btns.length === 4 && bar.btns.every(b => b.w >= 44 && b.h >= 44), 'confirm bar has 4 buttons with 44px targets');
   ok(bar.x >= cr.x && bar.x + bar.w <= cr.x + cr.w && bar.y >= cr.y && bar.y + bar.h <= cr.y + cr.h, 'bar stays inside the canvas');
   await shot('2_ghost_bar');
-  const n0 = await nObj(), m0 = await money();
+  const n0 = await nObj(), b0 = await G(() => __game.state.ledger.expense.build || 0);
   await touch.tap(bar.btns.find(b => b.id === 'ok').x, bar.btns.find(b => b.id === 'ok').y);
   await page.waitForTimeout(150);
-  ok((await nObj()) === n0 + 1 && (await money()) < m0, `OK places the object (+1, money ${m0} -> ${await money()})`);
+  // compare the build expense, not money: placing can also trigger a pending onboarding reward (+NT$10,000)
+  const b1 = await G(() => __game.state.ledger.expense.build || 0);
+  ok((await nObj()) === n0 + 1 && b1 > b0, `OK places the object (+1, build expense ${b0} -> ${b1})`);
   ok((await tool()).mode === 'none', 'tool ends after placing (keep off)');
   await shot('3_placed');
 
