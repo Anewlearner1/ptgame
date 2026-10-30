@@ -48,17 +48,17 @@ export function safeRect(ui, W, H) {
 
 function buttonsFor(ui) {
   const tool = ui.tool || { mode: 'none' };
-  if (T.ctx) return [{ id: 'move', glyph: '✥', col: '#3b82c4' }, { id: 'demo', glyph: '🗑', col: '#d64545' }, { id: 'close', glyph: '✖', col: '#5d6872' }];
+  if (T.ctx) return [{ id: 'move', glyph: '✥', col: '#c8643a' }, { id: 'demo', glyph: '🗑', col: '#d64545' }, { id: 'close', glyph: '✖', col: '#5d6872' }];
   if (tool.mode === 'place') {
     const ok = T.ghostSet && ui.hover && ui.hover.x >= 0;
     return [{ id: 'ok', glyph: '✔', col: ok && ui.hover.valid ? '#27a862' : '#7b6a45', dis: !ok }, { id: 'cancel', glyph: '✖', col: '#d64545' },
-      { id: 'rot', glyph: '⟳', col: '#3b82c4' }, { id: 'keep', glyph: '📌', col: tool.keep ? '#e0a82e' : '#4a5560', on: !!tool.keep }];
+      { id: 'rot', glyph: '⟳', col: '#c8643a' }, { id: 'keep', glyph: '📌', col: tool.keep ? '#e0a82e' : '#4a5560', on: !!tool.keep }];
   }
   if (tool.mode === 'move') {
     if (!tool.carry) return [{ id: 'cancel', glyph: '✖', col: '#d64545' }, { id: 'keep', glyph: '📌', col: tool.keep ? '#e0a82e' : '#4a5560', on: !!tool.keep }];
     const ok = T.ghostSet && ui.hover && ui.hover.x >= 0;
     return [{ id: 'ok', glyph: '✔', col: ok && ui.hover.valid ? '#27a862' : '#7b6a45', dis: !ok }, { id: 'cancel', glyph: '✖', col: '#d64545' },
-      { id: 'rot', glyph: '⟳', col: '#3b82c4' }, { id: 'keep', glyph: '📌', col: tool.keep ? '#e0a82e' : '#4a5560', on: !!tool.keep }];
+      { id: 'rot', glyph: '⟳', col: '#c8643a' }, { id: 'keep', glyph: '📌', col: tool.keep ? '#e0a82e' : '#4a5560', on: !!tool.keep }];
   }
   if (tool.mode === 'demolish') {
     return [{ id: 'ok', glyph: '✔', col: T.demoTarget ? '#27a862' : '#6a6f55', dis: !T.demoTarget }, { id: 'cancel', glyph: '✖', col: '#d64545' },
@@ -135,7 +135,7 @@ function rr(g, x, y, w, h, r) {
 
 // Called by renderer.js with the context in CSS-px space (setTransform(dpr...)).
 // Concept-style bar (white/blue rounded buttons with navy outline + 3px "pressed edge"); vector glyphs so it is crisp at any DPR.
-const NAVY = '#1e365a', OUTL = '#14111b';
+const NAVY = '#5a2a1c', OUTL = '#14111b';
 function glyphPath(g, id, glyph, cx, cy, col, lw) {
   g.save(); g.strokeStyle = col; g.fillStyle = col; g.lineWidth = lw; g.lineCap = 'round'; g.lineJoin = 'round';
   if (glyph === '✔') { g.beginPath(); g.moveTo(cx - 8, cy + 0.5); g.lineTo(cx - 2.5, cy + 6); g.lineTo(cx + 8.5, cy - 6.5); g.stroke(); }
@@ -165,14 +165,14 @@ function drawTouchOverlayNew(g, ui, bar) {
   g.lineWidth = 2; g.strokeStyle = NAVY; g.stroke();
   for (const b of bar.btns) {
     const kind = b.id === 'ok' ? 'primary' : (b.id === 'cancel' && b.glyph === '✔') ? 'good' : (b.id === 'cancel' || b.id === 'demo') ? 'danger' : b.on ? 'on' : 'plain';
-    const face = { primary: '#2a7ef6', good: '#5aae02', danger: '#d24e66', on: '#f6c64e', plain: '#ffffff' }[kind];
-    const edge = { primary: '#1e66ea', good: '#3f8a02', danger: '#a83048', on: '#c9942a', plain: '#c6d4e4' }[kind];
+    const face = { primary: '#d4583a', good: '#5aae02', danger: '#d24e66', on: '#f6c64e', plain: '#ffffff' }[kind];
+    const edge = { primary: '#b8442e', good: '#3f8a02', danger: '#a83048', on: '#c9942a', plain: '#e0c8a8' }[kind];
     const ink = kind === 'plain' || kind === 'on' ? NAVY : '#ffffff';
     const dis = !!b.dis, press = T.pressed === b.id;
     const dy = press ? 2 : 0;
     g.globalAlpha = A * (dis ? 0.55 : 1);
-    rr(g, b.x, b.y + 3, b.w, b.h - 1, 10); g.fillStyle = dis ? '#9cb4d4' : edge; g.fill();
-    rr(g, b.x, b.y + dy, b.w, b.h - 2, 10); g.fillStyle = dis ? '#c6d4e4' : face; g.fill();
+    rr(g, b.x, b.y + 3, b.w, b.h - 1, 10); g.fillStyle = dis ? '#d8b898' : edge; g.fill();
+    rr(g, b.x, b.y + dy, b.w, b.h - 2, 10); g.fillStyle = dis ? '#e0c8a8' : face; g.fill();
     g.lineWidth = 2; g.strokeStyle = dis ? '#7e8aba' : (kind === 'plain' ? NAVY : OUTL); g.stroke();
     g.save(); rr(g, b.x + 3, b.y + dy + 2.5, b.w - 6, 6, 3); g.fillStyle = 'rgba(255,255,255,0.28)'; g.fill(); g.restore();
     glyphPath(g, b.id, b.glyph, b.x + b.w / 2, b.y + dy + (b.h - 2) / 2, dis ? '#7e8aba' : ink, 3.2);

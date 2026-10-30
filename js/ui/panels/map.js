@@ -36,7 +36,7 @@ const DISTRICTS = {
   sports: { icon: '🏟', name: '學校球場（運動族）' },
   kid: { icon: '🧸', name: '托兒所／學校（兒童）' },
 };
-const TYPE_COLOR = { elder: '#f4a261', office: '#3b7fd1', sports: '#d1495b', kid: '#f4d35e' };
+const TYPE_COLOR = { elder: '#f4a261', office: '#c8643a', sports: '#d1495b', kid: '#f4d35e' };
 const store = { heat: true, people: true };
 
 function shares(state) {
@@ -137,7 +137,7 @@ export function mountMap(root, state, ui) {
       c.fillStyle = d.color; c.globalAlpha = d.blocks === false ? 0.55 : 0.95;
       c.fillRect(px(o.x) + 1, py(o.y) + 1, w * tp - 2, hh * tp - 2);
       c.globalAlpha = 1;
-      c.strokeStyle = '#1f2d33'; c.lineWidth = 1; c.strokeRect(px(o.x) + 1.5, py(o.y) + 1.5, w * tp - 3, hh * tp - 3);
+      c.strokeStyle = '#2a1c16'; c.lineWidth = 1; c.strokeRect(px(o.x) + 1.5, py(o.y) + 1.5, w * tp - 3, hh * tp - 3);
       if (tp >= 14) {
         c.font = `${Math.min(tp * 0.75, 20)}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
         c.fillStyle = '#fff';
@@ -148,7 +148,7 @@ export function mountMap(root, state, ui) {
     c.strokeStyle = '#f4b942'; c.lineWidth = 2;
     for (const z of state.zones || []) for (const cell of z.cells) c.strokeRect(px(cell.x) + 1, py(cell.y) + 1, tp - 2, tp - 2);
     // lot border + door
-    c.strokeStyle = '#1f2d33'; c.lineWidth = 3; c.strokeRect(px(l.x0), py(l.y0), l.w * tp, l.h * tp);
+    c.strokeStyle = '#2a1c16'; c.lineWidth = 3; c.strokeRect(px(l.x0), py(l.y0), l.w * tp, l.h * tp);
     c.fillStyle = '#e76f51'; c.fillRect(px(state.door.x) - 2, py(state.door.y - 1) + tp - 4, tp + 4, 6);
     c.font = '11px sans-serif'; c.fillStyle = '#fff'; c.textAlign = 'left'; c.textBaseline = 'top';
     c.fillText('入口', px(state.door.x) + tp + 6, py(state.door.y) + 1);
@@ -156,13 +156,13 @@ export function mountMap(root, state, ui) {
       for (const p of state.patients) {
         c.fillStyle = TYPE_COLOR[p.type] || '#fff';
         c.beginPath(); c.arc(px(p.x), py(p.y), Math.max(3, tp * 0.22), 0, 6.283); c.fill();
-        c.strokeStyle = '#1f2d33'; c.lineWidth = 1; c.stroke();
+        c.strokeStyle = '#2a1c16'; c.lineWidth = 1; c.stroke();
       }
       for (const s of state.staff) {
         c.fillStyle = (STAFF_ROLES[s.role] || {}).color || '#fff';
         const r = Math.max(4, tp * 0.26);
         c.fillRect(px(s.x) - r, py(s.y) - r, r * 2, r * 2);
-        c.strokeStyle = '#1f2d33'; c.lineWidth = 1.5; c.strokeRect(px(s.x) - r, py(s.y) - r, r * 2, r * 2);
+        c.strokeStyle = '#2a1c16'; c.lineWidth = 1.5; c.strokeRect(px(s.x) - r, py(s.y) - r, r * 2, r * 2);
       }
     }
   }

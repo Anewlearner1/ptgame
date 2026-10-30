@@ -240,7 +240,7 @@ function specFor(kind, variant) {
     }
     case 'server': {
       const c = roleColor('server', '#8e5bc4');
-      return { ...base, style: v & 1 ? 'bun' : 'short', shirt: '#fafafa', pants: '#222831', vest: c, tie: '#222', shoes: '#1c1c24' };
+      return { ...base, style: v & 1 ? 'bun' : 'short', shirt: '#fafafa', pants: '#222831', vest: c, tie: '#222', tray: true, shoes: '#1c1c24' };
     }
     case 'cashier': {
       const c = roleColor('cashier', '#e87fae');
@@ -336,6 +336,9 @@ function drawPerson(g, s, front, pose, frame, right) {
 
   // cane (viewer's right hand)
   if (s.cane && pose !== 1) { R(13, by + ah - 2 - aL * 0, 1, L0 + legH - by - ah + 2, '#8a5a2b'); R(12, by + ah - 2, 2, 1, '#a9733a'); }
+
+  // server's tray (viewer's right hand): steel plate with a bowl of soup
+  if (s.tray && pose !== 1) { const ty = by + ah - 2; R(11, ty, 5, 1, '#d2d2de'); R(11, ty + 1, 5, 1, '#7e8aba'); R(13, ty - 2, 2, 2, '#f6f6f6'); R(13, ty - 2, 2, 1, '#e23a3a'); }
 
   // ── head ──
   const skin = s.skin;

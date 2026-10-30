@@ -26,7 +26,7 @@
       try { concept = localStorage.getItem('restgame.art') !== 'classic'; } catch (e) { /* storage blocked: default style */ }
       d.className = (p ? 'lay-portrait lay-mobile' : c ? 'lay-compact lay-mobile' : 'lay-desktop') +
         (matchMedia('(pointer: coarse)').matches ? ' touch' : '') + (concept ? ' style-concept' : '');
-      if (concept) { var m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', '#1e365a'); }
+      if (concept) { var m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', '#5a2a1c'); }
     })();
   </script>
 </head>

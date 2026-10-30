@@ -187,8 +187,8 @@ function buildSettings(body, state, ui) {
 const num = v => (v && typeof v === 'object') ? Object.values(v).reduce((a, b) => a + (+b || 0), 0) : (+v || 0);
 const METRICS = {
   cash: { label: '收入 / 支出', series: [['income', '收入', '#3a9d4d'], ['expense', '支出', '#d1495b']], bars: true },
-  money: { label: '資金', series: [['money', '資金', '#2a9d8f']], fmt: v => money(v) },
-  patients: { label: '客人數', series: [['patients', '客人數', '#3b7fd1']] },
+  money: { label: '資金', series: [['money', '資金', '#b8442e']], fmt: v => money(v) },
+  patients: { label: '客人數', series: [['patients', '客人數', '#c8643a']] },
   satisfaction: { label: '滿意度', series: [['satisfaction', '平均滿意度', '#f4a261']] },
   reputation: { label: '聲譽', series: [['reputation', '聲譽', '#8e5bc4']] },
 };
@@ -226,7 +226,7 @@ function drawChart(canvas, state, metricKey, hoverIdx) {
     c.beginPath(); c.moveTo(L, y + 0.5); c.lineTo(W - R, y + 0.5); c.stroke();
     c.fillText(fmtShort(v), L - 6, y);
   }
-  if (lo < 0) { c.strokeStyle = '#1f2d33'; c.beginPath(); c.moveTo(L, yOf(0) + 0.5); c.lineTo(W - R, yOf(0) + 0.5); c.stroke(); }
+  if (lo < 0) { c.strokeStyle = '#2a1c16'; c.beginPath(); c.moveTo(L, yOf(0) + 0.5); c.lineTo(W - R, yOf(0) + 0.5); c.stroke(); }
   const n = hist.length, slot = pw / n;
   const xOf = i => L + slot * (i + 0.5);
   // x labels
@@ -244,10 +244,10 @@ function drawChart(canvas, state, metricKey, hoverIdx) {
       });
     });
     // net line
-    c.strokeStyle = '#264653'; c.lineWidth = 2; c.beginPath();
+    c.strokeStyle = '#4a2a20'; c.lineWidth = 2; c.beginPath();
     hist.forEach((r, i) => { const v = vals[0][i] - vals[1][i], x = xOf(i), y = yOf(v); i ? c.lineTo(x, y) : c.moveTo(x, y); });
     c.stroke();
-    hist.forEach((r, i) => { c.fillStyle = '#264653'; c.fillRect(xOf(i) - 2, yOf(vals[0][i] - vals[1][i]) - 2, 4, 4); });
+    hist.forEach((r, i) => { c.fillStyle = '#4a2a20'; c.fillRect(xOf(i) - 2, yOf(vals[0][i] - vals[1][i]) - 2, 4, 4); });
   } else {
     M.series.forEach((s, si) => {
       c.strokeStyle = s[2]; c.lineWidth = 2.5; c.beginPath();
@@ -259,8 +259,8 @@ function drawChart(canvas, state, metricKey, hoverIdx) {
   }
   // legend
   c.textAlign = 'left'; let lx = L + 6;
-  const leg = M.series.map(s => [s[1], s[2]]); if (M.bars) leg.push(['淨利', '#264653']);
-  for (const [name, col] of leg) { c.fillStyle = col; c.fillRect(lx, T + 2, 10, 10); c.fillStyle = '#1f2d33'; c.fillText(name, lx + 14, T + 7); lx += 14 + c.measureText(name).width + 14; }
+  const leg = M.series.map(s => [s[1], s[2]]); if (M.bars) leg.push(['淨利', '#4a2a20']);
+  for (const [name, col] of leg) { c.fillStyle = col; c.fillRect(lx, T + 2, 10, 10); c.fillStyle = '#2a1c16'; c.fillText(name, lx + 14, T + 7); lx += 14 + c.measureText(name).width + 14; }
   // hover
   if (hoverIdx != null && hoverIdx >= 0 && hoverIdx < n) {
     const x = xOf(hoverIdx);

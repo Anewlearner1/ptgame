@@ -7,9 +7,9 @@
 
 /* ---------- 1. Tokens ---------------------------------------------------- */
 :root {
-  --teal: #2a9d8f;
-  --teal-dark: #1d5c57;
-  --deep: #264653;
+  --teal: #b8442e;
+  --teal-dark: #7a2a1c;
+  --deep: #4a2a20;
   --cream: #fdf6e3;
   --paper: #fffaf0;
   --wood: #c8a27a;
@@ -18,13 +18,13 @@
   --good: #3a9d4d;
   --bad: #d1495b;
 
-  --ink: #1f2d33;          /* outline colour */
-  --text: #1f2d33;
+  --ink: #2a1c16;          /* outline colour */
+  --text: #2a1c16;
   --text-light: #fdf6e3;
   --muted: #6b7a80;
   --line: rgba(31, 45, 51, 0.18);
   --shade: rgba(0, 0, 0, 0.14);
-  --sky: #9fd3c7;
+  --sky: #f0d8b8;
 
   --px: 3px;               /* one "pixel" of chunky border */
   --sidebar-w: 76px;
@@ -105,7 +105,7 @@ input {
   gap: 12px;
   padding: 0 12px;
   min-width: 0;
-  background: linear-gradient(#24706a, var(--teal-dark) 70%, #174a46);
+  background: linear-gradient(#8a3a28, var(--teal-dark) 70%, #6a2a1c);
   color: var(--text-light);
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
   box-shadow: inset 0 calc(-1 * var(--px)) 0 0 var(--ink),
@@ -137,7 +137,7 @@ input {
   font-size: 14px;
   font-variant-numeric: tabular-nums;
   background: rgba(0, 0, 0, 0.2);
-  box-shadow: 0 0 0 2px #0c3331,
+  box-shadow: 0 0 0 2px #3a1a10,
               inset 0 calc(-1 * var(--px)) 0 0 rgba(0, 0, 0, 0.3);
 }
 
@@ -282,7 +282,7 @@ input {
   min-height: 46px;
   margin: 0 -16px 14px;
   padding: 10px 52px 10px 16px;
-  background: linear-gradient(#2d8a7e, var(--teal-dark));
+  background: linear-gradient(#a8421f, var(--teal-dark));
   color: var(--text-light);
   font-size: 17px;
   font-weight: 900;
@@ -507,7 +507,7 @@ input {
   color: var(--text-light);
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
 }
-.btn.primary:hover { background: #36b3a4; }
+.btn.primary:hover { background: #e8825e; }
 
 .btn.danger {
   background: var(--bad);
@@ -718,7 +718,7 @@ button.card:hover,
   width: var(--v, 0%);
   max-width: 100%;
   background: repeating-linear-gradient(90deg,
-              var(--teal) 0 8px, #36b3a4 8px 12px);
+              var(--teal) 0 8px, #e8825e 8px 12px);
   box-shadow: inset 0 -3px 0 0 rgba(0, 0, 0, 0.18);
   transition: width 0.4s steps(8);
 }
@@ -927,8 +927,8 @@ table.list th.num {
    22. CONCEPT STYLE — interface chrome (docs/ART_STYLE.md §3)
    Everything below is scoped under html.style-concept (set before first paint by index.html, kept in sync by js/ui/theme.js
    while the art style is 'new'). The classic (pixel) rules above are untouched; with 'classic' none of this applies.
-   Palette from the concept sheet: navy #1e365a bars, medical blue buttons, #eaf6f6 panel body, #c6d4e4 card lines.
-   Primary buttons use #1e66ea (white text >= 4.5:1; #2a7ef6 only reaches 3.9:1) with the #125ade bottom edge.
+   Palette from the concept sheet: navy #5a2a1c bars, medical blue buttons, #fbf0e0 panel body, #e0c8a8 card lines.
+   Primary buttons use #b8442e (white text >= 4.5:1; #d4583a only reaches 3.9:1) with the #983420 bottom edge.
    ========================================================================== */
 
 /* dual icon slot (js/ui/icons.js): classic shows the emoji, concept shows the drawn svg / atlas sprite */
@@ -938,26 +938,26 @@ table.list th.num {
 
 html.style-concept {
   color-scheme: light;
-  --c-navy: #1e365a; --c-navy-2: #2a365a; --c-navy-3: #364272; --c-ink: #14111b;
-  --c-blue: #1e66ea; --c-blue-hi: #2a7ef6; --c-blue-lo: #125ade; --c-blue-l: #5aaef6; --c-blue-hl: #9cc8f8;
-  --c-panel: #eaf6f6; --c-line: #c6d4e4; --c-line-2: #9cb4d0;
-  --c-teal: #1e7ea2; --c-green: #2a664e; --c-purple: #5a5aa2; --c-orange: #a8561a; --c-orange-hi: #d9822b; --c-slate: #5a667e; --c-red: #c43e5a;
-  --c-chip: #2b4b80;
+  --c-navy: #5a2a1c; --c-navy-2: #4a2418; --c-navy-3: #6e3a28; --c-ink: #14111b;
+  --c-blue: #b8442e; --c-blue-hi: #d4583a; --c-blue-lo: #983420; --c-blue-l: #e8825e; --c-blue-hl: #f2b896;
+  --c-panel: #fbf0e0; --c-line: #e0c8a8; --c-line-2: #c8a27a;
+  --c-teal: #b5651d; --c-green: #2a664e; --c-purple: #5a5aa2; --c-orange: #a8561a; --c-orange-hi: #d9822b; --c-slate: #5a667e; --c-red: #c43e5a;
+  --c-chip: #7a3a24;
   --band: var(--c-navy);
 
   /* legacy tokens re-mapped so every unscoped rule that reads them re-colours itself */
-  --teal: #1e7ea2; --teal-dark: #1e365a; --deep: #1e365a; --cream: #eaf6f6; --paper: #ffffff; --wood: #9cb4d0;
-  --accent: #1e66ea; --gold: #f6c64e; --good: #1d7a42; --bad: #c43e5a;
-  --ink: #1e365a; --text: #14233a; --text-light: #ffffff; --muted: #4a5870;
-  --line: rgba(30, 54, 90, 0.2); --shade: rgba(30, 54, 90, 0.12); --sky: #cfe6f5;
+  --teal: #b5651d; --teal-dark: #5a2a1c; --deep: #5a2a1c; --cream: #fbf0e0; --paper: #ffffff; --wood: #c8a27a;
+  --accent: #b8442e; --gold: #f6c64e; --good: #1d7a42; --bad: #c43e5a;
+  --ink: #5a2a1c; --text: #2a1a14; --text-light: #ffffff; --muted: #6a5448;
+  --line: rgba(30, 54, 90, 0.2); --shade: rgba(30, 54, 90, 0.12); --sky: #f5e0c8;
   --outline: 0 0 0 2px var(--c-navy);
   --depth: 0 4px 0 0 rgba(30, 54, 90, 0.3);
   --bevel: inset 0 2px 0 0 rgba(255, 255, 255, 0.75);
 }
 /* panel colour bands (title band, active chips, active sidebar button) */
-html.style-concept [data-p="build"], html.style-concept #stage[data-panel="build"] { --band: #1e365a; }
+html.style-concept [data-p="build"], html.style-concept #stage[data-panel="build"] { --band: #5a2a1c; }
 html.style-concept [data-p="operate"], html.style-concept #stage[data-panel="operate"] { --band: #5a5aa2; }
-html.style-concept [data-p="clinic"], html.style-concept #stage[data-panel="clinic"] { --band: #1e7ea2; }
+html.style-concept [data-p="clinic"], html.style-concept #stage[data-panel="clinic"] { --band: #b5651d; }
 html.style-concept [data-p="overview"], html.style-concept #stage[data-panel="overview"] { --band: #2a664e; }
 html.style-concept [data-p="map"], html.style-concept #stage[data-panel="map"] { --band: #a8561a; }
 html.style-concept [data-p="system"], html.style-concept #stage[data-panel="system"] { --band: #5a667e; }
@@ -985,8 +985,8 @@ html.style-concept .tb-ico { display: inline-flex; align-items: center; justify-
 html.style-concept .tb-money { color: #ffe08a; }
 html.style-concept .tb-flash-up { animation: tbc-up 0.9s ease 1; }
 html.style-concept .tb-flash-down { animation: tbc-down 0.9s ease 1; }
-@keyframes tbc-up { 0%, 100% { background-color: #2b4b80; } 25%, 60% { background-color: #176a3b; } }
-@keyframes tbc-down { 0%, 100% { background-color: #2b4b80; } 25%, 60% { background-color: #9c2c46; } }
+@keyframes tbc-up { 0%, 100% { background-color: #7a3a24; } 25%, 60% { background-color: #176a3b; } }
+@keyframes tbc-down { 0%, 100% { background-color: #7a3a24; } 25%, 60% { background-color: #9c2c46; } }
 
 /* ---- sidebar ---------------------------------------------------------- */
 html.style-concept .sidebar-btn {
@@ -1090,7 +1090,7 @@ html.style-concept .btn.primary {
   background: var(--c-blue); color: #fff; text-shadow: none;
   box-shadow: 0 0 0 2px var(--c-navy), 0 4px 0 0 var(--c-blue-lo), 0 5px 0 1px var(--c-navy), inset 0 2px 0 rgba(255, 255, 255, 0.35);
 }
-html.style-concept .btn.primary:hover { background: #2a74f0; }
+html.style-concept .btn.primary:hover { background: #d4583a; }
 html.style-concept .btn.primary:active { box-shadow: 0 0 0 2px var(--c-navy), inset 0 3px 0 rgba(20, 17, 27, 0.25); }
 html.style-concept .btn.danger {
   background: var(--c-red); color: #fff; text-shadow: none;
@@ -1104,7 +1104,7 @@ html.style-concept .btn.small.primary { box-shadow: 0 0 0 2px var(--c-navy), 0 3
 html.style-concept .btn.small.danger { box-shadow: 0 0 0 2px var(--c-navy), 0 3px 0 0 #9c2c46, 0 4px 0 1px var(--c-navy), inset 0 2px 0 rgba(255, 255, 255, 0.3); }
 html.style-concept .btn:disabled,
 html.style-concept .btn[disabled] {
-  background: #dfe6ee; color: #5b687c; filter: none; transform: none; box-shadow: 0 0 0 2px #9cb4d0, inset 0 2px 0 rgba(255, 255, 255, 0.6);
+  background: #dfe6ee; color: #7a6a5a; filter: none; transform: none; box-shadow: 0 0 0 2px #c8a27a, inset 0 2px 0 rgba(255, 255, 255, 0.6);
 }
 
 /* ---- tabs: rounded chips, active = white on the band colour --------------- */
@@ -1129,9 +1129,9 @@ html.style-concept button.card:hover,
 html.style-concept .card[role="button"]:hover,
 html.style-concept .card[data-id]:hover { background: #f4faff; transform: none; box-shadow: 0 0 0 1px var(--c-blue-l), 0 3px 8px rgba(42, 126, 246, 0.18); }
 html.style-concept .card.selected,
-html.style-concept .card.selected:hover { background: #f1f8ff; box-shadow: 0 0 0 2px #2a7ef6, 0 4px 12px rgba(42, 126, 246, 0.25); }
+html.style-concept .card.selected:hover { background: #f1f8ff; box-shadow: 0 0 0 2px #d4583a, 0 4px 12px rgba(42, 126, 246, 0.25); }
 html.style-concept .card.locked,
-html.style-concept .card.locked:hover { background: #e4e9ef; color: #5b687c; filter: grayscale(0.6); opacity: 0.85; box-shadow: 0 0 0 1px var(--c-line); }
+html.style-concept .card.locked:hover { background: #e4e9ef; color: #7a6a5a; filter: grayscale(0.6); opacity: 0.85; box-shadow: 0 0 0 1px var(--c-line); }
 
 /* ---- stats, badges, tags -------------------------------------------------- */
 html.style-concept .badge { border-radius: 999px; background: #f6c64e; color: var(--c-ink); box-shadow: 0 0 0 1.5px var(--c-navy); }
@@ -1140,7 +1140,7 @@ html.style-concept .tag { border-radius: 999px; background: #dcebfb; color: var(
 /* ---- progress bars: rounded, blue -> teal ------------------------------------ */
 html.style-concept .bar { border-radius: 999px; background: #dbe7f2; box-shadow: 0 0 0 1.5px var(--c-navy), inset 0 2px 0 rgba(30, 54, 90, 0.14); }
 html.style-concept .bar > i {
-  border-radius: 999px; background: linear-gradient(90deg, #2a7ef6, #1e9fb5);
+  border-radius: 999px; background: linear-gradient(90deg, #d4583a, #d98a3a);
   box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.35), inset 0 -2px 0 rgba(20, 17, 27, 0.15);
   transition: width 0.4s ease;
 }
@@ -1148,9 +1148,9 @@ html.style-concept .bar.warn > i { background: linear-gradient(90deg, #f6c64e, #
 html.style-concept .bar.bad > i { background: linear-gradient(90deg, #d24e66, #e23a3a); }
 
 /* ---- form controls --------------------------------------------------------------- */
-html.style-concept input[type="range"]::-webkit-slider-runnable-track { border-radius: 999px; background: #c6d4e4; box-shadow: 0 0 0 1.5px var(--c-navy); }
+html.style-concept input[type="range"]::-webkit-slider-runnable-track { border-radius: 999px; background: #e0c8a8; box-shadow: 0 0 0 1.5px var(--c-navy); }
 html.style-concept input[type="range"]::-webkit-slider-thumb { border-radius: 8px; background: var(--c-blue); box-shadow: 0 0 0 2px var(--c-navy), inset 0 2px 0 rgba(255, 255, 255, 0.4); }
-html.style-concept input[type="range"]::-moz-range-track { border-radius: 999px; background: #c6d4e4; box-shadow: 0 0 0 1.5px var(--c-navy); }
+html.style-concept input[type="range"]::-moz-range-track { border-radius: 999px; background: #e0c8a8; box-shadow: 0 0 0 1.5px var(--c-navy); }
 html.style-concept input[type="range"]::-moz-range-thumb { border-radius: 8px; background: var(--c-blue); box-shadow: 0 0 0 2px var(--c-navy), inset 0 2px 0 rgba(255, 255, 255, 0.4); }
 html.style-concept input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 3px solid var(--c-blue-hi); }
 html.style-concept select {
@@ -1158,7 +1158,7 @@ html.style-concept select {
   background-image: linear-gradient(45deg, transparent 50%, var(--c-navy) 50%), linear-gradient(135deg, var(--c-navy) 50%, transparent 50%);
   box-shadow: 0 0 0 2px var(--c-navy), inset 0 -3px 0 rgba(30, 54, 90, 0.1);
 }
-html.style-concept select:disabled { color: #5b687c; }
+html.style-concept select:disabled { color: #7a6a5a; }
 
 /* ---- tables --------------------------------------------------------------------- */
 html.style-concept table.list { background: #fff; box-shadow: 0 0 0 1.5px var(--c-line-2); }
@@ -1184,5 +1184,5 @@ html.style-concept .scroll-y::-webkit-scrollbar-thumb,
 html.style-concept .modal-body::-webkit-scrollbar-thumb { background: var(--c-blue-l); border-radius: 999px; box-shadow: inset 0 0 0 1px rgba(30, 54, 90, 0.35); }
 html.style-concept .noscript { background: var(--c-navy); }
 /* atlas sprites in the top bar: light round badge so the dark sprite outline reads on the navy chip */
-html.style-concept .tb-ico .u-d-n:has(.u-art) { width: 26px; height: 26px; border-radius: 50%; background: #eaf6f6; box-shadow: inset 0 -2px 0 rgba(30, 54, 90, 0.18); }
+html.style-concept .tb-ico .u-d-n:has(.u-art) { width: 26px; height: 26px; border-radius: 50%; background: #fbf0e0; box-shadow: inset 0 -2px 0 rgba(30, 54, 90, 0.18); }
 html.style-concept .tb-ico .u-art { --aw: 20px !important; --ah: 20px !important; }

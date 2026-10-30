@@ -1,6 +1,6 @@
 // Concept-style objects + painted floors (S-N). Procedural redraw of every placeable that has no atlas sprite, in the style of
 // docs/ART_STYLE.md (1px #14111b outline, 3-tone shading lit from the top-left, white top highlights, flat fills + 1px detail,
-// bright-blue screens with white ECG / cross patterns).
+// screens with white menu / order-ticket patterns; restaurant palette: warm reds and woods).
 //
 // Pipeline (same idea as artdraw.js people): every object is drawn ONCE at 2x "design" resolution (K px per world px) into a
 // master canvas, auto-outlined, then pre-scaled to the current device scale (zoom x DPR) on demand (lod()). Lines therefore stay
@@ -22,7 +22,7 @@ const C = {
   blue: R('#125ade', '#1e66ea', '#2a7ef6', '#5aaef6', '#9cc8f8'),
   blueD: R('#0e3f9c', '#125ade', '#1e66ea', '#368af6', '#7ab4f6'),
   navy: R('#14213a', '#1e365a', '#2a365a', '#364272', '#5a667e'),
-  steel: R('#5a667e', '#7e8aba', '#96a2c6', '#d2d2de', '#f6f6f6'),
+  steel: R('#625c58', '#8a8480', '#a8a29c', '#d6d2cc', '#f6f4f0'),
   white: R('#aab4cc', '#c6cede', '#e6eaf4', '#f6f6f6', '#ffffff'),
   panel: R('#9fb8cc', '#c2d6e4', '#eaf6f6', '#f6ffff', '#ffffff'),
   cream: R('#b4a8a0', '#d2c6ba', '#e8dccc', '#f2e8da', '#fdf6ec'),
@@ -202,7 +202,7 @@ function makePen(g, AX, AY, rot) {
     fn(f0, f1, k, z0, z1, '#14111b');                                  // bezel
     const ins = 0.04 * (f1 - f0);
     const dz = Math.min(1.1, (z1 - z0) * 0.12);
-    fn(f0 + ins, f1 - ins, k, z0 + dz, z1 - dz, kind === 'fan' ? '#1e365a' : bg);
+    fn(f0 + ins, f1 - ins, k, z0 + dz, z1 - dz, kind === 'fan' ? '#1e365a' : kind === 'menu' || kind === 'pos' ? '#8c2a1c' : bg);
     const a0 = f0 + ins, a1 = f1 - ins, y0 = z0 + dz, y1 = z1 - dz;
     const F = (pts, c) => P.faceLine(face, a0, a1, k, y0, y1, pts, c);
     if (kind === 'ecg' || kind === 'heart') {
@@ -214,6 +214,13 @@ function makePen(g, AX, AY, rot) {
     } else if (kind === 'fan') {
       F([[0.5, 0.88], [0.2, 0.18]], '#5aaef6'); F([[0.5, 0.88], [0.8, 0.18]], '#5aaef6');
       F([[0.2, 0.18], [0.5, 0.1], [0.8, 0.18]], '#9cc8f8'); F([[0.5, 0.7], [0.5, 0.3]], '#2a7ef6'); F([[0.38, 0.55], [0.62, 0.55]], '#2a7ef6');
+    } else if (kind === 'menu') {                                       // menu board: title bar, rows with price dots, bowl
+      F([[0.08, 0.86], [0.92, 0.86]], '#ffe08a'); F([[0.08, 0.8], [0.92, 0.8]], '#ffe08a');
+      for (const q of [0.62, 0.44, 0.26]) { F([[0.1, q], [0.5, q]], '#f6f6f6'); F([[0.74, q], [0.9, q]], '#f6c64e'); F([[0.1, q + 0.01], [0.5, q + 0.01]], '#f6f6f6'); }
+      F([[0.58, 0.62], [0.66, 0.5], [0.7, 0.5]], '#ff9a8a');
+    } else if (kind === 'pos') {                                        // POS: order rows + total bar
+      for (const q of [0.78, 0.6, 0.42]) { F([[0.1, q], [0.55, q]], '#f6f6f6'); F([[0.7, q], [0.9, q]], '#ffe08a'); }
+      F([[0.1, 0.2], [0.9, 0.2]], '#ffe08a'); F([[0.1, 0.24], [0.9, 0.24]], '#ffe08a');
     } else if (kind === 'wave') {
       F([[0.06, 0.5], [0.2, 0.72], [0.32, 0.28], [0.44, 0.72], [0.56, 0.28], [0.68, 0.72], [0.8, 0.28], [0.94, 0.5]], '#f6f6f6');
     }
@@ -317,7 +324,7 @@ const DRAW = {
     P.box(0.04, 0.16, w - 0.04, 0.82, 11, 12.5, C.wood);
     P.box(w / 2 - 0.12, 0.36, w / 2 + 0.12, 0.5, 12.5, 15, C.steel, { edge: false });     // stand
     P.box(0.14, 0.4, w - 0.14, 0.52, 15, 41, C.navy);                                      // panel
-    P.screen('L', 0.2, w - 0.2, 0.52, 16.4, 39.6, 'wave');
+    P.screen('L', 0.2, w - 0.2, 0.52, 16.4, 39.6, 'menu');
     P.box(0.3, 0.25, 0.5, 0.35, 12.5, 14, C.steel, { edge: false });                       // set-top box
     P.ball(w - 0.25, 0.5, 15.5, 3, C.leaf);
   } },
@@ -333,24 +340,23 @@ const DRAW = {
     for (const [u, v, z] of [[0.4, 0.7, 28], [0.62, 0.7, 26], [0.5, 0.58, 40], [0.3, 0.5, 31], [0.7, 0.5, 32]]) { P.ln(u, v, z, u + 0.06, v, z + 5, C.leaf.s); P.dot(u - 0.04, v, z + 3, C.leaf.h, 2, 1); }
   } },
   sign: { hm: 34, draw(P) {
+    // standing board: red panel, arrow and a steaming bowl
     P.box(0.3, 0.38, 0.7, 0.62, 0, 3, C.steel);
     P.box(0.46, 0.46, 0.54, 0.54, 3, 22, C.steel, { edge: false });
-    P.box(0.12, 0.42, 0.88, 0.58, 18, 34, C.blue);
-    P.fL(0.16, 0.84, 0.58, 19.2, 32.8, '#2a7ef6');
-    // arrow + cross
-    P.faceLine('L', 0.16, 0.84, 0.58, 19.2, 32.8, [[0.14, 0.5], [0.52, 0.5]], '#f6f6f6');
-    P.faceLine('L', 0.16, 0.84, 0.58, 19.2, 32.8, [[0.14, 0.56], [0.52, 0.56]], '#f6f6f6');
-    P.faceLine('L', 0.16, 0.84, 0.58, 19.2, 32.8, [[0.4, 0.84], [0.56, 0.53], [0.4, 0.2]], '#f6f6f6');
-    P.faceLine('L', 0.16, 0.84, 0.58, 19.2, 32.8, [[0.43, 0.84], [0.59, 0.53], [0.43, 0.2]], '#f6f6f6');
-    P.faceLine('L', 0.16, 0.84, 0.58, 19.2, 32.8, [[0.82, 0.3], [0.82, 0.72]], '#9cc8f8');
-    P.faceLine('L', 0.16, 0.84, 0.58, 19.2, 32.8, [[0.72, 0.51], [0.92, 0.51]], '#9cc8f8');
+    P.box(0.12, 0.42, 0.88, 0.58, 18, 34, C.red);
+    P.fL(0.16, 0.84, 0.58, 19.2, 32.8, '#d24e66');
+    const F = (pts, c) => P.faceLine('L', 0.16, 0.84, 0.58, 19.2, 32.8, pts, c);
+    F([[0.1, 0.5], [0.46, 0.5]], '#f6f6f6'); F([[0.1, 0.56], [0.46, 0.56]], '#f6f6f6');
+    F([[0.34, 0.8], [0.5, 0.53], [0.34, 0.26]], '#f6f6f6'); F([[0.37, 0.8], [0.53, 0.53], [0.37, 0.26]], '#f6f6f6');
+    F([[0.62, 0.42], [0.92, 0.42], [0.88, 0.2], [0.66, 0.2], [0.62, 0.42]], '#ffe08a');
+    F([[0.68, 0.7], [0.7, 0.58]], '#ffe08a'); F([[0.8, 0.74], [0.8, 0.58]], '#ffe08a');
   } },
   coffee: { hm: 44, draw(P) {
     // espresso machine: dark body, steel front, blue display, two spouts, cup + drip tray, bean hopper on top
     P.box(0.22, 0.24, 0.78, 0.76, 0, 28, C.woodD);
     P.box(0.22, 0.24, 0.78, 0.76, 28, 30, C.steel);
     P.fL(0.22, 0.78, 0.76, 17, 27, C.steel.l);
-    P.fL(0.3, 0.7, 0.76, 22, 26.5, '#14111b'); P.fL(0.32, 0.68, 0.76, 22.8, 25.7, '#2a7ef6');
+    P.fL(0.3, 0.7, 0.76, 22, 26.5, '#14111b'); P.fL(0.32, 0.68, 0.76, 22.8, 25.7, '#f6c64e');
     P.dot(0.5, 0.76, 24, '#f6f6f6', 4, 1); P.dot(0.4, 0.76, 25, '#f6f6f6', 2, 1);
     P.fL(0.3, 0.7, 0.76, 17.6, 19, '#14111b');
     P.box(0.34, 0.66, 0.4, 0.76, 15, 17.5, C.steel, { edge: false }); P.box(0.6, 0.66, 0.66, 0.76, 15, 17.5, C.steel, { edge: false });
@@ -383,8 +389,8 @@ const DRAW = {
     P.ball(0.4, 0.55, 37, 3.4, C.yellow); P.box(w - 0.6, 0.45, w - 0.35, 0.7, 34, 38, C.red);
   } },
   rest_room: { ns: 1, hm: 44, draw(P) {
-    roomShell(P, 2, 2, { wh: 40, acc: C.teal,
-      rug: P => { P.disc(1.45, 1.35, 2, 20, C.blue); P.disc(1.45, 1.35, 2.2, 15, { t: '#9cc8f8' }); },
+    roomShell(P, 2, 2, { wh: 40, acc: C.orange,
+      rug: P => { P.disc(1.45, 1.35, 2, 20, C.red); P.disc(1.45, 1.35, 2.2, 15, { t: '#f4a070' }); },
       decor(P) {
         winL(P, 0.95, 1.65, 0.09, 15, 34);
         frameR(P, 0.45, 0.95, 0.09, 17, 31, '#f4a3b8');
@@ -437,18 +443,18 @@ const DRAW = {
     // counter: front desk (customer side +v) with a raised back shelf, monitor, bell
     P.box(0.05, 0.12, w - 0.05, 0.52, 0, 24, C.cream);                       // back unit
     P.box(0.05, 0.5, w - 0.05, 0.94, 0, 15, C.panel);                        // front desk body
-    P.fL(0.1, w - 0.1, 0.94, 4, 9, C.blue.l);                                 // blue accent panel
+    P.fL(0.1, w - 0.1, 0.94, 4, 9, C.red.l);                                  // red accent panel
     P.fL(0.1, w - 0.1, 0.94, 9, 10, '#f6f6f6'); P.fL(0.1, w - 0.1, 0.94, 3, 4, '#f6f6f6');
     P.fcirc('L', w / 2, 0.94, 7.4, 3.2, '#f6f6f6');                         // white bowl emblem
     P.fL(w / 2 - 0.12, w / 2 + 0.12, 0.94, 5, 7.2, '#e23a3a'); P.fL(w / 2 - 0.12, w / 2 + 0.12, 0.94, 7.2, 7.8, '#f6f6f6');
     P.box(0.02, 0.48, w - 0.02, 0.98, 15, 17, C.wood);                       // counter top
     P.box(0.05, 0.12, w - 0.05, 0.5, 24, 25.5, C.wood);
-    monitor(P, 0.3, 0.3, 25.5, 0.4);
+    monitor(P, 0.3, 0.3, 25.5, 0.4, 'pos');
     keyboard(P, 0.34, 0.56, 17);
     // bell + ticket tray + pen cup
     P.cyl(w - 0.45, 0.72, 17, 18, 3.2, 3.2, C.yellow); P.ball(w - 0.45, 0.72, 18.5, 2.8, C.yellow); P.dot(w - 0.45, 0.72, 22, C.yellow.h);
     P.box(w - 0.9, 0.62, w - 0.65, 0.86, 17, 18, C.white, { edge: false }); P.box(w - 0.88, 0.64, w - 0.66, 0.84, 18, 19.2, '#f6f6f6', { edge: false });
-    P.box(w - 0.95, 0.2, w - 0.8, 0.36, 25.5, 30, C.blue);
+    P.box(w - 0.95, 0.2, w - 0.8, 0.36, 25.5, 30, C.red);
   } },
   bench: { hm: 34, draw(P, w) {
     for (const [a, b] of [[0.1, 0.3], [w - 0.18, 0.3], [0.1, 0.78], [w - 0.18, 0.78]]) P.box(a, b, a + 0.08, b + 0.08, 0, 7, C.woodD, { edge: false });
@@ -546,7 +552,7 @@ const DRAW = {
       for (let i = 0; i < 4; i++) { const c = [C.red, C.leaf, C.yellow, C.orange][(i + z0) % 4]; P.fL(0.24 + i * 0.14, 0.34 + i * 0.14, 0.86, z0 + 1, z0 + 5, c.l); P.fL(0.24 + i * 0.14, 0.27 + i * 0.14, 0.86, z0 + 1, z0 + 5, c.t); }
     }
     P.box(0.08, 0.18, 0.92, 0.88, 30, 33, C.steel);
-    P.fL(0.2, 0.8, 0.88, 30, 33, C.blue.l);
+    P.fL(0.2, 0.8, 0.88, 30, 33, C.red.l);
   } },
   soup_pot: { hm: 44, draw(P) {
     P.box(0.16, 0.22, 0.84, 0.82, 0, 12, C.steel);
@@ -557,11 +563,11 @@ const DRAW = {
     for (const [u, v, z] of [[0.46, 0.5, 36], [0.54, 0.44, 40]]) P.ball(u, v, z, 2.2, { t: '#ffffff', l: '#eef2f8', r: '#d2d2de', s: '#aab4cc', h: '#ffffff' });
   } },
   drink_bar: { hm: 44, draw(P) {
-    P.box(0.1, 0.2, 0.9, 0.84, 0, 18, C.teal);
-    P.fL(0.16, 0.84, 0.84, 4, 8, '#f6f6f6'); P.fL(0.16, 0.84, 0.84, 8, 9, C.teal.t);
+    P.box(0.1, 0.2, 0.9, 0.84, 0, 18, C.orange);
+    P.fL(0.16, 0.84, 0.84, 4, 8, '#f6f6f6'); P.fL(0.16, 0.84, 0.84, 8, 9, C.orange.t);
     P.box(0.06, 0.18, 0.94, 0.88, 18, 20, C.wood);
     P.box(0.18, 0.24, 0.5, 0.56, 20, 36, C.navy);                                      // sealing machine
-    P.fL(0.22, 0.46, 0.56, 24, 32, '#2a7ef6'); P.dot(0.34, 0.56, 28, '#ffffff', 3, 1);
+    P.fL(0.22, 0.46, 0.56, 24, 32, '#ea7e4e'); P.dot(0.34, 0.56, 28, '#ffffff', 3, 1);
     for (let i = 0; i < 3; i++) { P.cyl(0.62 + i * 0.1, 0.6, 20, 28, 2.6, 2.1, C.glass, { cap: false }); P.cyl(0.62 + i * 0.1, 0.6, 20, 23 + i * 1.5, 2.3, 2, [C.orange, C.leaf, C.rose][i]); }
     P.cyl(0.78, 0.36, 20, 22, 4.4, 4.4, C.white);
   } },
@@ -631,7 +637,7 @@ const DRAW = {
     P.box(0.04, 0.2, w - 0.04, 0.86, 0, 22, C.woodD);
     P.fL(0.1, w - 0.1, 0.86, 4, 18, C.wood.l);
     for (let i = 1; i < 4; i++) P.fL(0.1 + i * (w - 0.2) / 4 - 0.01, 0.1 + i * (w - 0.2) / 4 + 0.01, 0.86, 4, 18, C.woodD.s);
-    P.box(0.02, 0.16, w - 0.02, 0.92, 22, 25, C.navy);
+    P.box(0.02, 0.16, w - 0.02, 0.92, 22, 25, C.woodD);
     for (let i = 0; i < 3; i++) { const u = 0.4 + i * (w - 0.8) / 2; P.cyl(u, 0.4, 25, 34, 1.6, 1.6, C.steel); P.ln(u, 0.4, 34, u, 0.52, 32, C.steel.l, 2); P.dot(u - 0.04, 0.4, 36, [C.red, C.yellow, C.leaf][i].l, 3, 2); }
     for (let i = 0; i < 4; i++) { P.cyl(0.3 + i * (w - 0.6) / 3, 0.7, 25, 31, 2.8, 2.4, C.glass, { cap: false }); P.cyl(0.3 + i * (w - 0.6) / 3, 0.7, 25, 29, 2.5, 2.2, C.yellow); }
   } },

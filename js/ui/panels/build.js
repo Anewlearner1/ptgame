@@ -170,7 +170,7 @@ export function mountBuild(root, state, ui) {
       const armed = m === 'place' || m === 'paint' || m === 'demolish' || m === 'move';
       const td = armed && m !== 'demolish' && m !== 'move' ? d : lastDef;
       trayGlyph.textContent = m === 'demolish' ? '🧨' : m === 'move' ? (carried ? carried.glyph || '?' : '✥') : td ? td.glyph || '?' : '🔨';
-      trayGlyph.style.background = m === 'move' ? (carried ? carried.top || '#ccc' : '#bcd9f5') : m !== 'demolish' && td ? td.top || '#ccc' : '#e8d9b8';
+      trayGlyph.style.background = m === 'move' ? (carried ? carried.top || '#ccc' : '#f4d8bc') : m !== 'demolish' && td ? td.top || '#ccc' : '#e8d9b8';
       const tsp = m !== 'demolish' && m !== 'move' && td ? itemSprite(td.id) : null;
       const useArt = !!(tsp && artOn());
       trayArt.setArt(useArt ? tsp : null);
