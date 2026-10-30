@@ -20,7 +20,10 @@
 - `tools/bal.mjs` 結尾多印累計熟客數與來客數。
 
 ## 待辦（依優先序）
-1. **UI 測試工具**：`tools/qualifyui.mjs`（卡片文字仍斷言「物理治療師／醫師」、`bed` 等診所 id）、`upgradesui.mjs`（診所升級名稱與「醫術點數」）、`zonesui.mjs`（專區數量／標籤）仍有過時斷言；`mobileui/perftest/play/stylecss/stress-page` 已改但未逐一重跑。`audit.mjs --quick`（1720 項）、`smoke`、`uitest`、`coverui` 為綠。
+1. ~~UI 測試工具~~（已完成）：`qualifyui`、`upgradesui`、`zonesui`、`mobileui`、`perftest`、`play`、`stylecss`、`stress`（load／chaos，含 `stress-page.js`）已改成餐廳版斷言並全綠；`audit.mjs --quick`（1720 項）仍全過。
+   - 起始店會自動啟動「黃金爐火區」（golden3），所以 zonesui 的基準是「已啟動 1 / 共 15」；`zonelayouts.mjs` 的 L0 combo 不含「宵夜熱炒廊」（flagship），故 combo 狀態為 14 / 15。
+   - 順手修的遊戲問題：觸控版面專區辭典的篩選 chip 高度 28px（`.touch .u-fchip` 補 min-height 40px）；概念風格的任務 ✔ 綠底對比不足 AA（`#3aa56a` → `#2a7f50`）。
+   - 內部 id 沿用診所版（如專區 `sportsRehab`、升級 `up_clinical`、mods `nhiTurnover`），測試依 id 斷言、依顯示文字（餐廳版）驗證。
 2. **文件**：`docs/GAME_ARCHITECTURE.md`、`docs/ARCHITECTURE.md`、`README.md` 仍是診所版敘述；診所專用文件（EVENT_RESEARCH、FEE_RESEARCH、ASSETS_LIST…）需加註或刪除。
 3. 平衡：已完成；後續可再檢視 Y2 前後（L1/L2）的曲線與 `goals.js` 其餘獎勵金額。
 4. 美術：物件用程式繪製（無圖集），可再精修；手機版面再檢查。

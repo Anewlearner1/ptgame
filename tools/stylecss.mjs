@@ -222,15 +222,15 @@ const theme = page => page.evaluate(() => document.querySelector('meta[name=them
   const panelBandN = await css(page, '#panel .panel-title', 'backgroundColor');
   await page.click('.u-artbtn[data-art="classic"]'); await wait(page, 400);
   ok(!/\bstyle-concept\b/.test(await htmlCls(page)), 'switch to classic removes html.style-concept (live)');
-  ok((await theme(page)) === '#1d5c57', `theme-color meta back to teal in classic (${await theme(page)})`);
+  ok((await theme(page)) === '#7a2a1c', `theme-color meta back to the classic red in classic (${await theme(page)})`);
   const tbC = { bg: await css(page, '#topbar', 'backgroundColor'), img: await css(page, '#topbar', 'backgroundImage') };
-  ok(/gradient/.test(tbC.img) && tbC.bg !== tbN.bg, `classic topbar keeps the old teal gradient (${tbC.img.slice(0, 40)})`);
+  ok(/gradient/.test(tbC.img) && tbC.bg !== tbN.bg, `classic topbar keeps the old classic gradient (${tbC.img.slice(0, 40)})`);
   ok(await css(page, 'body', 'backgroundColor') === 'rgb(38, 70, 83)', 'classic body background unchanged (#264653)');
   ok((await css(page, '#panel .panel-title', 'backgroundColor')) !== panelBandN, 'panel title colours differ between styles');
   ok(await page.evaluate(() => localStorage.getItem('restgame.art')) === 'classic', 'classic persisted');
   await page.reload(); await page.waitForTimeout(1400);
   ok(!/\bstyle-concept\b/.test(await htmlCls(page)), 'after reload: still classic (no style-concept)');
-  ok((await theme(page)) === '#1d5c57', 'after reload: theme-color teal');
+  ok((await theme(page)) === '#7a2a1c', 'after reload: classic theme-color');
   await page.evaluate(() => document.querySelector('#modal-root .modal-actions .btn')?.click());
   await page.evaluate(() => __game.bus.emit('speed:set', { speed: 0 }));
   await page.keyboard.press('y'); await wait(page, 400);

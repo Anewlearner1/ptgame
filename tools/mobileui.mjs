@@ -183,18 +183,18 @@ for (const [w, h, kind] of VIEWPORTS) {
   await shot('01-base');
   if (expectMode === 'portrait') {
     ok(L.top >= 54 && L.top <= 80, `portrait topbar 2 rows (${Math.round(L.top)}px)`);
-    ok(['tb-date', 'tb-weather', 'tb-money', 'tb-pt', 'tb-rep', 'tb-pv'].every(c => L.items.includes(c)), 'portrait topbar shows date, weather, money, 3 points, reputation, NHI value');
+    ok(['tb-date', 'tb-weather', 'tb-money', 'tb-pt', 'tb-rep', 'tb-pv'].every(c => L.items.includes(c)), 'portrait topbar shows date, weather, money, 3 points, reputation, food-safety value');
     ok(L.sb.width >= L.vw - 1 && L.sb.height >= 52 && Math.abs(L.sb.bottom - L.vh) < 1.5, `bottom tab bar (${Math.round(L.sb.width)}x${Math.round(L.sb.height)})`);
     ok(L.sp.bottom <= L.sb.top + 1 && L.sp.right <= L.vw, 'speed pill floats above the tab bar');
   } else if (expectMode === 'compact') {
     ok(L.top >= 34 && L.top <= 44, `compact topbar slim (${Math.round(L.top)}px)`);
     ok(L.items.includes('tb-date') && L.items.includes('tb-money') && L.items.filter(c => c === 'tb-pt').length === 3 && L.items.includes('tb-rep'), 'compact topbar shows date, money, 3 points, reputation');
-    ok(!L.pvIn && L.stats, 'NHI value collapsed into the stats popover button');
+    ok(!L.pvIn && L.stats, 'food-safety value collapsed into the stats popover button');
     ok(L.sb.width <= 56 && L.sb.left < 20, `icon rail on the left (${Math.round(L.sb.width)}px wide)`);
     // popover
     await click('.tb-stats'); await pause(page, 300);
     const pop = await page.evaluate(() => { const p = document.querySelector('.tb-pop'); if (!p || p.hidden) return null; const b = p.getBoundingClientRect(); return { r: b.right <= innerWidth + 1 && b.bottom <= innerHeight, txt: p.textContent }; });
-    ok(pop && pop.r && /健保點值/.test(pop.txt), 'stats popover opens with the NHI value');
+    ok(pop && pop.r && /食安風險/.test(pop.txt), 'stats popover opens with the food-safety value');
     await audit('stats popover');
     await shot('02-stats');
     await click('.tb-stats'); await pause(page, 150);
@@ -370,7 +370,15 @@ for (const [w, h, kind] of VIEWPORTS) {
       ok(await page.evaluate(() => document.getElementById('panel').hidden), 'sheet: dragging far down dismisses it');
     } else {
       const pr = await page.evaluate(() => document.getElementById('panel').getBoundingClientRect().toJSON());
-      const y = pr.top + pr.height * 0.5, x0 = pr.left + 40;
+      // start the swipe on a spot that is not a horizontal scroller / slider / tab strip (those are excluded from the swipe on purpose)
+      const x0 = pr.left + 40;
+      const y = await page.evaluate(([x, top, h]) => {
+        for (const f of [0.5, 0.4, 0.6, 0.3, 0.7, 0.25, 0.8, 0.2, 0.9]) {
+          const yy = top + h * f, e = document.elementFromPoint(x, yy);
+          if (e && e.closest('#panel') && !e.closest('input[type="range"], textarea, select, canvas, .u-hscroll, .tabs, .u-buildgrid')) return yy;
+        }
+        return top + h * 0.5;
+      }, [x0, pr.top, pr.height]);
       await touchSeq(lerp([x0, y], [x0 + 160, y + 4], 10));
       ok(await page.evaluate(() => document.getElementById('panel').hidden), 'drawer: swipe right closes it');
     }

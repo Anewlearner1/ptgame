@@ -106,17 +106,17 @@ for (const style of STYLES) for (const [w, h, touch] of VPS) {
   const isConcept = await page.evaluate(() => document.documentElement.classList.contains('style-concept'));
   ok(isConcept === (style === 'new'), `${tag}: style class matches (${isConcept})`);
 
-  // ---- 1. fresh game: nothing active, research not done -> locked zones
+  // ---- 1. fresh game: only the starter shop's 黃金爐火區 (golden3) is active, research not done -> locked zones
   await openDict(page);
   const N = await page.evaluate(async () => (await import('/js/data/synergies.js')).SYNERGIES.length);
-  ok(await head(page) === `已啟動 0 / 共 ${N} 個專區`, `${tag}: header 「已啟動 0 / 共 ${N} 個專區」 (${await head(page)})`);
+  ok(await head(page) === `已啟動 1 / 共 ${N} 個專區`, `${tag}: header 「已啟動 1 / 共 ${N} 個專區」 (${await head(page)})`);
   let cs = await cards(page);
   ok(cs.length === N && cs.every(c => c.name && c.tier && c.effects.length && c.reqs.length && c.hint && c.btn), `${tag}: ${cs.length} cards each with name, tier chip, effects, requirements, hint, button`);
   const lockedExpected = await page.evaluate(async () => { const Sy = await import('/js/sim/synergy.js'); const D = await import('/js/data/synergies.js'); return D.SYNERGIES.filter(s => Sy.zoneLocks(__game.state, s).length).map(s => s.id); });
   ok(lockedExpected.length >= 5 && cs.filter(c => c.badge === 'lock').map(c => c.id).sort().join() === lockedExpected.sort().join(), `${tag}: 🔒 badges == zones with unfinished research (${lockedExpected.length})`);
   const sp = cs.find(c => c.id === 'sportsRehab');
-  ok(sp.reqs.some(r => r.m === '🔒' && /需研發「懸吊運動系統」/.test(r.t)) && /先研發/.test(sp.status), `${tag}: locked requirement chip names the research node (${sp.reqs.map(r => r.m + r.t).join(' | ')})`);
-  ok(sp.effects.some(e => /運動傷害客人來客 \+10%/.test(e)) && sp.effects.some(e => /運動傷害客人治癒效率 \+6%/.test(e)), `${tag}: effect chips use Chinese type names (${sp.effects.join(' | ')})`);
+  ok(sp.reqs.some(r => r.m === '🔒' && /需研發「冰品設備」/.test(r.t)) && /先研發/.test(sp.status), `${tag}: locked requirement chip names the research node (${sp.reqs.map(r => r.m + r.t).join(' | ')})`);
+  ok(sp.effects.some(e => /放學學生族來客 \+10%/.test(e)) && sp.effects.some(e => /放學學生族熟客化效率 \+6%/.test(e)), `${tag}: effect chips use Chinese type names (${sp.effects.join(' | ')})`);
   const ep = cs.find(c => c.id === 'elderPath');
   ok(ep.reqs.some(r => /坡道 0\/3/.test(r.t)) && ep.effects.some(e => /滑倒風險 −15%/.test(e)), `${tag}: ramp requirement shows a tile count 坡道 0/3; slipRisk chip (${ep.reqs.map(r => r.t).join(' | ')})`);
   let ch = await chips(page);
@@ -128,13 +128,13 @@ for (const style of STYLES) for (const [w, h, touch] of VPS) {
   // filters
   await clickChip(page, 'status', 'on'); await wait(page, 120);
   cs = await cards(page);
-  ok(cs.every(c => c.hidden) && await page.evaluate(() => [...document.querySelectorAll('#panel .muted')].some(e => /沒有專區/.test(e.textContent) && !e.hidden)), `${tag}: 已啟動 filter -> all hidden + empty notice`);
+  ok(cs.filter(c => !c.hidden).map(c => c.id).join() === 'golden3', `${tag}: 已啟動 filter -> only the starter shop's golden3 (${cs.filter(c => !c.hidden).map(c => c.id)})`);
   await clickChip(page, 'status', 'lock'); await wait(page, 120);
   cs = await cards(page);
   ok(cs.filter(c => !c.hidden).length === lockedExpected.length, `${tag}: 🔒需研發 filter shows ${cs.filter(c => !c.hidden).length}/${lockedExpected.length}`);
   await clickChip(page, 'status', 'off'); await wait(page, 120);
   cs = await cards(page);
-  ok(cs.filter(c => !c.hidden).length === N - lockedExpected.length, `${tag}: 未啟動 filter shows the ${N - lockedExpected.length} buildable-now zones`);
+  ok(cs.filter(c => !c.hidden).length === N - lockedExpected.length - 1, `${tag}: 未啟動 filter shows the ${N - lockedExpected.length - 1} buildable-now, inactive zones`);
   await clickChip(page, 'status', 'all'); await clickChip(page, 'group', 'elder'); await wait(page, 120);
   cs = await cards(page);
   ok(cs.filter(c => !c.hidden).map(c => c.id).join() === 'elderPath', `${tag}: group chip 長者 -> only elderPath (${cs.filter(c => !c.hidden).map(c => c.id)})`);
@@ -190,13 +190,13 @@ for (const style of STYLES) for (const [w, h, touch] of VPS) {
   ok(cam2.zoom < 1.9 && !(await page.evaluate(() => !!__game.ui.zonePulse)), `${tag}: inactive zone -> camera back to the clinic overview (zoom ${cam2.zoom.toFixed(2)}), no pulse`);
   ok(await page.evaluate(() => !!document.querySelector('.toast, #toast-layer *')), `${tag}: info toast explains the zone is not active yet`);
 
-  // ---- 4. all 13 zones at once on the start lot: label stagger + dictionary count
+  // ---- 4. the combo layout (every zone except 宵夜熱炒廊 flagship) on the start lot: label stagger + dictionary count
   await closePanel(page);
   await build(page, { research: true, clear: true, combo: true }); await wait(page, 300);
   await page.evaluate(() => { __game.ui.zonePulse = null; });
   await openDict(page);
-  ok((await head(page)).startsWith('已啟動 13 /'), `${tag}: combo layout -> ${await head(page)}`);
-  ok(!(await overflow(page)).length, `${tag}: dictionary (13 active) has no overflow ${JSON.stringify(await overflow(page))}`);
+  ok((await head(page)).startsWith(`已啟動 ${N - 1} /`), `${tag}: combo layout -> ${await head(page)}`);
+  ok(!(await overflow(page)).length, `${tag}: dictionary (combo active) has no overflow ${JSON.stringify(await overflow(page))}`);
   await closePanel(page);
   await page.evaluate(() => { const c = __game.ui.cam; });
   await wait(page, 500);

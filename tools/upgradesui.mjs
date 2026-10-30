@@ -88,10 +88,10 @@ const card = (s, id) => s.cards.find(c => c.id === id);
   ok(s.cards.length === 6, `6 cards (${s.cards.length})`);
   ok(s.sum === '已投入 0 級 / 85', `summary 已投入 0 級 / 85 (${s.sum})`);
   const c1 = card(s, 'up_clinical');
-  ok(!c1.dis && c1.btn === '提升' && c1.lv === 'Lv.0 / 16' && /治癒效率 0%/.test(c1.eff) && /\+2\.5%/.test(c1.eff), `臨床經驗 unlocked, shows now -> next (${c1.lv} | ${c1.eff})`);
+  ok(!c1.dis && c1.btn === '提升' && c1.lv === 'Lv.0 / 16' && /熟客化效率 0%/.test(c1.eff) && /\+2\.5%/.test(c1.eff), `手藝精進 unlocked, shows now -> next (${c1.lv} | ${c1.eff})`);
   ok(/85/.test(c1.cost), `cost chip shows the level-0 cost (${c1.cost})`);
   const c2 = card(s, 'up_diagnosis'), c3 = card(s, 'up_equipment'), c5 = card(s, 'up_relations');
-  ok(c2.dis && c2.locked && /需先完成 5 項醫術研發/.test(c2.why), `專科診斷 locked with a reason (${c2.why})`);
+  ok(c2.dis && c2.locked && /需先完成 5 項廚藝研發/.test(c2.why), `口味掌握 locked with a reason (${c2.why})`);
   ok(c3.dis && c3.locked && /3 項設備研發/.test(c3.why) && c5.dis && /服務研發/.test(c5.why), `other domains locked with domain-specific reasons (${c3.why} | ${c5.why})`);
   ok(c1.tip && /每級/.test(c1.tip) && /滿級/.test(c1.tip), 'ⓘ tooltip text has per-level + cap info');
   ok(await page.evaluate(() => !document.querySelector('.u-upg-jump').hidden), 'jump button visible');
@@ -104,17 +104,17 @@ const card = (s, id) => s.cards.find(c => c.id === id);
   const pts1 = await chips(page);
   ok(card(s, 'up_clinical').lv === 'Lv.1 / 16', `buy: level 1 (${card(s, 'up_clinical').lv})`);
   ok(+pts1.culinary >= 415 && +pts1.culinary <= 440 && +pts1.device >= 40, `buy: culinary points 500 -> ~415 (cost 85 paid; ${pts1.culinary})`);
-  ok(/治癒效率 \+2\.5%\s*→ \+5%/.test(card(s, 'up_clinical').eff), `buy: effect text now -> next (${card(s, 'up_clinical').eff})`);
+  ok(/熟客化效率 \+2\.5%\s*→ \+5%/.test(card(s, 'up_clinical').eff), `buy: effect text now -> next (${card(s, 'up_clinical').eff})`);
   ok(/105/.test(card(s, 'up_clinical').cost), `buy: next cost 105 (${card(s, 'up_clinical').cost})`);
   ok(s.sum === '已投入 1 級 / 85', `buy: summary 1 level (${s.sum})`);
   ok(await page.evaluate(() => Math.abs(__game.state.mods.cureGain - 1.025) < 1e-9 && __game.state.research.levels.up_clinical === 1), 'buy: state level + mods updated');
-  ok(await page.evaluate(() => [...document.querySelectorAll('.toast')].some(t => /精進完成：臨床經驗/.test(t.textContent))), 'buy: toast shown');
+  ok(await page.evaluate(() => [...document.querySelectorAll('.toast')].some(t => /精進完成：手藝精進/.test(t.textContent))), 'buy: toast shown');
   ok(await page.evaluate(() => { const c = document.querySelector('.u-upg-card[data-line="up_clinical"]'); return c.classList.contains('u-upg-flash') || !!c.querySelector('.u-upg-spark') || true; }), 'buy: sparkle class applied (best effort)');
 
   // poor: culinary points below cost -> disabled + reason
   await setup(page, { done: 'med3', pts: { culinary: 50 }, levels: { up_clinical: 1 } }); await wait(page, 500);
   s = await sec(page);
-  ok(card(s, 'up_clinical').dis && /醫術點數不足/.test(card(s, 'up_clinical').why), `poor: disabled with 醫術點數不足 (${card(s, 'up_clinical').why})`);
+  ok(card(s, 'up_clinical').dis && /廚藝點數不足/.test(card(s, 'up_clinical').why), `poor: disabled with 廚藝點數不足 (${card(s, 'up_clinical').why})`);
   ok(await page.evaluate(() => document.querySelector('.u-upg-card[data-line="up_clinical"] .u-upg-cost').classList.contains('lack')), 'poor: cost chip marked lacking');
   await page.evaluate(() => __game.state.points.culinary = 105); await wait(page, 450);
   s = await sec(page);
@@ -127,8 +127,8 @@ const card = (s, id) => s.cards.find(c => c.id === id);
   ok(!card(s, 'up_diagnosis').dis, 'one level below cap still buyable');
   await page.click('.u-upg-card[data-line="up_diagnosis"] .u-upg-btn'); await wait(page, 450);
   s = await sec(page);
-  ok(card(s, 'up_diagnosis').lv === 'Lv.12 / 12' && card(s, 'up_diagnosis').dis && /四類客人治癒效率 \+18%/.test(card(s, 'up_diagnosis').eff), `buying the last level caps it (${card(s, 'up_diagnosis').lv} ${card(s, 'up_diagnosis').eff})`);
-  ok(await page.evaluate(() => __game.state.mods.typeCure.elder > 0.179 && __game.state.mods.typeCure.kid > 0.179), 'typeCure applied to the patient types');
+  ok(card(s, 'up_diagnosis').lv === 'Lv.12 / 12' && card(s, 'up_diagnosis').dis && /四類客人熟客效率 \+18%/.test(card(s, 'up_diagnosis').eff), `buying the last level caps it (${card(s, 'up_diagnosis').lv} ${card(s, 'up_diagnosis').eff})`);
+  ok(await page.evaluate(() => __game.state.mods.typeCure.elder > 0.179 && __game.state.mods.typeCure.family > 0.179), 'typeCure applied to the guest types');
 
   // all done: section moves above the tree
   await setup(page, { done: 'all', pts: { culinary: 10, device: 10, service: 10 }, levels: {} }); await wait(page, 500);

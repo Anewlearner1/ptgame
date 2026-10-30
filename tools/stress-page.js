@@ -79,9 +79,9 @@
 
   st.setup100 = () => {
     st.bigClinic({ lot: 3 });
-    const plan = [['reception', 3], ['bench', 14], ['water', 2], ['tv', 1], ['plant', 3], ['chef_range', 3], ['us_room', 1], ['rest_room', 1],
-      ['noodle_stove', 8], ['fryer', 8], ['braise_pot', 4], ['ir_lamp', 4], ['bed', 6], ['redcord', 1], ['shockwave_room', 1], ['laser_room', 1], ['manual_room', 1],
-      ['si_room', 1], ['fine_table', 2], ['speech_room', 1], ['coffee', 1]];
+    const plan = [['reception', 3], ['bench', 14], ['water', 2], ['tv', 1], ['plant', 3], ['chef_range', 3], ['rest_room', 1],
+      ['noodle_stove', 8], ['fryer', 8], ['braise_pot', 4], ['griddle', 4], ['table4', 6], ['table2', 6], ['teppan', 2], ['cold_case', 2], ['soup_pot', 2],
+      ['drink_bar', 2], ['ice_shop', 1], ['chef_table', 1], ['wok_range', 1], ['hotpot_table', 2], ['bbq_grill', 1], ['dessert_bar', 1], ['bar_counter', 1], ['play_area', 1], ['coffee', 1]];
     const res = {};
     for (const [d, n] of plan) res[d] = st.fill(d, n);
     st.hireAll(['chef', 'chef', 'chef', 'cook', 'cook', 'cook', 'cook', 'cook', 'cook', 'cashier', 'cashier', 'cashier', 'barista', 'barista', 'server']);
@@ -242,7 +242,7 @@
       }
       case 'placeOnAgent': {
         const t = objAtAgent(); if (!t) break;
-        for (const d of ['plant', 'water', 'tv', 'bench', 'fryer', 'bed', 'reception', 'chef_range', 'rest_room', 'si_room']) {
+        for (const d of ['plant', 'water', 'tv', 'bench', 'fryer', 'table4', 'reception', 'chef_range', 'rest_room', 'table2']) {
           for (const [dx, dy] of [[0, 0], [-1, 0], [0, -1], [-1, -1], [-2, -2], [-2, 0], [0, -2]]) for (const rot of [0, 1]) {
             if (B.canPlace(state, d, t.x + dx, t.y + dy, rot).ok && B.placeObject(state, d, t.x + dx, t.y + dy, rot)) { note(`placeOnAgent ${d}@${t.x + dx},${t.y + dy}`); return kind; }
           }
@@ -270,7 +270,7 @@
 
   st.setupChaos = () => {
     st.bigClinic({ lot: 1 });
-    const plan = [['reception', 2], ['bench', 6], ['water', 1], ['plant', 2], ['chef_range', 2], ['rest_room', 1], ['noodle_stove', 4], ['fryer', 4], ['braise_pot', 2], ['ir_lamp', 2], ['bed', 3], ['redcord', 1], ['si_room', 1], ['fine_table', 1], ['speech_room', 1]];
+    const plan = [['reception', 2], ['bench', 6], ['water', 1], ['plant', 2], ['chef_range', 2], ['rest_room', 1], ['noodle_stove', 4], ['fryer', 4], ['braise_pot', 2], ['griddle', 2], ['table4', 3], ['teppan', 1], ['table2', 1], ['cold_case', 1], ['soup_pot', 1]];
     for (const [d, n] of plan) st.fill(d, n);
     st.hireAll(['chef', 'cook', 'cook', 'cook', 'cashier', 'cashier', 'barista', 'server']);
     st.refresh();
@@ -282,7 +282,7 @@
     const { state } = st.g();
     state.objects.length = 0; state.staff.length = 0; state.patients.length = 0; state.queue.length = 0;
     st.bigClinic({ lot: 1 });
-    const plan = [['reception', 1], ['bench', 4], ['water', 1], ['bed', 3]];
+    const plan = [['reception', 1], ['bench', 4], ['water', 1], ['table4', 3]];
     if (withRest) plan.push(['rest_room', 1]);
     for (const [d, n] of plan) st.fill(d, n);
     st.hireAll(['cashier', 'cashier', 'cook', 'cook']);
