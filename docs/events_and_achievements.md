@@ -1,3 +1,5 @@
+> ⚠️ **診所版遺留，不適用。** 本檔是診所版事件與成就的目錄，內容（健保、復健、物理治療等）**不適用於餐廳版**，且不會自動同步。餐廳版內容以 `js/data/events*.js`、`js/data/achievements.js` 為準。對應的 `events_and_achievements.xlsx` 已刪除。僅供參考，不再維護。
+
 # 事件與成就總覽
 
 > 本文件為**遊戲內容目錄**，所有數字與文案取自程式資料檔（`js/data/events.js`、`events_ext.js`、`events_ext2.js`、`achievements.js`），引擎規則取自 `js/sim/events.js`、`economy.js`、`equipment.js`、`staff.js` 的常數。

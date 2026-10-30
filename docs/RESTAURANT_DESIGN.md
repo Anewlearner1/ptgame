@@ -45,7 +45,7 @@
 經營方針（`FOCUS` 鍵）：`business` 商業午餐店（原 ortho）、`community` 社區早餐店（原 ltc）、`kids` 親子餐廳（原 peds）。
 
 ## 4. 餐點（TREATMENTS）— 17 道
-**基本菜單（menu，11）**：`main` 招牌主餐｜`noodle` 湯麵｜`rice` 滷肉飯｜`dumpling` 煎餃鍋貼｜`fried` 鹽酥雞炸物｜`teppan` 鐵板燒｜`side` 小菜｜`soup` 例湯｜`drink` 手搖飲｜`ice` 冰品豆花｜`dine` 內用用餐（餐桌，服務生開桌後客人自行用餐，收服務費）。
+**基本菜單（menu，11）**：`main` 招牌主餐｜`noodle` 湯麵｜`rice` 滷肉飯｜`dumpling` 煎餃鍋貼｜`fried` 鹽酥雞炸物｜`teppan` 鐵板燒｜`side` 小菜｜`soup` 例湯｜`drink` 手搖飲｜`ice` 冰品豆花｜`dine` 內用用餐（餐桌，服務生開桌後客人自行用餐，不另收費、price 為 0）。
 **特色料理（special，6）**：`steak` 主廚特餐牛排｜`seafood` 活海鮮熱炒｜`hotpot` 精緻火鍋｜`bbq` 炭火串燒｜`dessert` 手作甜點｜`beer` 精釀啤酒與茶酒。
 
 `attend:'setup'`（開機型：滷鍋、煎檯、冷盤、湯鍋、飲料機、餐桌）只需員工開頭數分鐘在場；`attend:'full'` 全程綁員工。
