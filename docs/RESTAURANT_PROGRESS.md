@@ -10,14 +10,19 @@
 - 美術：移除診所概念圖集（atlas），一律程式繪製；`art.js` 的 `ATLAS_AVAILABLE=false`。
 - 工具：`tools/bal.mjs`（無瀏覽器平衡模擬）。
 
-## 平衡（目前，PATIENT_WEIGHT=28，L3=38）
-- 起始店（4 位員工）月淨利約 ±0～+70k（毛利率 ~67%）；專家路線 Y2 月營運淨利約 +80～+140k（含特色料理占 ~30%）。尚未調整到診所版的「年末月淨利 30–50 萬」目標，需要再跑 `tools/bal.mjs policy=expert months=48`。
+## 平衡（目前）
+- 調整方式：只動 `lots.js` 各店面的 `patientWeight`（一個模擬客人代表幾位真實客人）：L0 28（`economy.PATIENT_WEIGHT`，不變）、L1 40、L2 50、L3 76。**起始店與 good 路線完全不受影響**，加成只出現在擴店之後，所以 idle 仍會破產、starter 仍存活。
+- 結果（`tools/bal.mjs`，seed 1–5）：starter 月淨利約 +40～+80k（毛利率 ~66%）；expert 48 個月，Y4 末月淨利約 +300～+465k，Y4 後 6 個月均值約 +240～+410k（毛利率 ~66%，單月仍有活動／維修造成的波動）；Y2 仍約 +90k（還在 L0–L2）。符合診所版「年末月淨利 30–50 萬」。
+- idle：3 年模擬在第 3 年 M9 破產（`audit.mjs --years 3 --policies idle`）；`--quick` 的 2 年長跑結果受亂數影響，不一定在 2 年內破產，斷言只檢查不崩潰。
+- 目標／成就門檻改成餐廳規模：`netMonthlyAvgYear` 依店面 4／10／20／35 萬；`patientsYear`（模擬客人數）1,200／1,600／2,300／3,000；`curedYear` 30／40／50／65（熟客率低，expert 約 45 人／年）；結局條件長輩熟客 ≥ 60、家庭熟客 ≥ 80；成就 `m_pat_*`（id 不變）改為 300／2,000／8,000 人次。
+- audit 斷言更新：權重斷言 L3 38→76；`m_pat_5000` 測試的 `patientsTotal` 6000→9000（門檻改 8,000）。
 - L0 每日來客上限 40、L1 70、L2 110、L3 150。
+- `tools/bal.mjs` 結尾多印累計熟客數與來客數。
 
 ## 待辦（依優先序）
 1. **UI 測試工具**：`tools/qualifyui.mjs`（卡片文字仍斷言「物理治療師／醫師」、`bed` 等診所 id）、`upgradesui.mjs`（診所升級名稱與「醫術點數」）、`zonesui.mjs`（專區數量／標籤）仍有過時斷言；`mobileui/perftest/play/stylecss/stress-page` 已改但未逐一重跑。`audit.mjs --quick`（1720 項）、`smoke`、`uitest`、`coverui` 為綠。
 2. **文件**：`docs/GAME_ARCHITECTURE.md`、`docs/ARCHITECTURE.md`、`README.md` 仍是診所版敘述；診所專用文件（EVENT_RESEARCH、FEE_RESEARCH、ASSETS_LIST…）需加註或刪除。
-3. 平衡微調：專家路線仍低於診所版目標；`goals.js` 的金額與人次門檻是診所版數字。
+3. 平衡：已完成；後續可再檢視 Y2 前後（L1/L2）的曲線與 `goals.js` 其餘獎勵金額。
 4. 美術：物件用程式繪製（無圖集），可再精修；手機版面再檢查。
 
 已完成：圖示改為麵碗、manifest/theme 色改暖紅、移除多餘的 `undefined/` 目錄。

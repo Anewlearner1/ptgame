@@ -331,7 +331,7 @@ function economySection() {
   section('Economy: sales, ingredient cost, settlement');
   fresh(1);
   const w = Eco.patientWeight(state);
-  check('patient weight 28 (L0) / 38 (L3)', w === 28 && (LOTS[3].patientWeight === 38), String(w));
+  check('patient weight 28 (L0) / 76 (L3)', w === 28 && (LOTS[3].patientWeight === 76), String(w));
   const g = P.spawnPatient(state, 'office');
   check('spawnPatient builds a guest', !!g && g.plan.length > 0 && g.plan[g.plan.length - 1] === 'dine', JSON.stringify(g && g.plan));
   state.patients = [];
@@ -737,7 +737,7 @@ function achievementsSection() {
   // community id for t_temple
   check('t_temple id exists in COMMUNITY', EVD.COMMUNITY.some(c => c.id === 'temple_meal'));
   // evaluateAll on an old state is safe
-  fresh(63, true); state.money = 3e6; state.stats.patientsTotal = 6000; state.reputation = 700;
+  fresh(63, true); state.money = 3e6; state.stats.patientsTotal = 9000; state.reputation = 700;
   check('evaluateAll unlocks derived achievements', Ach.evaluateAll(state).length > 3 && Ach.isUnlocked(state, 'm_pat_5000') && Ach.isUnlocked(state, 'm_rep_600') && Ach.isUnlocked(state, 'm_cash_2m'));
   check('no clinic words in achievement names', ACHD.ACHIEVEMENTS.every(a => !/診所|病患|復健|健保/.test(a.name + a.desc)));
 }

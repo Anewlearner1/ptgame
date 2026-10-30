@@ -23,6 +23,7 @@ export const LOTS = [
     door: { x: 15, y: 20 },
     rent: 85000,
     maxPatientsPerWeek: 70,
+    patientWeight: 40,
     maxStaff: 10,
     expandCost: 800000,
     requires: {
@@ -36,6 +37,7 @@ export const LOTS = [
     door: { x: 15, y: 20 },
     rent: 130000,
     maxPatientsPerWeek: 110,
+    patientWeight: 50,
     maxStaff: 15,
     expandCost: 2500000,
     requires: {
@@ -51,7 +53,7 @@ export const LOTS = [
     maxPatientsPerWeek: 150,
     maxStaff: 22,
     maxPatients: 100,        // concurrent guests on the floor (others use patients.js TUNE.MAX_PATIENTS 60)
-    patientWeight: 38,       // each simulated guest stands for this many real ones (others: economy.PATIENT_WEIGHT 28)
+    patientWeight: 76,       // each simulated guest stands for this many real ones (L1 40 / L2 50; L0: economy.PATIENT_WEIGHT 28)
     expandCost: 6000000,
     requires: {
       minReputation: 320, minYear: 3, minStaff: 11, minAvgSat: 72, needRamp: true, minSeats: 6, research: 'rs_expand',

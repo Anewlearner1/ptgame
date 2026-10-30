@@ -135,4 +135,5 @@ function expertTurn() {
 }
 const last = hist.slice(-Math.min(6, hist.length));
 const avg = (f) => last.reduce((s, r) => s + f(r), 0) / Math.max(1, last.length);
+console.log(`cured(total)=${(state.stats && state.stats.cured) || 0} patients(total)=${(state.stats && state.stats.patientsTotal) || 0}`);
 console.log(`\n${POLICY}: avg last ${last.length} months  sales=${Math.round(avg(r => r.menuIncome + r.specialIncome))} net=${Math.round(avg(r => r.net))} opNet=${Math.round(avg(r => r.net + r.build))} margin=${(avg(r => r.margin) * 100).toFixed(0)}%  money=${Math.round(state.money)} rep=${Math.round(state.reputation)} dishes/skips=${JSON.stringify({ skipped: P.debug.skipped, skippedRole: P.debug.skippedRole || 0, selfReg: P.debug.selfReg, upsellOffers: P.debug.upsellOffers, upsells: P.debug.upsells })}`);
