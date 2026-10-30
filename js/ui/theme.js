@@ -5,7 +5,7 @@ import { bus } from '../core/bus.js';
 import { artEnabled } from '../render/art.js';
 
 export const THEME_CONCEPT = '#1e365a';
-let started = false, classicColor = '#1d5c57';
+let started = false, classicColor = '#7a2a1c';
 
 export function applyTheme() {
   const on = artEnabled();

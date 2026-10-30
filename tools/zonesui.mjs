@@ -29,7 +29,7 @@ async function open(w, h, touch, style) {
   page.on('requestfailed', r => problems.push('REQFAIL ' + r.url()));
   page.on('response', r => { if (r.status() >= 400) problems.push('HTTP ' + r.status() + ' ' + r.url()); });
   await page.addInitScript((st) => {
-    try { if (!sessionStorage.getItem('zui-init')) { sessionStorage.setItem('zui-init', '1'); localStorage.clear(); if (st === 'classic') localStorage.setItem('ptgame.art', 'classic'); } } catch (e) { /* ignore */ }
+    try { if (!sessionStorage.getItem('zui-init')) { sessionStorage.setItem('zui-init', '1'); localStorage.clear(); if (st === 'classic') localStorage.setItem('restgame.art', 'classic'); } } catch (e) { /* ignore */ }
     let s = 777; Math.random = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
     let g; Object.defineProperty(window, '__game', { configurable: true, get() { return g; }, set(v) { g = v; try { v.bus.emit('speed:set', { speed: 0 }); } catch (e) { /* ignore */ } } });
   }, style);
@@ -116,7 +116,7 @@ for (const style of STYLES) for (const [w, h, touch] of VPS) {
   ok(lockedExpected.length >= 5 && cs.filter(c => c.badge === 'lock').map(c => c.id).sort().join() === lockedExpected.sort().join(), `${tag}: 🔒 badges == zones with unfinished research (${lockedExpected.length})`);
   const sp = cs.find(c => c.id === 'sportsRehab');
   ok(sp.reqs.some(r => r.m === '🔒' && /需研發「懸吊運動系統」/.test(r.t)) && /先研發/.test(sp.status), `${tag}: locked requirement chip names the research node (${sp.reqs.map(r => r.m + r.t).join(' | ')})`);
-  ok(sp.effects.some(e => /運動傷害病患來客 \+10%/.test(e)) && sp.effects.some(e => /運動傷害病患治癒效率 \+6%/.test(e)), `${tag}: effect chips use Chinese type names (${sp.effects.join(' | ')})`);
+  ok(sp.effects.some(e => /運動傷害客人來客 \+10%/.test(e)) && sp.effects.some(e => /運動傷害客人治癒效率 \+6%/.test(e)), `${tag}: effect chips use Chinese type names (${sp.effects.join(' | ')})`);
   const ep = cs.find(c => c.id === 'elderPath');
   ok(ep.reqs.some(r => /坡道 0\/3/.test(r.t)) && ep.effects.some(e => /滑倒風險 −15%/.test(e)), `${tag}: ramp requirement shows a tile count 坡道 0/3; slipRisk chip (${ep.reqs.map(r => r.t).join(' | ')})`);
   let ch = await chips(page);

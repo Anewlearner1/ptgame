@@ -93,7 +93,7 @@ for (const [w, h, dpr] of [[1280, 720, 2], [800, 450, 2], [800, 450, 1]]) {
   await press('3'); ok((await S()).speed === 3, 'key 3 = x3');
   await press(' '); ok((await S()).paused, 'space pauses'); await press(' '); ok(!(await S()).paused && (await S()).speed === 3, 'space resumes at previous speed');
   await press('g'); const g1 = (await S()).grid; await press('g'); ok((await S()).grid !== g1, 'G toggles grid');
-  await press('b'); await page.click('#panel .tab:text-is("候診與景觀")').catch(() => {}); await page.waitForTimeout(100);
+  await press('b'); await page.click('#panel .tab:text-is("候位與景觀")').catch(() => {}); await page.waitForTimeout(100);
   await page.click('#panel .u-item[data-id="plant"]').catch(() => {}); await page.waitForTimeout(100);
   ok((await S()).tool === 'place', 'picked plant tool'); const r0 = (await S()).rot; await press('r'); ok((await S()).rot !== r0, 'R rotates the placing tool');
   await press('Escape'); ok((await S()).tool === 'none', 'Esc cancels tool'); await press('Escape'); ok((await S()).panel === null, 'Esc closes panel');

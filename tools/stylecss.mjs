@@ -34,7 +34,7 @@ async function open(w, h, touch, style, { dpr = 1, init = true, tutorial = false
   page.on('response', r => { if (r.status() >= 400) problems.push('HTTP ' + r.status() + ' ' + r.url()); });
   if (init) {
     await page.addInitScript(([st, nc]) => {
-      try { if (!sessionStorage.getItem('sc-init')) { sessionStorage.setItem('sc-init', '1'); localStorage.clear(); if (st === 'classic') localStorage.setItem('ptgame.art', 'classic'); } } catch (e) { /* ignore */ }
+      try { if (!sessionStorage.getItem('sc-init')) { sessionStorage.setItem('sc-init', '1'); localStorage.clear(); if (st === 'classic') localStorage.setItem('restgame.art', 'classic'); } } catch (e) { /* ignore */ }
       // deterministic UI: seeded Math.random, sim frozen the moment the game object exists
       let s = 12345; Math.random = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
       let g; Object.defineProperty(window, '__game', { configurable: true, get() { return g; }, set(v) { g = v; try { v.bus.emit('speed:set', { speed: 0 }); } catch (e) { /* ignore */ } } });
@@ -127,7 +127,7 @@ async function scenes(page, { shot, visit }) {
   await wait(page, 380); await shot('toasts'); await visit('toasts'); await wait(page, 3300);
   // selection card
   await sel(page, 'staff', info.st[0]); await wait(page, 450); await shot('sel-staff'); await visit('sel-staff');
-  const tens = info.objs.find(o => o.d === 'tens') || info.objs[0];
+  const tens = info.objs.find(o => o.d === 'fryer') || info.objs[0];
   await sel(page, 'object', tens.id); await wait(page, 450); await shot('sel-object'); await visit('sel-object');
   // context menu
   await page.evaluate(o => { __game.bus.emit('object:context', { id: o.id, x: innerWidth / 2, y: innerHeight / 2 }); }, tens); await wait(page, 300); await shot('ctxmenu'); await visit('ctxmenu');
@@ -150,7 +150,7 @@ async function scenes(page, { shot, visit }) {
     }
     if (id === 'build') {
       await page.evaluate(() => document.querySelectorAll('#panel .u-tabbed > .tabs > .tab')[0].click()); await wait(page, 250);
-      await page.evaluate(() => document.querySelector('#panel .u-item[data-id="bed"], #panel .u-item[data-id="tens"], #panel .u-item')?.click()); await wait(page, 450);
+      await page.evaluate(() => document.querySelector('#panel .u-item[data-id="table2"], #panel .u-item[data-id="fryer"], #panel .u-item')?.click()); await wait(page, 450);
       await shot('build-armed'); await visit('build-armed');
       await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); await wait(page, 250);
     }
@@ -227,7 +227,7 @@ const theme = page => page.evaluate(() => document.querySelector('meta[name=them
   ok(/gradient/.test(tbC.img) && tbC.bg !== tbN.bg, `classic topbar keeps the old teal gradient (${tbC.img.slice(0, 40)})`);
   ok(await css(page, 'body', 'backgroundColor') === 'rgb(38, 70, 83)', 'classic body background unchanged (#264653)');
   ok((await css(page, '#panel .panel-title', 'backgroundColor')) !== panelBandN, 'panel title colours differ between styles');
-  ok(await page.evaluate(() => localStorage.getItem('ptgame.art')) === 'classic', 'classic persisted');
+  ok(await page.evaluate(() => localStorage.getItem('restgame.art')) === 'classic', 'classic persisted');
   await page.reload(); await page.waitForTimeout(1400);
   ok(!/\bstyle-concept\b/.test(await htmlCls(page)), 'after reload: still classic (no style-concept)');
   ok((await theme(page)) === '#1d5c57', 'after reload: theme-color teal');

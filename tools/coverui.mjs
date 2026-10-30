@@ -15,7 +15,7 @@ for (const [w, h, touch] of [[390, 844, true], [844, 390, true], [1280, 720, fal
     const page = await ctx.newPage(); const problems = [];
     page.on('console', m => { if (['error', 'warning'].includes(m.type())) problems.push(m.text()); });
     page.on('pageerror', e => problems.push('PAGEERR ' + e.message));
-    await page.addInitScript(st => { try { if (!sessionStorage.getItem('c')) { sessionStorage.setItem('c', '1'); localStorage.clear(); } if (st === 'classic') localStorage.setItem('ptgame.art', 'classic'); } catch (e) { /* ignore */ } }, style);
+    await page.addInitScript(st => { try { if (!sessionStorage.getItem('c')) { sessionStorage.setItem('c', '1'); localStorage.clear(); } if (st === 'classic') localStorage.setItem('restgame.art', 'classic'); } catch (e) { /* ignore */ } }, style);
     await page.goto(base); await page.waitForTimeout(900);
     ok(await page.locator('#cover').count() === 0, `${tag} no cover under automation by default`);
     await page.goto(base + '?nocover'); await page.waitForTimeout(500);

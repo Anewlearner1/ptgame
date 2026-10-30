@@ -8,10 +8,15 @@ const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'icons');
 mkdirSync(OUT, { recursive: true });
 
 const G = 32;                                   // logical pixel grid
-const INK = [31, 45, 51], TEAL = [42, 157, 143], TEAL2 = [35, 138, 125], TEAL3 = [29, 92, 87];
-const CREAM = [253, 246, 227], WOOD = [200, 162, 122], GOLD = [244, 162, 97], ACC = [231, 111, 81];
+const INK = [58, 28, 20], RED = [214, 74, 52], RED2 = [186, 56, 40], RED3 = [122, 36, 28];
+const CREAM = [253, 246, 227], WOOD = [200, 162, 122], GOLD = [244, 190, 80], ACC = [231, 111, 81];
 
-const inCross = (x, y) => (x >= 7 && x <= 24 && y >= 12 && y <= 19) || (x >= 12 && x <= 19 && y >= 7 && y <= 24);
+// a steaming noodle bowl: half-ellipse body, rim, a red band, a wooden base and three wisps of steam
+const inBody = (x, y) => y >= 15 && y <= 24 && ((x - 15.5) / 9.6) ** 2 + ((y - 15) / 9.6) ** 2 <= 1;
+const inRim = (x, y) => y >= 14 && y <= 15 && x >= 5 && x <= 26;
+const inBase = (x, y) => y >= 25 && y <= 26 && x >= 11 && x <= 20;
+const inSteam = (x, y) => y >= 5 && y <= 11 && [10, 15, 20].some(c => x === c + (((y + c) >> 1) & 1));
+const inShape = (x, y) => inBody(x, y) || inRim(x, y) || inBase(x, y);
 const roundedOut = (x, y) => { // notched corners (pixel-art "rounded" square) for the non-maskable icon
   const c = 3, ex = Math.min(x, G - 1 - x), ey = Math.min(y, G - 1 - y);
   return ex + ey < c;
@@ -21,15 +26,16 @@ const roundedOut = (x, y) => { // notched corners (pixel-art "rounded" square) f
 function colorAt(x, y, mode) {
   if (mode === 'any' && roundedOut(x, y)) return null;
   if (mode === 'any' && (x === 0 || y === 0 || x === G - 1 || y === G - 1 || roundedOut(x - 1, y) || roundedOut(x + 1, y) || roundedOut(x, y - 1) || roundedOut(x, y + 1))) return INK;
-  if (inCross(x, y)) return (!inCross(x, y + 1)) ? WOOD : (y === 12 || y === 7) && x > 7 ? [255, 255, 255] : CREAM;
-  const near = (dx, dy) => inCross(x + dx, y + dy);
+  if (inRim(x, y)) return y === 14 ? [255, 255, 255] : CREAM;
+  if (inBody(x, y)) return y === 19 || y === 20 ? RED : (x - 15.5) > 5 ? [232, 220, 196] : CREAM;
+  if (inBase(x, y)) return WOOD;
+  if (inSteam(x, y)) return [255, 255, 255];
+  const near = (dx, dy) => inShape(x + dx, y + dy) || inSteam(x + dx, y + dy);
   if (near(1, 0) || near(-1, 0) || near(0, 1) || near(0, -1)) return INK;
-  // tiny sparkle pixels + ground shadow
-  if ((x === 5 && y === 5) || (x === 26 && y === 6)) return [255, 255, 255];
-  if ((x === 4 && y === 6) || (x === 6 && y === 6) || (x === 5 && y === 4) || (x === 5 && y === 6)) return [200, 235, 228];
-  if (y >= 26 && y <= 27 && x >= 8 && x <= 24) return TEAL3;
-  if (mode === 'any' && (x === 1 || y === 1 || x === G - 2 || y === G - 2)) return TEAL3;
-  return y < 16 ? TEAL : y < 26 ? TEAL2 : TEAL2;
+  if ((x === 5 && y === 5) || (x === 26 && y === 6)) return GOLD;
+  if (y >= 27 && y <= 28 && x >= 8 && x <= 24) return RED3;
+  if (mode === 'any' && (x === 1 || y === 1 || x === G - 2 || y === G - 2)) return RED3;
+  return y < 16 ? RED : RED2;
 }
 
 function crc32(buf) {

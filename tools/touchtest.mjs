@@ -18,7 +18,7 @@ async function suite(W, H) {
   const { browser, page, problems, touch } = await launchMobile({ w: W, h: H, url });
   const shot = n => page.screenshot({ path: `${shotDir}/touch_${tag}_${n}.png` });
   const G = (fn, a) => page.evaluate(fn, a);
-  await G(() => { __game.bus.emit('speed:set', { speed: 0 }); __game.state.money = 500000; __game.state.points = { medical: 5000, device: 5000, service: 5000 }; document.querySelectorAll('#modal-root button').forEach(b => b.click()); });
+  await G(() => { __game.bus.emit('speed:set', { speed: 0 }); __game.state.money = 500000; __game.state.points = { culinary: 5000, device: 5000, service: 5000 }; document.querySelectorAll('#modal-root button').forEach(b => b.click()); });
   await page.waitForTimeout(300);
   // start from a clean full-canvas fit (the UI layer may have an in-progress free rect)
   await G(async () => { const cam = await import('/js/render/camera.js'); __game.ui.freeRect = null; cam.fitLotInRect(__game.state, document.getElementById('game'), null, __game.ui); });
@@ -136,8 +136,8 @@ async function suite(W, H) {
   ok((await tool()).mode === 'none' && (await nObj()) === nBefore, 'X cancels the tool without placing');
 
   // ---- rotate + drag-to-position (ghost above the finger) + second tap on ghost commits
-  await setTool({ mode: 'place', defId: 'traction' });
-  const ft = await freeTiles(page, 'traction', 4);
+  await setTool({ mode: 'place', defId: 'braise_pot' });
+  const ft = await freeTiles(page, 'braise_pot', 4);
   if (ft.length) {
     p = await tileXY(page, ft[0].x, ft[0].y); await touch.tap(p.x, p.y); await page.waitForTimeout(150);
     bar = await barButtons(page);
@@ -234,12 +234,12 @@ async function suite(W, H) {
     await G(() => { __game.state.money = 500000; __game.ui.selected = null; __game.ui.panel = null; });
     await G(async () => { const cam = await import('/js/render/camera.js'); __game.ui.freeRect = null; cam.fitLotInRect(__game.state, document.getElementById('game'), null, __game.ui); });
     await page.waitForTimeout(400);
-    const mvObj = () => G(() => { const o = __game.state.objects.find(o => o.defId === 'heatbox'); return { id: o.id, x: o.x, y: o.y, rot: o.rot }; });
+    const mvObj = () => G(() => { const o = __game.state.objects.find(o => o.defId === 'noodle_stove'); return { id: o.id, x: o.x, y: o.y, rot: o.rot }; });
     // a valid destination origin (>= 3 tiles from the old spot), the fee, and the finger point that puts the ghost there
     const dest = await G(async () => {
-      const b = await import('/js/sim/build.js'), { state } = __game, o = state.objects.find(o => o.defId === 'heatbox'), l = state.lot;
+      const b = await import('/js/sim/build.js'), { state } = __game, o = state.objects.find(o => o.defId === 'noodle_stove'), l = state.lot;
       for (let y = l.y0 + 1; y < l.y0 + l.h - 1; y++) for (let x = l.x0 + 1; x < l.x0 + l.w - 1; x++)
-        if (Math.abs(x - o.x) + Math.abs(y - o.y) >= 3 && b.canMove(state, o.id, x, y, 0).ok) return { x, y, fee: b.relocationCost('heatbox') };
+        if (Math.abs(x - o.x) + Math.abs(y - o.y) >= 3 && b.canMove(state, o.id, x, y, 0).ok) return { x, y, fee: b.relocationCost('noodle_stove') };
       return null;
     });
     ok(dest && dest.fee >= 500, `a valid move destination exists (fee NT$ ${dest && dest.fee})`);
@@ -288,7 +288,7 @@ async function suite(W, H) {
     // cancel: ✖ leaves the object and the money untouched
     const m1 = await money();
     ok(await longPressMove(ob.id), 'second long-press -> 移動');
-    const dest2 = await G(async () => { const b = await import('/js/sim/build.js'), { state } = __game, o = state.objects.find(o => o.defId === 'heatbox'), l = state.lot;
+    const dest2 = await G(async () => { const b = await import('/js/sim/build.js'), { state } = __game, o = state.objects.find(o => o.defId === 'noodle_stove'), l = state.lot;
       for (let y = l.y0 + 1; y < l.y0 + l.h - 1; y++) for (let x = l.x0 + 1; x < l.x0 + l.w - 1; x++) if (Math.abs(x - o.x) + Math.abs(y - o.y) >= 3 && b.canMove(state, o.id, x, y, 0).ok) return { x, y }; return null; });
     const sp2 = await cpt(0.5, 0.82), ff2 = await fingerFor(dest2);
     await touch.path([sp2, ff2], 80); await page.waitForTimeout(120);

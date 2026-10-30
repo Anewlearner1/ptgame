@@ -1,7 +1,7 @@
 {
   "name": "餐廳物語",
   "short_name": "餐廳",
-  "description": "經營一間餐廳：擺設設備、聘請治療師、與健保點值周旋的像素風模擬經營遊戲。",
+  "description": "經營一間台灣小吃店：擺設爐具、聘請廚師與服務生、研發菜色並控制食材成本的像素風模擬經營遊戲。",
   "lang": "zh-Hant",
   "start_url": "./",
   "scope": "./",
@@ -9,8 +9,8 @@
   "display": "fullscreen",
   "display_override": ["fullscreen", "standalone"],
   "orientation": "any",
-  "background_color": "#264653",
-  "theme_color": "#1d5c57",
+  "background_color": "#5a2a1e",
+  "theme_color": "#7a2a1c",
   "categories": ["games", "simulation"],
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

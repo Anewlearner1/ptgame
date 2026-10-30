@@ -40,7 +40,7 @@ if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
   try { mf = JSON.parse(mres.text); } catch (e) { /* fallthrough */ }
   ok(!!mf, 'manifest parses as JSON');
   if (mf) {
-    ok(mf.name === '復健科診所物語' && mf.short_name === '復健診所', 'manifest names');
+    ok(mf.name === '餐廳物語' && mf.short_name === '餐廳', 'manifest names');
     ok(mf.start_url === './' && mf.scope === './', 'manifest start_url / scope are relative ./');
     ok(mf.display === 'fullscreen' && (mf.display_override || []).includes('standalone'), 'display fullscreen with standalone fallback');
     ok(mf.orientation === 'any', 'orientation any (portrait + landscape)');
@@ -73,7 +73,7 @@ if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
   const cached = await page.evaluate(async () => { const ks = await caches.keys(); return ks.length ? (await (await caches.open(ks[0])).keys()).length : 0; });
   ok(cached > 3, `service worker cache populated (${cached} entries)`);
   const swsrc = await page.evaluate(async u => (await fetch(u + 'sw.js')).text(), base);
-  ok(/networkFirst/.test(swsrc) && /ptgame-v\d+/.test(swsrc), 'sw.js is network-first with a versioned cache name');
+  ok(/networkFirst/.test(swsrc) && /restgame-v\d+/.test(swsrc), 'sw.js is network-first with a versioned cache name');
   ok(problems.length === 0, 'no console errors on desktop load ' + problems.join(' | '));
   await ctx.close();
 }
@@ -257,7 +257,7 @@ for (const [w, h, kind] of VIEWPORTS) {
   if (expectMode !== 'desktop' && !expectMode.startsWith('tablet')) {
     await page.evaluate(() => document.querySelectorAll('.sidebar-btn')[0].click()); await pause(page, 250);
     await page.evaluate(() => document.querySelector('#panel .u-tabbed > .tabs > .tab').click()); await pause(page, 150);
-    await page.evaluate(() => { [...document.querySelectorAll('#panel .u-subtabs .tab')].find(t => t.textContent.includes('候診'))?.click(); }); await pause(page, 150);
+    await page.evaluate(() => { [...document.querySelectorAll('#panel .u-subtabs .tab')].find(t => t.textContent.includes('候位'))?.click(); }); await pause(page, 150);
     await page.evaluate(() => document.querySelector('#panel .u-item[data-id="plant"]').click()); await pause(page, 400);
     const f = await page.evaluate(() => { const p = document.getElementById('panel').getBoundingClientRect(), s = document.getElementById('stage').getBoundingClientRect(); return { bmode: document.getElementById('stage').dataset.bmode, tool: __game.ui.tool.mode, p: p.toJSON(), s: s.toJSON(), tray: document.querySelector('.u-tray') && getComputedStyle(document.querySelector('.u-tray')).display !== 'none' }; });
     ok(f.tool === 'place', 'build: picking an item arms the tool');
@@ -302,10 +302,10 @@ for (const [w, h, kind] of VIEWPORTS) {
   };
   await showModal('settlement', () => __game.bus.emit('month:settled', { points: 31000, pointValue: 0.9, income: 60000, expense: 52000, net: 8000, cap: 28000, nhiIncome: 27900, selfIncome: 32100, salary: 30000, rent: 60000, maintain: 2000, year: 1, month: 1 }));
   await showModal('inspection', () => __game.bus.emit('inspection:result', { pass: false, score: 61, notes: ['走道寬度不足，輪椅進出有困難。', '缺少無障礙廁所。', '病歷保存良好。'], rewardOrFine: -20000 }));
-  await showModal('event', () => { const ev = { id: 'test_ev', title: '測試事件：里長來訪', text: '里長帶著一群長輩來參觀你的診所，問你能不能辦一場免費的衛教講座？這件事情很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長。', choices: [{ label: '好啊，歡迎', result: '大家都很開心。', effects: {} }, { label: '先婉拒，最近太忙了', result: '里長有點失望。', effects: {} }] }; __game.state.events.pendingDilemma = ev; __game.bus.emit('event:show', { event: ev }); });   // resolveDilemma refuses a choice when nothing is pending
+  await showModal('event', () => { const ev = { id: 'test_ev', title: '測試事件：里長來訪', text: '里長帶著一群長輩來參觀你的餐廳，問你能不能辦一場免費的衛教講座？這件事情很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長很長。', choices: [{ label: '好啊，歡迎', result: '大家都很開心。', effects: {} }, { label: '先婉拒，最近太忙了', result: '里長有點失望。', effects: {} }] }; __game.state.events.pendingDilemma = ev; __game.bus.emit('event:show', { event: ev }); });   // resolveDilemma refuses a choice when nothing is pending
   await closeModals();
   await showModal('help', () => { document.querySelector('.speed-btn.u-help')?.click(); });
-  // 診所 panel -> achievements tab at this viewport
+  // 餐廳 panel -> achievements tab at this viewport
   await page.evaluate(() => document.querySelectorAll('.sidebar-btn')[2].click()); await pause(page, 250);
   await page.evaluate(() => [...document.querySelectorAll('#panel .tab')].find(t => /稱號|徽章|成就/.test(t.textContent))?.click()); await pause(page, 300);
   const ach = await page.evaluate(() => { const l = document.querySelector('#panel .u-achlist'); if (!l) return null; const a = [...l.children].filter(c => c.getBoundingClientRect().width > 0); const xs = new Set(a.map(c => Math.round(c.getBoundingClientRect().left))); return { cols: xs.size, n: a.length }; });

@@ -18,7 +18,7 @@ async function open({ style = 'new', touch = false, w = 1280, h = 720, dpr = 1, 
   const ctx = keep || await browser.newContext(touch ? { viewport: { width: w, height: h }, deviceScaleFactor: dpr, isMobile: true, hasTouch: true, userAgent: UA, ...sw } : { viewport: { width: w, height: h }, deviceScaleFactor: dpr, ...sw });
   if (!keep) {
     await ctx.addInitScript(([st]) => {
-      try { if (!sessionStorage.getItem('pt-init')) { sessionStorage.setItem('pt-init', '1'); localStorage.clear(); if (st === 'classic') localStorage.setItem('ptgame.art', 'classic'); } } catch (e) { /* ignore */ }
+      try { if (!sessionStorage.getItem('pt-init')) { sessionStorage.setItem('pt-init', '1'); localStorage.clear(); if (st === 'classic') localStorage.setItem('restgame.art', 'classic'); } } catch (e) { /* ignore */ }
     }, [style]);
   }
   const page = await ctx.newPage();
@@ -87,7 +87,7 @@ for (const style of ['new', 'classic']) {
   if (t) {
     const nums = hudNums(t);
     ok(nums.length >= 14 && nums.every(Number.isFinite), `[${style}] HUD numbers finite (${nums.length})`);
-    for (const key of ['幀率', '1%低', 'p50', 'p95', '模擬', '繪製', '角色', '畫布', 'DPR', '畫質', '診所']) ok(t.includes(key), `[${style}] HUD shows ${key}`);
+    for (const key of ['幀率', '1%低', 'p50', 'p95', '模擬', '繪製', '角色', '畫布', 'DPR', '畫質', '餐廳']) ok(t.includes(key), `[${style}] HUD shows ${key}`);
     ok(t.includes(style === 'new' ? '新美術' : '原像素'), `[${style}] HUD shows art style`);
     const m = t.match(/畫布 (\d+)×(\d+)/);
     const cv = await page.evaluate(() => [document.getElementById('game').width, document.getElementById('game').height]);
@@ -148,7 +148,7 @@ for (const style of ['new', 'classic']) {
   await q.selectOption('high'); await page.waitForTimeout(250);
   s = await lv();
   ok(s.level === 0 && s.w === base.w, 'high -> level 0, full backing size');
-  ok((await page.evaluate(() => localStorage.getItem('ptgame.quality'))) === 'high', 'quality persisted in localStorage');
+  ok((await page.evaluate(() => localStorage.getItem('restgame.quality'))) === 'high', 'quality persisted in localStorage');
   await q.selectOption('low');
   await page.reload(); await page.waitForTimeout(1500);
   s = await lv();
@@ -158,7 +158,7 @@ for (const style of ['new', 'classic']) {
   await page.locator('select[data-perf="quality"]').selectOption('auto'); await page.waitForTimeout(250);
   s = await lv();
   ok(s.auto === true && s.level === 0, 'back to 自動 restarts the scaler at level 0');
-  ok((await page.evaluate(() => localStorage.getItem('ptgame.quality'))) === 'auto', 'auto persisted');
+  ok((await page.evaluate(() => localStorage.getItem('restgame.quality'))) === 'auto', 'auto persisted');
   const help = await page.locator('#panel .u-section', { hasText: '效能與畫質' }).innerText();
   ok(help.includes('自動：') && help.includes('幀率上限：'), 'one-line explanations are present');
   ok(problems.length === 0, 'no console problems in quality test: ' + problems.slice(0, 3).join(' | '));
@@ -191,7 +191,7 @@ for (const style of ['new', 'classic']) {
   ok(Math.abs(r60.perSec - 16) < 1.5, 'x1 speed is ~16 game-min per real second ' + r60.perSec.toFixed(2));
   ok(r30.fps > 24 && r30.fps < 36, 'cap 30 renders ~30 fps ' + r30.fps.toFixed(1));
   ok(r60.fps > 45, 'cap 60 renders ~60 fps ' + r60.fps.toFixed(1));
-  ok((await page.evaluate(() => localStorage.getItem('ptgame.fpscap'))) === '30', 'fps cap persisted');
+  ok((await page.evaluate(() => localStorage.getItem('restgame.fpscap'))) === '30', 'fps cap persisted');
   const skipped = await page.evaluate(() => window.__game.ui.perfStats.skipped);
   ok(skipped > 50, 'limiter skipped rAF ticks ' + skipped);
   await page.reload(); await page.waitForTimeout(1500);

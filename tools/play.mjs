@@ -20,20 +20,20 @@ const nObj = () => G(() => __game.state.objects.length);
 const closeModals = () => G(() => { for (let i = 0; i < 5; i++) document.querySelector('.modal .btn.primary, .modal .btn')?.click(); });
 
 await G(async () => { (await import('/js/sim/events.js')).EVENT_TUNE.CHANCE = 0; });   // random events are tested explicitly (triggerEvent) - keep this scripted run deterministic
-await G(() => { __game.bus.emit('speed:set', { speed: 0 }); __game.state.points = { medical: 5000, device: 5000, service: 5000 }; });
+await G(() => { __game.bus.emit('speed:set', { speed: 0 }); __game.state.points = { culinary: 5000, device: 5000, service: 5000 }; });
 
 // --- build / paint / rotate / demolish
 await side(1);
 let m0 = await money(), o0 = await nObj();
-await tab('.tabs', '候診與景觀'); await pick('plant'); await clickTile(page, 11, 18);
+await tab('.tabs', '候位與景觀'); await pick('plant'); await clickTile(page, 11, 18);
 ok(await nObj() === o0 + 1 && await money() < m0, 'plant placed and paid');
 await tab('.tabs', '設施'); await tab('.tabs', '物理治療區');
-await pick('traction'); await page.keyboard.press('r'); await clickTile(page, 20, 12);
+await pick('braise_pot'); await page.keyboard.press('r'); await clickTile(page, 20, 12);
 ok(await G(() => __game.state.zones.some(z => z.id === 'golden3')), 'golden3 zone active (heatbox+tens+traction, rotated with R)');
 ok(await G(() => __game.state.mods.nhiTurnover > 1.19), 'golden3 raises nhiTurnover');
 await tab('.tabs', '環境'); await tab('.tabs', '地板與通道');
-m0 = await G(() => __game.state.ledger.expense.build); await pick('floor_mat'); await dragTiles(page, [14, 18], [14, 13]);
-ok(await G(() => __game.state.map.floor.filter((r, y) => r[14] === 'floor_mat').length) >= 5, 'floor drag-paint covers a line');
+m0 = await G(() => __game.state.ledger.expense.build); await pick('floor_tile'); await dragTiles(page, [14, 18], [14, 13]);
+ok(await G(() => __game.state.map.floor.filter((r, y) => r[14] === 'floor_tile').length) >= 5, 'floor drag-paint covers a line');
 ok(await G(() => __game.state.ledger.expense.build) > m0, 'floor paint costs money (build ledger; the 防滑地墊 onboarding reward may offset the cash)');
 await page.click('#panel .btn:has-text("拆除")'); o0 = await nObj(); m0 = await money();
 await clickTile(page, 11, 18);
@@ -44,7 +44,7 @@ await shot('play_build');
 // --- move tool: pick up + drop an object (fee), Esc / right-click cancel, M hotkey, rotate while carrying
 {
   await G(() => { __game.state.money = 2e6; });
-  const hb = await G(() => { const o = __game.state.objects.find(o => o.defId === 'tens'); return { id: o.id, x: o.x, y: o.y }; });
+  const hb = await G(() => { const o = __game.state.objects.find(o => o.defId === 'fryer'); return { id: o.id, x: o.x, y: o.y }; });
   const dest = await G(async ({ id }) => { const b = await import('/js/sim/build.js'), { state } = __game, o = state.objects.find(q => q.id === id), l = state.lot;
     for (let y = l.y0 + l.h - 3; y > l.y0; y--) for (let x = l.x0 + l.w - 2; x > l.x0; x--) if (Math.abs(x - o.x) + Math.abs(y - o.y) >= 3 && b.canMove(state, id, x, y, 0).ok) return { x, y, fee: b.relocationCost(o.defId) };   // front of the lot: nothing tall in front of it
     return null; }, hb);
@@ -105,7 +105,7 @@ await page.evaluate(async () => {
 });
 ok(await G(() => __game.state.research.done.length) >= 15, 'research started via UI and completed');
 await tab('.tabs', '💲 自費定價');
-ok(await G(() => /每位模擬病患代表 \d+ 位真實病患/.test(document.querySelector('#panel')?.textContent || '') && /市場行情/.test(document.querySelector('#panel')?.textContent || '') && /同日物理治療僅給付最高一項/.test(document.querySelector('#panel')?.textContent || '')), 'pricing tab: patient-weight note + market reference + single-claim rule');
+ok(await G(() => /每位模擬客人代表 \d+ 位真實客人/.test(document.querySelector('#panel')?.textContent || '') && /市場行情/.test(document.querySelector('#panel')?.textContent || '') && /同日物理治療僅給付最高一項/.test(document.querySelector('#panel')?.textContent || '')), 'pricing tab: patient-weight note + market reference + single-claim rule');
 await tab('.tabs', '🎪 社區衛教');
 await page.click('#panel .btn.primary:text-is("舉辦")'); await page.waitForTimeout(200);
 ok(await G(() => __game.state.events.active.some(a => a.kind === 'community')), 'community outreach started');
@@ -148,7 +148,7 @@ await G(() => { const s = __game.state; s.time.week = 4; s.time.clock = 1185; s.
 await page.waitForTimeout(2500);
 ok(await G(() => /營運報告/.test(document.querySelector('.modal-title')?.textContent || '')), 'month-end report modal');
 ok(await G(() => /點值被稀釋/.test(document.querySelector('.modal')?.textContent || '')), 'NHI dilution explained');
-ok(await G(() => { const t = document.querySelector('.modal')?.textContent || ''; return /健保給付/.test(t) && /自費收入/.test(t) && /部分負擔/.test(t) && /每位模擬病患代表 \d+ 位真實病患/.test(t); }), 'month report: 健保 / 自費 / 部分負擔 breakdown + patient-weight footnote');
+ok(await G(() => { const t = document.querySelector('.modal')?.textContent || ''; return /健保給付/.test(t) && /自費收入/.test(t) && /部分負擔/.test(t) && /每位模擬客人代表 \d+ 位真實客人/.test(t); }), 'month report: 健保 / 自費 / 部分負擔 breakdown + patient-weight footnote');
 await shot('play_month'); await closeModals();
 await G(async () => { const E = await import('/js/sim/events.js'); __game.state.events.cooldowns = {}; E.triggerEvent(__game.state, 'li_chief'); });
 await page.waitForTimeout(400);

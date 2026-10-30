@@ -27,25 +27,25 @@ export function setEndless(s, on) { s.career.endless = !!on; window.__endlessCal
 export function markExpandTabOpened() { window.__expandOpened = (window.__expandOpened || 0) + 1; }
 export function careerCardText() { return F().card || ''; }
 `;
-const ONB = (n, done, o = {}) => ({ id: 'ob' + n, name: `任務${n}：${['讓第一位病患治療完畢', '擺一組候診座位', '鋪防滑地墊', '湊成黃金三寶區', '完成第一次月結算', '開始一項研發', '僱用第二位物理治療師', '調整一項自費價格', '辦一次社區活動', '查看年度評鑑條件'][n - 1]}`, desc: '把這件事做起來，就能學到一個核心系統。', hint: '到建造面板找找看', done, progress: done ? 1 : 0, target: 1, reward: { money: 20000 }, rewardText: '資金 +NT$ 20,000', ...o });
+const ONB = (n, done, o = {}) => ({ id: 'ob' + n, name: `任務${n}：${['讓第一位客人治療完畢', '擺一組候位座位', '鋪防滑地墊', '湊成黃金三寶區', '完成第一次月結算', '開始一項研發', '僱用第二位物理治療師', '調整一項自費價格', '辦一次社區活動', '查看年度評鑑條件'][n - 1]}`, desc: '把這件事做起來，就能學到一個核心系統。', hint: '到建造面板找找看', done, progress: done ? 1 : 0, target: 1, reward: { money: 20000 }, rewardText: '資金 +NT$ 20,000', ...o });
 const FAKE = {
   onboarding: [ONB(1, true), ONB(2, true), ONB(3, false, { target: 6, progress: 2 }), ONB(4, false), ONB(5, false), ONB(6, false), ONB(7, false), ONB(8, false), ONB(9, false), ONB(10, false)],
   goals: [
     { id: 'core1', kind: 'core', name: '站穩腳步', desc: '年底聲譽 ≥ 60 且資金 ≥ 開局資金', progress: 42, target: 60, pct: 0.7, done: false, claimed: false, rewardText: '資金 +NT$ 60,000、聲譽 +3',
       conds: [{ key: 'rep', label: '年底聲譽', value: 42, target: 60, cmp: '>=', ok: false }, { key: 'money', label: '資金不低於開局', value: 1250000, target: 1200000, cmp: '>=', ok: true }] },
-    { id: 'b1', kind: 'bonus', name: '零滑倒的一年', desc: '全年沒有病患滑倒', progress: 0, target: 1, pct: 1, done: true, claimed: true, rewardText: '資金 +NT$ 20,000', conds: [] },
-    { id: 'b2', kind: 'bonus', name: '治癒 30 位病患', desc: '本年累計治癒人數', progress: 12, target: 30, pct: 0.4, done: false, claimed: false, rewardText: '醫術點 +8', conds: [{ key: 'cured', label: '治癒人數', value: 12, target: 30, cmp: '>=', ok: false }] },
+    { id: 'b1', kind: 'bonus', name: '零滑倒的一年', desc: '全年沒有客人滑倒', progress: 0, target: 1, pct: 1, done: true, claimed: true, rewardText: '資金 +NT$ 20,000', conds: [] },
+    { id: 'b2', kind: 'bonus', name: '治癒 30 位客人', desc: '本年累計治癒人數', progress: 12, target: 30, pct: 0.4, done: false, claimed: false, rewardText: '醫術點 +8', conds: [{ key: 'cured', label: '治癒人數', value: 12, target: 30, cmp: '>=', ok: false }] },
   ],
   reviews: [
     { year: 1, grade: 'B', score: 66, dims: { fin: 70, rep: 64, care: 72, team: 55, local: 60 }, stats: { moneyDelta: 180000, patients: 820, repDelta: 55, cured: 310, events: 9, bogus: 5 }, goals: [{ id: 'core1', name: '站穩腳步', done: true }, { id: 'b1', name: '零滑倒的一年', done: false }], line: '第一年站穩了，繼續加油！', journal: '開業第一年，每天都像在打仗，但看到病人笑著走出去，一切都值得。' },
     { year: 2, grade: 'D', score: 33, dims: { fin: 20, rep: 40, care: 55, team: 30, local: 22 }, stats: { moneyDelta: -250000, patients: 700, repDelta: -4, cured: 200, events: 11 }, goals: [{ id: 'c2', name: '擴大門面', done: false }, { id: 'b3', name: '零離職', done: false }], line: '這一年很辛苦，穩住現金流最重要。' },
-    { year: 3, grade: 'S', score: 93, dims: { fin: 95, rep: 98, care: 90, team: 88, local: 94 }, stats: { moneyDelta: 900000, patients: 1500, repDelta: 120, cured: 800, events: 14 }, goals: [{ id: 'c3', name: '通過督導', done: true }, { id: 'b4', name: '平均士氣 ≥ 70', done: true }], line: '漂亮的一年！診所成了街坊的招牌。', journal: '第三年，診所擴建完成，我終於敢說這是一間「正式」的復健中心。' },
+    { year: 3, grade: 'S', score: 93, dims: { fin: 95, rep: 98, care: 90, team: 88, local: 94 }, stats: { moneyDelta: 900000, patients: 1500, repDelta: 120, cured: 800, events: 14 }, goals: [{ id: 'c3', name: '通過督導', done: true }, { id: 'b4', name: '平均士氣 ≥ 70', done: true }], line: '漂亮的一年！餐廳成了街坊的招牌。', journal: '第三年，餐廳擴建完成，我終於敢說這是一間「正式」的復健中心。' },
   ],
-  summary: { year: 4, yearsLeft: 7, endless: false, ending: null, scoreSoFar: 64, projected: { id: 'steady', title: '穩健的社區診所', emoji: '🏥' }, avgGrade: 'B' },
-  ending: { id: 'steady', title: '穩健的社區診所', emoji: '🏥', thanks: ['十年了，這間診所陪著整個社區一起變老也變健康。', '謝謝每一位病人，也謝謝每一位夥伴。'], score: 71, grade: 'B',
+  summary: { year: 4, yearsLeft: 7, endless: false, ending: null, scoreSoFar: 64, projected: { id: 'steady', title: '穩健的社區餐廳', emoji: '🏥' }, avgGrade: 'B' },
+  ending: { id: 'steady', title: '穩健的社區餐廳', emoji: '🏥', thanks: ['十年了，這間餐廳陪著整個社區一起變老也變健康。', '謝謝每一位病人，也謝謝每一位夥伴。'], score: 71, grade: 'B',
     stats: { totalIncome: 123456789, totalPatients: 18234, totalCured: 9120, eventsHandled: 88, achievementsDone: 21, peakReputation: 412, finalLot: 2, topTreatment: 'heat', unknownKey: 1 } },
   bankrupt: { id: 'bankrupt', title: '提早收攤', emoji: '🪧', thanks: '資金見底了，但這段經驗是寶貴的。下一次，一定能更穩。', score: 31, grade: 'D', stats: { totalIncome: 4567890, totalPatients: 1200, totalCured: 500, eventsHandled: 12, peakReputation: 90, finalLot: 0 } },
-  card: '🏥 幸福復健科診所｜穩健的社區診所\n最終評等 B（71 分）\n歷年評等：1B 2D 3S\n— 復健科診所物語',
+  card: '🏥 幸福復健科餐廳｜穩健的社區餐廳\n最終評等 B（71 分）\n歷年評等：1B 2D 3S\n— 餐廳物語',
 };
 const REV = (year, grade, score, extra = {}) => ({ year, grade, score, dims: { fin: 60, rep: 50, care: 70, team: 40, local: 55 }, stats: { moneyDelta: 120000, patients: 900, repDelta: 20, cured: 300, events: 8 }, goals: [{ id: 'g', name: '站穩腳步', done: true }, { id: 'h', name: '零滑倒', done: false }], line: '本年評語。', ...extra });
 
@@ -64,7 +64,7 @@ async function open(w, h, { mode = 'new', tutorial = false, fake = FAKE, real = 
     try {
       Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.__clip = t; return Promise.resolve(); } } });
     } catch (e) { /* ignore */ }
-    try { if (first && !sessionStorage.getItem('careerui-init')) { sessionStorage.setItem('careerui-init', '1'); localStorage.clear(); if (m === 'classic') localStorage.setItem('ptgame.art', 'classic'); } } catch (e) { /* ignore */ }
+    try { if (first && !sessionStorage.getItem('careerui-init')) { sessionStorage.setItem('careerui-init', '1'); localStorage.clear(); if (m === 'classic') localStorage.setItem('restgame.art', 'classic'); } } catch (e) { /* ignore */ }
   }, [mode, true, fake]);
   await page.goto(url); await page.waitForTimeout(1500);
   if (!tutorial) await page.evaluate(() => { document.querySelector('#modal-root button')?.click(); });
@@ -106,9 +106,9 @@ const VIEWPORTS = [[390, 844], [360, 740], [844, 390], [1280, 720]];
   const fresh = { ...FAKE, onboarding: FAKE.onboarding.map(t => ({ ...t, done: false, progress: 0 })) };
   const { page, problems } = await open(390, 844, { mode: 'new', fake: fresh });
   ok(await page.evaluate(() => document.documentElement.classList.contains('style-concept')), 'concept style active');
-  // red dot: fresh game with undone onboarding tasks -> visible on 診所 button
+  // red dot: fresh game with undone onboarding tasks -> visible on 餐廳 button
   await wait(page, 900);
-  ok(await page.evaluate(() => { const d = document.querySelector('#sidebar .sidebar-btn[data-p="clinic"] .u-dot'); return !!d && !d.hidden; }), 'red dot visible on 診所 button for unseen tasks');
+  ok(await page.evaluate(() => { const d = document.querySelector('#sidebar .sidebar-btn[data-p="clinic"] .u-dot'); return !!d && !d.hidden; }), 'red dot visible on 餐廳 button for unseen tasks');
   await shot(page, 'dot_390x844');
   await panelOpen(page);
   await page.evaluate(src => { window.__careerFake.onboarding = src; __game.bus.emit('career:changed', {}); }, FAKE.onboarding);
@@ -143,7 +143,7 @@ const VIEWPORTS = [[390, 844], [360, 740], [844, 390], [1280, 720]];
   ok(c.pills === 10 && c.pillGrades.join(',') === 'B,D,S,·' || c.pills === 10 && c.pillGrades.join(',') === 'B,D,S,…', `timeline 10 pills with grades (${c.pillGrades})`);
   ok(c.cur === '4', `current year pill (${c.cur})`);
   ok(c.rev === 3 && c.firstRev === '3', `review list newest first (${c.rev}/${c.firstRev})`);
-  ok(/生涯第 4 年 \/ 共 10 年/.test(c.sum) && /穩健的社區診所/.test(c.sum) && /🏥/.test(c.sum) && /平均評等 B/.test(c.sum), `career summary line (${c.sum.slice(0, 60)})`);
+  ok(/生涯第 4 年 \/ 共 10 年/.test(c.sum) && /穩健的社區餐廳/.test(c.sum) && /🏥/.test(c.sum) && /平均評等 B/.test(c.sum), `career summary line (${c.sum.slice(0, 60)})`);
   ok((await overflow(page)).length === 0, 'no overflow in 目標 tab: ' + (await overflow(page)).join(','));
   // red dot cleared by viewing
   await wait(page, 700);
@@ -181,8 +181,8 @@ const VIEWPORTS = [[390, 844], [360, 740], [844, 390], [1280, 720]];
   ok(after.same && /已達成/.test(after.stat), `in-place goal update, no rebuild (${before} -> ${after.txt}, ${after.stat})`);
 
   // toast on goal-done (no sim toast) and on onboarding-done
-  await emit(page, 'career:goal-done', { goal: { id: 'b2', name: '治癒 30 位病患' }, rewardText: '醫術點 +8' }); await wait(page, 250);
-  ok(await page.evaluate(() => [...document.querySelectorAll('.toast')].some(t => /目標達成/.test(t.textContent) && /治癒 30 位病患/.test(t.textContent) && /醫術點 \+8/.test(t.textContent) && t.classList.contains('good'))), 'toast on career:goal-done (good, with reward)');
+  await emit(page, 'career:goal-done', { goal: { id: 'b2', name: '治癒 30 位客人' }, rewardText: '醫術點 +8' }); await wait(page, 250);
+  ok(await page.evaluate(() => [...document.querySelectorAll('.toast')].some(t => /目標達成/.test(t.textContent) && /治癒 30 位客人/.test(t.textContent) && /醫術點 \+8/.test(t.textContent) && t.classList.contains('good'))), 'toast on career:goal-done (good, with reward)');
   await emit(page, 'career:onboarding-done', { task: { id: 'ob3', name: '鋪防滑地墊' }, rewardText: '資金 +NT$ 20,000' }); await wait(page, 250);
   ok(await page.evaluate(() => [...document.querySelectorAll('.toast')].some(t => /新手任務完成/.test(t.textContent) && /鋪防滑地墊/.test(t.textContent))), 'toast on career:onboarding-done');
   // no duplicate when the sim already toasted (same tick)
@@ -250,7 +250,7 @@ for (const mode of ['new', 'classic']) {
     await shot(page, `review_D_${tag}`);
     // 看生涯進度 opens the 目標 tab
     await page.click('.modal-actions .btn:has-text("看生涯進度")'); await wait(page, 600);
-    ok(await page.evaluate(() => !document.querySelector('.modal') && __game.ui.panel === 'clinic' && /目標/.test(document.querySelector('#panel .tab.active')?.textContent || '')), `${tag} 看生涯進度 closes the modal and opens 診所 > 目標`);
+    ok(await page.evaluate(() => !document.querySelector('.modal') && __game.ui.panel === 'clinic' && /目標/.test(document.querySelector('#panel .tab.active')?.textContent || '')), `${tag} 看生涯進度 closes the modal and opens 餐廳 > 目標`);
     ok(REALISH(problems).length === 0, `${tag} no console problems: ` + REALISH(problems).slice(0, 3).join(' | '));
     await page.context().close();
   }
@@ -307,8 +307,8 @@ for (const mode of ['new', 'classic']) {
       grade: document.querySelector('.modal .u-grade')?.textContent, pills: document.querySelectorAll('.modal .u-tl-pill').length, note: !!document.querySelector('.modal .u-end-note'),
       btns: [...document.querySelectorAll('.modal-actions .btn')].map(b => b.textContent), bust: document.querySelector('.modal .u-bust')?._art?.name,
     }));
-    ok(e.title === '穩健的社區診所' && e.emoji === '🏥', `${tag} ending title/emoji`);
-    ok(/十年了/.test(e.quote), `${tag} 院長感言 shown`);
+    ok(e.title === '穩健的社區餐廳' && e.emoji === '🏥', `${tag} ending title/emoji`);
+    ok(/十年了/.test(e.quote), `${tag} 老闆感言 shown`);
     ok(e.stats.length === 8 && e.stats[0] === 'totalIncome=NT$ 123,456,789' && e.stats.includes('finalLot=地區復健中心') && e.stats.some(s => s.startsWith('topTreatment=') && !s.endsWith('=heat')), `${tag} stats card formatted (${e.stats.join(' | ')})`);
     ok(e.grade === 'B' && e.pills === 10, `${tag} grade + 10-year strip`);
     ok(e.note, `${tag} endless note`);
@@ -351,7 +351,7 @@ for (const mode of ['new', 'classic']) {
 {
   const { page, problems } = await open(390, 844, { mode: 'new' });
   await page.evaluate(() => { __game.state.flags.gameOver = true; });
-  await emit(page, 'game:over', { reason: '資金低於 NT$ -300,000，診所宣告破產。' }); await wait(page, 500);
+  await emit(page, 'game:over', { reason: '資金低於 NT$ -300,000，餐廳宣告破產。' }); await wait(page, 500);
   const b = await page.evaluate(() => ({ title: document.querySelector('.modal .u-end-title')?.textContent, mt: document.querySelector('.modal .modal-title')?.textContent, btns: [...document.querySelectorAll('.modal-actions .btn')].map(x => x.textContent), reason: document.querySelector('.modal .u-end-reason')?.textContent, tag: !!document.querySelector('.u-endmodal') }));
   ok(b.title === '提早收攤' && /遊戲結束/.test(b.mt) && /提早收攤/.test(b.mt) && b.tag, `bankrupt: game:over shows the career ending (${b.title})`);
   ok(!b.btns.includes('繼續經營') && b.btns.includes('重新開業') && b.btns.includes('複製生涯卡'), `bankrupt buttons (${b.btns})`);
@@ -371,7 +371,7 @@ for (const mode of ['new', 'classic']) {
   // career data missing (no computeEnding result): the plain game-over modal still works
   const fake = { ...FAKE, bankrupt: null };
   const { page, problems } = await open(390, 844, { mode: 'new', fake });
-  await emit(page, 'game:over', { reason: '資金低於 NT$ -300,000，診所宣告破產。' }); await wait(page, 400);
+  await emit(page, 'game:over', { reason: '資金低於 NT$ -300,000，餐廳宣告破產。' }); await wait(page, 400);
   ok(await page.evaluate(() => /遊戲結束/.test(document.querySelector('.modal .modal-title')?.textContent || '') && /重新開業/.test(document.querySelector('.modal-actions').textContent)), 'game over falls back to the classic modal when career data is missing');
   await emit(page, 'career:ending', { ending: FAKE.bankrupt }); await wait(page, 400);
   ok(await page.evaluate(() => /提早收攤/.test(document.querySelector('.modal .modal-title')?.textContent || '')), 'a later bankrupt career:ending replaces the plain game-over modal');

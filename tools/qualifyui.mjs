@@ -17,7 +17,7 @@ async function open(w, h, style) {
   const problems = [];
   page.on('console', m => { if (['error', 'warning'].includes(m.type()) && !/willReadFrequently/.test(m.text())) problems.push(m.type() + ': ' + m.text()); });     // (that warning comes from this test's own canvas readback)
   page.on('pageerror', e => problems.push('PAGEERR ' + e.message));
-  await page.addInitScript((st) => { try { localStorage.clear(); if (st === 'classic') localStorage.setItem('ptgame.art', 'classic'); } catch (e) { /* ignore */ } }, style);
+  await page.addInitScript((st) => { try { localStorage.clear(); if (st === 'classic') localStorage.setItem('restgame.art', 'classic'); } catch (e) { /* ignore */ } }, style);
   await page.goto(url); await page.waitForTimeout(1400);
   await page.evaluate(() => { document.querySelector('#modal-root button')?.click(); __game.bus.emit('speed:set', { speed: 0 }); });
   await page.waitForTimeout(250);
@@ -76,7 +76,7 @@ for (const [w, h] of VIEWS) for (const style of STYLES) {
 
   // starter clinic: PT / nurse / doctor on the payroll -> nothing is unstaffed
   const base = await mods(page, `return { miss: Q.missingRoles(state).length, unst: Q.unstaffedIds(state).size, staff: state.staff.map(s => s.role) };`);
-  ok(base.miss === 0 && base.unst === 0 && ['doctor', 'nurse', 'pt'].every(r => base.staff.includes(r)), `${tag}: starter clinic is fully staffed (${JSON.stringify(base)})`);
+  ok(base.miss === 0 && base.unst === 0 && ['chef', 'cashier', 'cook'].every(r => base.staff.includes(r)), `${tag}: starter clinic is fully staffed (${JSON.stringify(base)})`);
 
   // ---- build cards
   await ensurePanel(page, 'b', 'build');
@@ -85,7 +85,7 @@ for (const [w, h] of VIEWS) for (const style of STYLES) {
   if (await subTab.count()) { await subTab.first().click(); await settle(page, 250); }
   const cards = await page.evaluate(() => {
     const out = {};
-    for (const id of ['heatbox', 'tens', 'traction', 'bed']) {
+    for (const id of ['noodle_stove', 'fryer', 'braise_pot', 'bed']) {
       const c = document.querySelector(`.u-item[data-id="${id}"]`);
       const r = c && c.querySelector('.u-roles');
       out[id] = r ? { text: r.textContent, chips: [...r.querySelectorAll('.u-role')].map(x => x.className + '|' + x.textContent) } : null;
@@ -103,14 +103,14 @@ for (const [w, h] of VIEWS) for (const style of STYLES) {
 
   // tooltip (desktop hover)
   if (!mobile) {
-    await page.hover('.u-item[data-id="tens"]'); await settle(page, 350);
+    await page.hover('.u-item[data-id="fryer"]'); await settle(page, 350);
     const tip = await page.evaluate(() => { const t = document.getElementById('tooltip'); return t && !t.hidden ? t.textContent : ''; });
     ok(/需要：.*物理治療師/.test(tip), `${tag}: build tooltip carries the role line (${tip.slice(0, 80)})`);
     await page.mouse.move(5, 5);
   }
 
   // tray (phones): pick tens -> tray shows the role line
-  await page.click('.u-item[data-id="tens"]'); await settle(page, 400);
+  await page.click('.u-item[data-id="fryer"]'); await settle(page, 400);
   if (mobile) {
     const tray = await page.evaluate(() => { const t = document.querySelector('.u-tray-role'); return t && !t.hidden && t.offsetParent ? t.textContent : ''; });
     ok(/需要：.*物理治療師/.test(tray), `${tag}: tray shows 「需要：…」 (${tray})`);
@@ -120,20 +120,20 @@ for (const [w, h] of VIEWS) for (const style of STYLES) {
 
   // ---- fire the last PT: chips turn ⚠, placing a PT machine toasts once, objects get the ⚠ overlay
   const tens = await mods(page, `
-    const pt = state.staff.find(s => s.role === 'pt'); S.fire(state, pt.id);
-    const t = state.objects.find(o => o.defId === 'tens');
+    const pt = state.staff.find(s => s.role === 'cook'); S.fire(state, pt.id);
+    const t = state.objects.find(o => o.defId === 'fryer');
     return { id: t.id, x: t.x, y: t.y };`);
   await ensurePanel(page, 'b', 'build'); await expandBuild(page);
   await page.click('.u-tabbed > .tabs .tab:has-text("設施")'); await settle(page, 200);
   if (await subTab.count()) { await subTab.first().click(); await settle(page, 300); }
-  const lack = await page.evaluate(() => { const c = document.querySelector('.u-item[data-id="tens"] .u-roles'); return c ? { cls: c.className, chips: [...c.querySelectorAll('.u-role')].map(x => x.className + '|' + x.textContent) } : null; });
+  const lack = await page.evaluate(() => { const c = document.querySelector('.u-item[data-id="fryer"] .u-roles'); return c ? { cls: c.className, chips: [...c.querySelectorAll('.u-role')].map(x => x.className + '|' + x.textContent) } : null; });
   ok(lack && /lack/.test(lack.cls) && lack.chips.length === 1 && /lack/.test(lack.chips[0]) && /⚠ 物理治療師/.test(lack.chips[0]), `${tag}: with no PT the tens chip is ⚠ (${JSON.stringify(lack)})`);
   await shot(page, `qual_${w}x${h}_${style}_build_lack`);
   await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); await settle(page, 250);
 
   // overlay: sample the warn pixels around the unstaffed tens and compare with the staffed state
   await mods(page, `ui.cam.zoom = Math.max(ui.cam.zoom, 1.4);`);
-  await mods(page, `const o = state.objects.find(x => x.defId === 'tens'); const cv = document.getElementById('game'); const r = cv.getBoundingClientRect();
+  await mods(page, `const o = state.objects.find(x => x.defId === 'fryer'); const cv = document.getElementById('game'); const r = cv.getBoundingClientRect();
     ui.cam.x = r.width / 2 - ((o.x - o.y) * 32) * ui.cam.zoom; ui.cam.y = r.height / 2 - ((o.x + o.y + 1) * 16 - 20) * ui.cam.zoom;`);
   await settle(page, 400);
   let withWarn = 0;
@@ -144,13 +144,13 @@ for (const [w, h] of VIEWS) for (const style of STYLES) {
   const t1 = await mods(page, `
     const m = state.money; state.money = 9e6;
     let o = null;
-    for (const [x, y] of [[19, 11], [20, 11], [21, 11], [19, 13], [20, 13]]) { o = B.placeObject(state, 'tens', x, y, 0); if (o) break; }
+    for (const [x, y] of [[19, 11], [20, 11], [21, 11], [19, 13], [20, 13]]) { o = B.placeObject(state, 'fryer', x, y, 0); if (o) break; }
     state.money = m; return { id: o && o.id, unst: o ? Q.isUnstaffed(state, o) : null };`);
   await page.waitForFunction(() => /尚未僱用/.test(document.getElementById('toast-layer').textContent), null, { timeout: 4000 }).catch(() => {});
   const toast1 = await page.evaluate(() => document.getElementById('toast-layer').textContent);
   ok(t1.id && t1.unst === true && /尚未僱用物理治療師，這台設備無法運作/.test(toast1), `${tag}: placing an unstaffed PT machine toasts 「尚未僱用物理治療師，這台設備無法運作」 (${toast1.slice(0, 60)})`);
   await page.evaluate(() => { document.getElementById('toast-layer').replaceChildren(); });
-  await mods(page, `const m = state.money; state.money = 9e6; for (const [x, y] of [[19, 15], [20, 15], [21, 13], [21, 11]]) { if (B.placeObject(state, 'tens', x, y, 0)) break; } state.money = m;`);
+  await mods(page, `const m = state.money; state.money = 9e6; for (const [x, y] of [[19, 15], [20, 15], [21, 13], [21, 11]]) { if (B.placeObject(state, 'fryer', x, y, 0)) break; } state.money = m;`);
   await settle(page, 400);
   const toast2 = await page.evaluate(() => document.getElementById('toast-layer').textContent);
   ok(!/尚未僱用/.test(toast2), `${tag}: no second toast for the same role (${toast2.slice(0, 40)})`);
@@ -173,14 +173,14 @@ for (const [w, h] of VIEWS) for (const style of STYLES) {
   await page.evaluate(() => {
     const { state } = __game;
     state.hirePool.length = 0;
-    state.hirePool.push({ cid: 'qpt', role: 'pt', name: '測試治療師', skill: 6, charm: 5, salary: 60000, hireCost: 30000, trait: null, staminaMax: 100 },
-      { cid: 'qdr', role: 'doctor', name: '測試醫師', skill: 6, charm: 5, salary: 150000, hireCost: 30000, trait: null, staminaMax: 100 });
+    state.hirePool.push({ cid: 'qpt', role: 'cook', name: '測試治療師', skill: 6, charm: 5, salary: 60000, hireCost: 30000, trait: null, staminaMax: 100 },
+      { cid: 'qdr', role: 'chef', name: '測試醫師', skill: 6, charm: 5, salary: 150000, hireCost: 30000, trait: null, staminaMax: 100 });
   });
   await page.click('.u-tabbed > .tabs .tab:has-text("員工")'); await settle(page, 600);
   const pool = await page.evaluate(() => [...document.querySelectorAll('.u-row2[data-cid]')].map(c => ({ cid: c.dataset.cid, tag: !!c.querySelector('.u-need:not([hidden])'), txt: c.querySelector('.u-need') ? c.querySelector('.u-need').textContent : '' })));
-  ok(pool.length === 2 && pool.find(c => c.cid === 'qpt').tag && /診所缺這個職類/.test(pool.find(c => c.cid === 'qpt').txt) && !pool.find(c => c.cid === 'qdr').tag, `${tag}: hire pool tags the PT candidate 「診所缺這個職類」, not the doctor (${JSON.stringify(pool)})`);
+  ok(pool.length === 2 && pool.find(c => c.cid === 'qpt').tag && /餐廳缺這個職類/.test(pool.find(c => c.cid === 'qpt').txt) && !pool.find(c => c.cid === 'qdr').tag, `${tag}: hire pool tags the PT candidate 「餐廳缺這個職類」, not the doctor (${JSON.stringify(pool)})`);
   const rtip = await page.evaluate(() => { const e = document.querySelector('.u-srow2 [data-tip*="護理師可操作的設施"]'); return e ? e.dataset.tip : ''; });
-  ok(/可操作的設施/.test(rtip) && /熱敷箱/.test(rtip) && /掛號櫃檯/.test(rtip) && /只需開機設定/.test(rtip), `${tag}: staff row role label has the 「可操作的設施」 tooltip (${rtip.replace(/\n/g, ' / ').slice(0, 70)})`);
+  ok(/可操作的設施/.test(rtip) && /熱敷箱/.test(rtip) && /點餐櫃檯/.test(rtip) && /只需開機設定/.test(rtip), `${tag}: staff row role label has the 「可操作的設施」 tooltip (${rtip.replace(/\n/g, ' / ').slice(0, 70)})`);
   await shot(page, `qual_${w}x${h}_${style}_hirepool`);
   ok((await overflow(page)).length === 0, `${tag}: no overflow in the staff tab (${(await overflow(page)).join('; ')})`);
 
@@ -188,7 +188,7 @@ for (const [w, h] of VIEWS) for (const style of STYLES) {
   await mods(page, `state.money = 9e6; S.hire(state, 'qpt');`);
   await settle(page, 500);
   const after = await page.evaluate(() => ({ tags: [...document.querySelectorAll('.u-need')].filter(e => !e.hidden).length }));
-  ok(after.tags === 0, `${tag}: after hiring the PT the 「診所缺這個職類」 tag is gone`);
+  ok(after.tags === 0, `${tag}: after hiring the PT the 「餐廳缺這個職類」 tag is gone`);
   await page.click('.u-tabbed > .tabs .tab:has-text("設備維護")'); await settle(page, 500);
   const eq2 = await page.evaluate((id) => { const tr = document.querySelector(`.u-eq tr[data-id="${id}"]`); return tr ? { badge: [...tr.querySelectorAll('.u-eqb')].map(b => b.textContent), req: (tr.querySelector('.u-eqreq') || {}).textContent } : null; }, tens.id);
   ok(eq2 && !eq2.badge.includes('缺人') && /需要：✔ 物理治療師/.test(eq2.req || ''), `${tag}: equipment row is ✔ after the hire (${JSON.stringify(eq2)})`);
@@ -198,13 +198,13 @@ for (const [w, h] of VIEWS) for (const style of STYLES) {
   ok(withWarn >= 8 && withWarn > noWarn + 5, `${tag}: ⚠ overlay is drawn over the unstaffed machine and gone after the hire (warn-coloured pixels ${withWarn} vs ${noWarn})`);
 
   // ---- object selection card
-  await mods(page, `S.fire(state, state.staff.find(s => s.role === 'pt').id); ui.selected = { type: 'object', id: ${tens.id} }; __game.bus.emit('select:changed', { selected: ui.selected });`);
+  await mods(page, `S.fire(state, state.staff.find(s => s.role === 'cook').id); ui.selected = { type: 'object', id: ${tens.id} }; __game.bus.emit('select:changed', { selected: ui.selected });`);
   await settle(page, 600);
   const sel = await page.evaluate(() => { const c = document.querySelector('.u-selcard'); return c && !c.hidden ? c.textContent : ''; });
   ok(/所需人員/.test(sel) && /狀態/.test(sel) && /缺人，無法運作/.test(sel) && /⚠ 物理治療師/.test(sel), `${tag}: selection card shows 所需人員 + 狀態 (${sel.replace(/\s+/g, ' ').slice(0, 110)})`);
   await shot(page, `qual_${w}x${h}_${style}_selcard`);
   ok((await overflow(page)).length === 0, `${tag}: no overflow with the selection card (${(await overflow(page)).join('; ')})`);
-  await mods(page, `state.money = 9e6; const c = state.hirePool.find(x => x.role === 'pt') || null; if (!c) { state.hirePool.push({ cid: 'qpt2', role: 'pt', name: '測試治療師二', skill: 6, charm: 5, salary: 60000, hireCost: 1000, trait: null, staminaMax: 100 }); } S.hire(state, (state.hirePool.find(x => x.role === 'pt')).cid);`);
+  await mods(page, `state.money = 9e6; const c = state.hirePool.find(x => x.role === 'cook') || null; if (!c) { state.hirePool.push({ cid: 'qpt2', role: 'cook', name: '測試治療師二', skill: 6, charm: 5, salary: 60000, hireCost: 1000, trait: null, staminaMax: 100 }); } S.hire(state, (state.hirePool.find(x => x.role === 'cook')).cid);`);
   await settle(page, 600);
   const sel2 = await page.evaluate(() => { const c = document.querySelector('.u-selcard'); return c && !c.hidden ? c.textContent : ''; });
   ok(/✔ 物理治療師/.test(sel2) && !/缺人/.test(sel2), `${tag}: selection card follows the hire (${sel2.replace(/\s+/g, ' ').slice(0, 90)})`);

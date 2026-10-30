@@ -79,12 +79,12 @@
 
   st.setup100 = () => {
     st.bigClinic({ lot: 3 });
-    const plan = [['reception', 3], ['sofa', 14], ['water', 2], ['tv', 1], ['plant', 3], ['exam_room', 3], ['us_room', 1], ['rest_room', 1],
-      ['heatbox', 8], ['tens', 8], ['traction', 4], ['ir_lamp', 4], ['bed', 6], ['redcord', 1], ['shockwave_room', 1], ['laser_room', 1], ['manual_room', 1],
+    const plan = [['reception', 3], ['bench', 14], ['water', 2], ['tv', 1], ['plant', 3], ['chef_range', 3], ['us_room', 1], ['rest_room', 1],
+      ['noodle_stove', 8], ['fryer', 8], ['braise_pot', 4], ['ir_lamp', 4], ['bed', 6], ['redcord', 1], ['shockwave_room', 1], ['laser_room', 1], ['manual_room', 1],
       ['si_room', 1], ['fine_table', 2], ['speech_room', 1], ['coffee', 1]];
     const res = {};
     for (const [d, n] of plan) res[d] = st.fill(d, n);
-    st.hireAll(['doctor', 'doctor', 'doctor', 'pt', 'pt', 'pt', 'pt', 'pt', 'pt', 'nurse', 'nurse', 'nurse', 'ot', 'ot', 'st']);
+    st.hireAll(['chef', 'chef', 'chef', 'cook', 'cook', 'cook', 'cook', 'cook', 'cook', 'cashier', 'cashier', 'cashier', 'barista', 'barista', 'server']);
     st.refresh();
     return res;
   };
@@ -99,7 +99,7 @@
       const s = st.g().state;
       if (s.time.paused) return;
       let guard = 0;
-      while (s.patients.length < target && guard++ < 6) { const p = st.P.spawnPatient(s, planOverride ? 'sports' : types[Math.floor(Math.random() * types.length)]); if (p && planOverride) { p.plan = planOverride.slice(); p.selfPaySteps = []; p.stage = 'waiting'; p.needSpot = true; p.path = []; p.dest = null; p.patience = p.patienceMax = 1e6; } }
+      while (s.patients.length < target && guard++ < 6) { const p = st.P.spawnPatient(s, planOverride ? 'student' : types[Math.floor(Math.random() * types.length)]); if (p && planOverride) { p.plan = planOverride.slice(); p.selfPaySteps = []; p.stage = 'waiting'; p.needSpot = true; p.path = []; p.dest = null; p.patience = p.patienceMax = 1e6; } }
     }, 250);
   };
   st.stopFill = () => clearInterval(st._fillT);
@@ -242,7 +242,7 @@
       }
       case 'placeOnAgent': {
         const t = objAtAgent(); if (!t) break;
-        for (const d of ['plant', 'water', 'tv', 'sofa', 'tens', 'bed', 'reception', 'exam_room', 'rest_room', 'si_room']) {
+        for (const d of ['plant', 'water', 'tv', 'bench', 'fryer', 'bed', 'reception', 'chef_range', 'rest_room', 'si_room']) {
           for (const [dx, dy] of [[0, 0], [-1, 0], [0, -1], [-1, -1], [-2, -2], [-2, 0], [0, -2]]) for (const rot of [0, 1]) {
             if (B.canPlace(state, d, t.x + dx, t.y + dy, rot).ok && B.placeObject(state, d, t.x + dx, t.y + dy, rot)) { note(`placeOnAgent ${d}@${t.x + dx},${t.y + dy}`); return kind; }
           }
@@ -250,7 +250,7 @@
         break;
       }
       case 'rotate': { const o = pickOf(state.objects.filter(o => D.B[o.defId].w !== D.B[o.defId].h)); if (o) { const { defId, x, y, rot } = o; B.removeAt(state, x, y); const ok = B.canPlace(state, defId, x, y, rot ^ 1).ok && B.placeObject(state, defId, x, y, rot ^ 1); if (!ok) B.placeObject(state, defId, x, y, rot); note('rotate ' + defId); } break; }
-      case 'floor': { const f = pickOf(['floor_mat', 'floor_wood', 'ramp']); const x = L.x0 + Math.floor(Math.random() * L.w), y = L.y0 + Math.floor(Math.random() * L.h); B.paintFloor(state, f, x, y); note('floor ' + f); break; }
+      case 'floor': { const f = pickOf(['floor_tile', 'floor_wood', 'ramp']); const x = L.x0 + Math.floor(Math.random() * L.w), y = L.y0 + Math.floor(Math.random() * L.h); B.paintFloor(state, f, x, y); note('floor ' + f); break; }
       case 'floorErase': { const x = L.x0 + Math.floor(Math.random() * L.w), y = L.y0 + Math.floor(Math.random() * L.h); if (state.map.floor[y][x]) { state.map.floor[y][x] = null; ui_dirty(); note('floor erase'); } break; }
       case 'hire': { st.S.refreshPool(state); const c = pickOf(state.hirePool); if (c && st.S.hire(state, c.cid)) note('hire ' + c.role); break; }
       case 'fire': { const s = pickOf(state.staff); if (s && state.staff.length > 2) { st.S.fire(state, s.id); note('fire ' + s.role); } break; }
@@ -261,7 +261,7 @@
       case 'panel': { const b = document.querySelectorAll('#sidebar .sidebar-btn'); if (b.length) pickOf([...b]).click(); note('panel'); break; }
       case 'esc': { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); note('esc'); break; }
       case 'key': { const k = pickOf(['b', 'o', 'c', 'v', 'm', 'y', 'g', 'r', '1', '2', '3']); document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true })); note('key ' + k); break; }
-      case 'refill': { if (state.objects.filter(o => o.defId === 'reception').length === 0) st.fill('reception', 1, { shuffle: true }); if (state.staff.length < 5) st.hireAll(['pt', 'nurse', 'doctor']); break; }
+      case 'refill': { if (state.objects.filter(o => o.defId === 'reception').length === 0) st.fill('reception', 1, { shuffle: true }); if (state.staff.length < 5) st.hireAll(['cook', 'cashier', 'chef']); break; }
       case 'expand': { const lv = Math.min(3, (state.lotLevel || 0) + 1); if (state.lotLevel < lv) { state.lotLevel = lv; state.lot = { ...D.L[lv].lot }; state.door = { ...D.L[lv].door }; g.bus.emit('map:changed', {}); note('expand ' + lv); } break; }
     }
     return kind;
@@ -270,9 +270,9 @@
 
   st.setupChaos = () => {
     st.bigClinic({ lot: 1 });
-    const plan = [['reception', 2], ['sofa', 6], ['water', 1], ['plant', 2], ['exam_room', 2], ['rest_room', 1], ['heatbox', 4], ['tens', 4], ['traction', 2], ['ir_lamp', 2], ['bed', 3], ['redcord', 1], ['si_room', 1], ['fine_table', 1], ['speech_room', 1]];
+    const plan = [['reception', 2], ['bench', 6], ['water', 1], ['plant', 2], ['chef_range', 2], ['rest_room', 1], ['noodle_stove', 4], ['fryer', 4], ['braise_pot', 2], ['ir_lamp', 2], ['bed', 3], ['redcord', 1], ['si_room', 1], ['fine_table', 1], ['speech_room', 1]];
     for (const [d, n] of plan) st.fill(d, n);
-    st.hireAll(['doctor', 'pt', 'pt', 'pt', 'nurse', 'nurse', 'ot', 'st']);
+    st.hireAll(['chef', 'cook', 'cook', 'cook', 'cashier', 'cashier', 'barista', 'server']);
     st.refresh();
   };
 
@@ -282,10 +282,10 @@
     const { state } = st.g();
     state.objects.length = 0; state.staff.length = 0; state.patients.length = 0; state.queue.length = 0;
     st.bigClinic({ lot: 1 });
-    const plan = [['reception', 1], ['sofa', 4], ['water', 1], ['bed', 3]];
+    const plan = [['reception', 1], ['bench', 4], ['water', 1], ['bed', 3]];
     if (withRest) plan.push(['rest_room', 1]);
     for (const [d, n] of plan) st.fill(d, n);
-    st.hireAll(['nurse', 'nurse', 'pt', 'pt']);
+    st.hireAll(['cashier', 'cashier', 'cook', 'cook']);
     st.refresh();
     st.rest = { byStaff: {}, tiredBubble: 0, slow: 0 };
     clearInterval(st._restT);

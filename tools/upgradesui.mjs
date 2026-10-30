@@ -16,7 +16,7 @@ async function open(w, h, mode = 'new') {
   page.on('console', m => { if (['error', 'warning'].includes(m.type())) problems.push(m.type() + ': ' + m.text()); });
   page.on('pageerror', e => problems.push('PAGEERR ' + e.message));
   page.on('requestfailed', r => problems.push('REQFAIL ' + r.url()));
-  await page.addInitScript(m => { try { localStorage.clear(); if (m === 'classic') localStorage.setItem('ptgame.art', 'classic'); } catch (e) { /* ignore */ } }, mode);
+  await page.addInitScript(m => { try { localStorage.clear(); if (m === 'classic') localStorage.setItem('restgame.art', 'classic'); } catch (e) { /* ignore */ } }, mode);
   await page.goto(url); await wait(page, 1500);
   await page.evaluate(() => { document.querySelector('#modal-root button')?.click(); });
   await page.evaluate(() => __game.bus.emit('speed:set', { speed: 0 }));
@@ -46,10 +46,10 @@ const setup = (page, { done = 'none', pts = {}, levels = {} } = {}) => page.eval
   const { state, bus } = __game;
   const R = await import('/js/data/research.js');
   const by = d => Object.values(R.RESEARCH).filter(n => n.track === d).map(n => n.id);
-  const sets = { none: [], med3: by('medical').slice(0, 3), med5: by('medical').slice(0, 5), all: Object.keys(R.RESEARCH), mix: [...by('medical').slice(0, 5), ...by('device').slice(0, 3)] };
+  const sets = { none: [], med3: by('culinary').slice(0, 3), med5: by('culinary').slice(0, 5), all: Object.keys(R.RESEARCH), mix: [...by('culinary').slice(0, 5), ...by('device').slice(0, 3)] };
   state.research.done = sets[done] || [];
   state.research.levels = { ...levels };
-  Object.assign(state.points, { medical: 0, device: 0, service: 0 }, pts);
+  Object.assign(state.points, { culinary: 0, device: 0, service: 0 }, pts);
   bus.emit('mods:dirty', {});
 }, [done, pts, levels]);
 const openResearch = async page => {
@@ -82,9 +82,9 @@ const card = (s, id) => s.cards.find(c => c.id === id);
   ok(s && s.hidden, '持續精進 section is hidden while no line is unlocked (fresh game)');
   ok(await page.evaluate(() => document.querySelector('.u-upg-jump')?.hidden !== false), 'jump button hidden too');
 
-  await setup(page, { done: 'med3', pts: { medical: 500, device: 40, service: 40 } }); await wait(page, 500);
+  await setup(page, { done: 'med3', pts: { culinary: 500, device: 40, service: 40 } }); await wait(page, 500);
   s = await sec(page);
-  ok(s && !s.hidden, 'section appears once a line unlocks (3 medical nodes done)');
+  ok(s && !s.hidden, 'section appears once a line unlocks (3 culinary nodes done)');
   ok(s.cards.length === 6, `6 cards (${s.cards.length})`);
   ok(s.sum === '已投入 0 級 / 85', `summary 已投入 0 級 / 85 (${s.sum})`);
   const c1 = card(s, 'up_clinical');
@@ -92,18 +92,18 @@ const card = (s, id) => s.cards.find(c => c.id === id);
   ok(/85/.test(c1.cost), `cost chip shows the level-0 cost (${c1.cost})`);
   const c2 = card(s, 'up_diagnosis'), c3 = card(s, 'up_equipment'), c5 = card(s, 'up_relations');
   ok(c2.dis && c2.locked && /需先完成 5 項醫術研發/.test(c2.why), `專科診斷 locked with a reason (${c2.why})`);
-  ok(c3.dis && c3.locked && /3 項儀器研發/.test(c3.why) && c5.dis && /服務研發/.test(c5.why), `other domains locked with domain-specific reasons (${c3.why} | ${c5.why})`);
+  ok(c3.dis && c3.locked && /3 項設備研發/.test(c3.why) && c5.dis && /服務研發/.test(c5.why), `other domains locked with domain-specific reasons (${c3.why} | ${c5.why})`);
   ok(c1.tip && /每級/.test(c1.tip) && /滿級/.test(c1.tip), 'ⓘ tooltip text has per-level + cap info');
   ok(await page.evaluate(() => !document.querySelector('.u-upg-jump').hidden), 'jump button visible');
   const pts0 = await chips(page);
-  ok(pts0.medical === '500' && pts0.device === '40', `balance chips show the points (${JSON.stringify(pts0)})`);
+  ok(pts0.culinary === '500' && pts0.device === '40', `balance chips show the points (${JSON.stringify(pts0)})`);
 
   // buy
   await page.click('.u-upg-card[data-line="up_clinical"] .u-upg-btn'); await wait(page, 450);
   s = await sec(page);
   const pts1 = await chips(page);
   ok(card(s, 'up_clinical').lv === 'Lv.1 / 16', `buy: level 1 (${card(s, 'up_clinical').lv})`);
-  ok(+pts1.medical >= 415 && +pts1.medical <= 440 && +pts1.device >= 40, `buy: medical points 500 -> ~415 (cost 85 paid; ${pts1.medical})`);
+  ok(+pts1.culinary >= 415 && +pts1.culinary <= 440 && +pts1.device >= 40, `buy: culinary points 500 -> ~415 (cost 85 paid; ${pts1.culinary})`);
   ok(/治癒效率 \+2\.5%\s*→ \+5%/.test(card(s, 'up_clinical').eff), `buy: effect text now -> next (${card(s, 'up_clinical').eff})`);
   ok(/105/.test(card(s, 'up_clinical').cost), `buy: next cost 105 (${card(s, 'up_clinical').cost})`);
   ok(s.sum === '已投入 1 級 / 85', `buy: summary 1 level (${s.sum})`);
@@ -111,27 +111,27 @@ const card = (s, id) => s.cards.find(c => c.id === id);
   ok(await page.evaluate(() => [...document.querySelectorAll('.toast')].some(t => /精進完成：臨床經驗/.test(t.textContent))), 'buy: toast shown');
   ok(await page.evaluate(() => { const c = document.querySelector('.u-upg-card[data-line="up_clinical"]'); return c.classList.contains('u-upg-flash') || !!c.querySelector('.u-upg-spark') || true; }), 'buy: sparkle class applied (best effort)');
 
-  // poor: medical points below cost -> disabled + reason
-  await setup(page, { done: 'med3', pts: { medical: 50 }, levels: { up_clinical: 1 } }); await wait(page, 500);
+  // poor: culinary points below cost -> disabled + reason
+  await setup(page, { done: 'med3', pts: { culinary: 50 }, levels: { up_clinical: 1 } }); await wait(page, 500);
   s = await sec(page);
   ok(card(s, 'up_clinical').dis && /醫術點數不足/.test(card(s, 'up_clinical').why), `poor: disabled with 醫術點數不足 (${card(s, 'up_clinical').why})`);
   ok(await page.evaluate(() => document.querySelector('.u-upg-card[data-line="up_clinical"] .u-upg-cost').classList.contains('lack')), 'poor: cost chip marked lacking');
-  await page.evaluate(() => __game.state.points.medical = 105); await wait(page, 450);
+  await page.evaluate(() => __game.state.points.culinary = 105); await wait(page, 450);
   s = await sec(page);
   ok(!card(s, 'up_clinical').dis && card(s, 'up_clinical').why === '', 'poor -> exactly enough re-enables in place');
 
   // capped
-  await setup(page, { done: 'med5', pts: { medical: 9999 }, levels: { up_clinical: 16, up_diagnosis: 11 } }); await wait(page, 500);
+  await setup(page, { done: 'med5', pts: { culinary: 9999 }, levels: { up_clinical: 16, up_diagnosis: 11 } }); await wait(page, 500);
   s = await sec(page);
   ok(card(s, 'up_clinical').dis && card(s, 'up_clinical').btn === '已滿級' && /已滿級/.test(card(s, 'up_clinical').cost) && /\+40%/.test(card(s, 'up_clinical').eff), `capped: 已滿級, disabled (${card(s, 'up_clinical').btn} ${card(s, 'up_clinical').eff})`);
   ok(!card(s, 'up_diagnosis').dis, 'one level below cap still buyable');
   await page.click('.u-upg-card[data-line="up_diagnosis"] .u-upg-btn'); await wait(page, 450);
   s = await sec(page);
-  ok(card(s, 'up_diagnosis').lv === 'Lv.12 / 12' && card(s, 'up_diagnosis').dis && /四類病患治癒效率 \+18%/.test(card(s, 'up_diagnosis').eff), `buying the last level caps it (${card(s, 'up_diagnosis').lv} ${card(s, 'up_diagnosis').eff})`);
+  ok(card(s, 'up_diagnosis').lv === 'Lv.12 / 12' && card(s, 'up_diagnosis').dis && /四類客人治癒效率 \+18%/.test(card(s, 'up_diagnosis').eff), `buying the last level caps it (${card(s, 'up_diagnosis').lv} ${card(s, 'up_diagnosis').eff})`);
   ok(await page.evaluate(() => __game.state.mods.typeCure.elder > 0.179 && __game.state.mods.typeCure.kid > 0.179), 'typeCure applied to the patient types');
 
   // all done: section moves above the tree
-  await setup(page, { done: 'all', pts: { medical: 10, device: 10, service: 10 }, levels: {} }); await wait(page, 500);
+  await setup(page, { done: 'all', pts: { culinary: 10, device: 10, service: 10 }, levels: {} }); await wait(page, 500);
   ok(await page.evaluate(() => { const s = document.querySelector('[data-upgrades]'); const t = document.querySelector('.u-tree'); return !!(s && t) && (s.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0; }), 'tree exhausted: 持續精進 moves above the research tree');
   ok(problems.length === 0, 'no console errors/warnings: ' + problems.slice(0, 3).join(' | '));
   await page.context().close();
@@ -143,7 +143,7 @@ for (const mode of ['new', 'classic']) {
   for (const [w, h] of VIEWPORTS) {
     const { page, problems } = await open(w, h, mode);
     await openResearch(page);
-    await setup(page, { done: 'mix', pts: { medical: 400, device: 60, service: 5 }, levels: { up_clinical: 4, up_diagnosis: 12, up_equipment: 2 } });
+    await setup(page, { done: 'mix', pts: { culinary: 400, device: 60, service: 5 }, levels: { up_clinical: 4, up_diagnosis: 12, up_equipment: 2 } });
     await wait(page, 500);
     const tag = `${mode === 'new' ? 'concept' : 'classic'} ${w}x${h}`;
     ok(await page.evaluate(() => document.documentElement.classList.contains('style-concept')) === (mode === 'new'), `${tag}: style class`);
